@@ -82,7 +82,7 @@ fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<()> {
                     let src = clean_text(&format!(
                         "https://cohost.org/rc/attachment-redirect/{attachmentId}"
                     ));
-                    output.write_all(format!(r#"<img src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
+                    output.write_all(format!(r#"<img loading="lazy" src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
                 }
                 Attachment::Unknown { fields } => {
                     warn!("{input_path:?}: unknown attachment kind: {fields:?}");

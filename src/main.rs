@@ -47,6 +47,7 @@ fn main() -> eyre::Result<()> {
         let safe_html = ammonia::Builder::default()
             .add_generic_attributes(["style"])
             .add_tag_attributes("details", ["open"])
+            .add_tag_attributes("img", ["loading"])
             .add_tags(["meta"])
             .add_tag_attributes("meta", ["name", "content"])
             .id_prefix(Some("user-content-")) // cohost compatibility
