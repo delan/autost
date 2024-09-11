@@ -1,6 +1,13 @@
 use std::{env::args, fs::File, io::Read};
 
+use askama::Template;
 use comrak::Options;
+
+#[derive(askama::Template)]
+#[template(path = "post.html")]
+struct PostTemplate<'input> {
+    content: &'input str,
+}
 
 fn main() -> jane_eyre::eyre::Result<()> {
     jane_eyre::install()?;
@@ -21,7 +28,12 @@ fn main() -> jane_eyre::eyre::Result<()> {
         .add_tag_attributes("details", ["open"])
         .clean(&unsafe_html)
         .to_string();
-    println!("{}", safe_html);
+
+    // reader step: generate post page.
+    let template = PostTemplate {
+        content: &safe_html,
+    };
+    println!("{}", template.render()?);
 
     Ok(())
 }

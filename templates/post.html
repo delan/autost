@@ -1,0 +1,57 @@
+<!doctype html><meta charset="utf-8">
+<style>
+    @font-face {
+        src: url(Atkinson-Hyperlegible-Regular-102.woff2);
+        font-family: Atkinson Hyperlegible;
+    }
+    @font-face {
+        src: url(Atkinson-Hyperlegible-Italic-102.woff2);
+        font-family: Atkinson Hyperlegible;
+        font-style: italic;
+    }
+    @font-face {
+        src: url(Atkinson-Hyperlegible-Bold-102.woff2);
+        font-family: Atkinson Hyperlegible;
+        font-weight: bold;
+    }
+    @font-face {
+        src: url(Atkinson-Hyperlegible-BoldItalic-102.woff2);
+        font-family: Atkinson Hyperlegible;
+        font-style: italic;
+        font-weight: bold;
+    }
+    :root {
+        --color-cherry: 131 37 79;
+    }
+    * {
+        box-sizing: border-box;
+        font-family: Atkinson Hyperlegible;
+    }
+    section.post {
+        border: 1px solid black;
+        max-width: 40em;
+        padding: 1em;
+        margin: 0 auto;
+
+        position: relative;
+        contain: inline-size style layout paint;
+        overflow: clip;
+        overflow-wrap: break-word;
+    }
+    /* cohost compatibility */
+    section.post.cohost img,
+    section.post.cohost video {
+        max-width: 100%;
+        height: auto;
+    }
+    section.post.cohost img,
+    section.post.cohost video,
+    section.post.cohost audio {
+        display: block;
+    }
+    section.post.cohost :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+        margin-top: 2em;
+        margin-bottom: 2em;
+    }
+</style>
+<section class="post cohost">{{ content|safe }}</section>
