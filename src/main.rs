@@ -95,9 +95,10 @@ fn extract_metadata(unsafe_html: String) -> eyre::Result<Post> {
         node.children.replace(children);
     }
 
-    let document: SerializableHandle = dom.document.clone().into();
+    // html5ever::parse_fragment builds a tree with the input wrapped in an <html> element.
+    let html_root: SerializableHandle = dom.document.children.borrow()[0].clone().into();
     let mut unsafe_html = Vec::default();
-    html5ever::serialize(&mut unsafe_html, &document, Default::default())?;
+    html5ever::serialize(&mut unsafe_html, &html_root, Default::default())?;
     let unsafe_html = String::from_utf8(unsafe_html)?;
 
     Ok(Post { unsafe_html, title })
@@ -105,14 +106,7 @@ fn extract_metadata(unsafe_html: String) -> eyre::Result<Post> {
 
 fn attr_value<'attrs>(attrs: &'attrs [Attribute], name: &str) -> eyre::Result<Option<&'attrs str>> {
     for attr in attrs.iter() {
-        if dbg!(&attr.name)
-            == dbg!(&QualName::new(
-                None,
-                Namespace::default(),
-                LocalName::from(name)
-            ))
-        {
-            dbg!(attr);
+        if attr.name == QualName::new(None, Namespace::default(), LocalName::from(name)) {
             return Ok(Some(tendril_to_owned(&attr.value)?));
         }
     }
