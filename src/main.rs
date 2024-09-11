@@ -26,6 +26,7 @@ fn main() -> jane_eyre::eyre::Result<()> {
     let safe_html = ammonia::Builder::default()
         .add_generic_attributes(["style"])
         .add_tag_attributes("details", ["open"])
+        .id_prefix(Some("user-content-")) // cohost compatibility
         .clean(&unsafe_html)
         .to_string();
 
