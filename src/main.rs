@@ -1,17 +1,11 @@
-mod dom;
-
 use std::{env::args, fs::File, io::Read};
 
 use askama::Template;
+use autost::dom::{attr_value, parse, serialize};
 use comrak::Options;
-use html5ever::{
-    local_name, namespace_url, ns, tendril::TendrilSink, tree_builder::TreeBuilderOpts, ParseOpts,
-    QualName,
-};
+use html5ever::{local_name, namespace_url, ns, QualName};
 use jane_eyre::eyre;
-use markup5ever_rcdom::{NodeData, RcDom, SerializableHandle};
-
-use crate::dom::attr_value;
+use markup5ever_rcdom::NodeData;
 
 #[derive(Template)]
 #[template(path = "posts.html")]
@@ -77,17 +71,7 @@ struct Post {
 }
 
 fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
-    let options = ParseOpts {
-        tree_builder: TreeBuilderOpts {
-            drop_doctype: true,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let context = QualName::new(None, ns!(html), local_name!("section"));
-    let dom = html5ever::parse_fragment(RcDom::default(), options, context, vec![])
-        .from_utf8()
-        .read_from(&mut unsafe_html.as_bytes())?;
+    let dom = parse(&mut unsafe_html.as_bytes())?;
 
     let mut title = None;
     let mut published = None;
@@ -120,14 +104,8 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
         node.children.replace(children);
     }
 
-    // html5ever::parse_fragment builds a tree with the input wrapped in an <html> element.
-    let html_root: SerializableHandle = dom.document.children.borrow()[0].clone().into();
-    let mut unsafe_html = Vec::default();
-    html5ever::serialize(&mut unsafe_html, &html_root, Default::default())?;
-    let unsafe_html = String::from_utf8(unsafe_html)?;
-
     Ok(Post {
-        unsafe_html,
+        unsafe_html: serialize(dom)?,
         title,
         published,
     })
