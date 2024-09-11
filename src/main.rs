@@ -1,15 +1,17 @@
-use std::{borrow::Borrow, env::args, fs::File, io::Read, str};
+mod dom;
+
+use std::{env::args, fs::File, io::Read};
 
 use askama::Template;
 use comrak::Options;
 use html5ever::{
-    local_name, namespace_url, ns,
-    tendril::{StrTendril, TendrilSink},
-    tree_builder::TreeBuilderOpts,
-    Attribute, LocalName, Namespace, ParseOpts, QualName,
+    local_name, namespace_url, ns, tendril::TendrilSink, tree_builder::TreeBuilderOpts, ParseOpts,
+    QualName,
 };
 use jane_eyre::eyre;
 use markup5ever_rcdom::{NodeData, RcDom, SerializableHandle};
+
+use crate::dom::attr_value;
 
 #[derive(askama::Template)]
 #[template(path = "post.html")]
@@ -32,7 +34,7 @@ fn main() -> eyre::Result<()> {
     let unsafe_html = comrak::markdown_to_html(&markdown, &options);
 
     // reader step: extract metadata.
-    let post = extract_metadata(unsafe_html)?;
+    let post = extract_metadata(&unsafe_html)?;
 
     // reader step: filter html.
     let safe_html = ammonia::Builder::default()
@@ -54,12 +56,13 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
+#[derive(Debug, PartialEq)]
 struct Post {
     unsafe_html: String,
     title: Option<String>,
 }
 
-fn extract_metadata(unsafe_html: String) -> eyre::Result<Post> {
+fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
     let options = ParseOpts {
         tree_builder: TreeBuilderOpts {
             drop_doctype: true,
@@ -104,16 +107,18 @@ fn extract_metadata(unsafe_html: String) -> eyre::Result<Post> {
     Ok(Post { unsafe_html, title })
 }
 
-fn attr_value<'attrs>(attrs: &'attrs [Attribute], name: &str) -> eyre::Result<Option<&'attrs str>> {
-    for attr in attrs.iter() {
-        if attr.name == QualName::new(None, Namespace::default(), LocalName::from(name)) {
-            return Ok(Some(tendril_to_owned(&attr.value)?));
+#[test]
+fn test_extract_metadata() -> eyre::Result<()> {
+    fn post(unsafe_html: &str, title: Option<&str>) -> Post {
+        Post {
+            unsafe_html: unsafe_html.to_owned(),
+            title: title.map(|t| t.to_owned()),
         }
     }
+    assert_eq!(
+        extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
+        post("bar", Some("foo"))
+    );
 
-    Ok(None)
-}
-
-fn tendril_to_owned(tendril: &StrTendril) -> eyre::Result<&str> {
-    Ok(str::from_utf8(tendril.borrow())?)
+    Ok(())
 }
