@@ -1,13 +1,14 @@
 use std::{
     env::args,
-    fs::{read_dir, File},
+    fs::{read_dir, DirEntry, File},
     io::Write,
     path::Path,
 };
 
 use ammonia::clean_text;
 use autost::cohost::{Attachment, Block, Post};
-use jane_eyre::eyre::{self, OptionExt};
+use jane_eyre::eyre::{self, eyre, Context, OptionExt};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{info, trace, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -22,59 +23,73 @@ fn main() -> eyre::Result<()> {
     let input_path = Path::new(&input_path);
     let output_path = args().nth(2).unwrap();
     let output_path = Path::new(&output_path);
+    let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
 
-    for entry in read_dir(input_path)? {
-        let entry = entry?;
-        let input_path = entry.path();
-        let output_name = entry.file_name();
-        let output_name = output_name.to_str().ok_or_eyre("Unsupported file name")?;
-        let Some(output_name) = output_name.strip_suffix(".json") else {
-            continue;
-        };
-        let output_path = output_path.join(format!("{output_name}.md"));
+    let results = dir_entries
+        .into_par_iter()
+        .map(|entry| -> eyre::Result<()> {
+            let entry = entry?;
+            convert_chost(&entry, output_path)
+                .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
+            Ok(())
+        })
+        .collect::<Vec<_>>();
+    for result in results {
+        result?;
+    }
 
-        trace!("parsing post {input_path:?}");
-        let post: Post = serde_json::from_reader(File::open(&input_path)?)?;
+    Ok(())
+}
 
-        // TODO: handle shares.
-        if post.transparentShareOfPostId.is_some() || post.shareOfPostId.is_some() {
-            warn!("TODO: skipping share post {}", post.postId);
-            continue;
-        }
+fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<()> {
+    let input_path = entry.path();
+    let output_name = entry.file_name();
+    let output_name = output_name.to_str().ok_or_eyre("unsupported file name")?;
+    let Some(output_name) = output_name.strip_suffix(".json") else {
+        return Ok(());
+    };
+    let output_path = output_path.join(format!("{output_name}.md"));
 
-        info!("Converting {input_path:?} -> {output_path:?}");
-        let mut output = File::create(output_path)?;
-        let title = clean_text(&post.headline);
-        let published = clean_text(&post.publishedAt);
-        let n = "\n";
-        output.write_all(format!(r#"<meta name="title" content="{title}">{n}"#).as_bytes())?;
-        output.write_all(
-            format!(r#"<meta name="published" content="{published}">{n}{n}"#).as_bytes(),
-        )?;
-        for block in post.blocks {
-            match block {
-                Block::Markdown { markdown } => {
-                    output.write_all(format!("{}\n\n", markdown.content).as_bytes())?;
+    trace!("{input_path:?}: parsing");
+    let post: Post = serde_json::from_reader(File::open(&input_path)?)?;
+
+    // TODO: handle shares.
+    if post.transparentShareOfPostId.is_some() || post.shareOfPostId.is_some() {
+        warn!("{input_path:?}: TODO: skipping share post {}", post.postId);
+        return Ok(());
+    }
+
+    info!("{input_path:?}: converting -> {output_path:?}");
+    let mut output = File::create(output_path)?;
+    let title = clean_text(&post.headline);
+    let published = clean_text(&post.publishedAt);
+    let n = "\n";
+    output.write_all(format!(r#"<meta name="title" content="{title}">{n}"#).as_bytes())?;
+    output
+        .write_all(format!(r#"<meta name="published" content="{published}">{n}{n}"#).as_bytes())?;
+    for block in post.blocks {
+        match block {
+            Block::Markdown { markdown } => {
+                output.write_all(format!("{}\n\n", markdown.content).as_bytes())?;
+            }
+            Block::Attachment { attachment } => match attachment {
+                Attachment::Image {
+                    attachmentId,
+                    altText,
+                    width,
+                    height,
+                } => {
+                    let src = clean_text(&format!(
+                        "https://cohost.org/rc/attachment-redirect/{attachmentId}"
+                    ));
+                    output.write_all(format!(r#"<img src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
                 }
-                Block::Attachment { attachment } => match attachment {
-                    Attachment::Image {
-                        attachmentId,
-                        altText,
-                        width,
-                        height,
-                    } => {
-                        let src = clean_text(&format!(
-                            "https://cohost.org/rc/attachment-redirect/{attachmentId}"
-                        ));
-                        output.write_all(format!(r#"<img src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
-                    }
-                    Attachment::Unknown { fields } => {
-                        warn!("unknown attachment kind: {fields:?}");
-                    }
-                },
-                Block::Unknown { fields } => {
-                    warn!("unknown block type: {fields:?}");
+                Attachment::Unknown { fields } => {
+                    warn!("{input_path:?}: unknown attachment kind: {fields:?}");
                 }
+            },
+            Block::Unknown { fields } => {
+                warn!("{input_path:?}: unknown block type: {fields:?}");
             }
         }
     }
