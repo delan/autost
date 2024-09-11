@@ -54,4 +54,7 @@
         margin-bottom: 2em;
     }
 </style>
-<section class="post cohost">{{ content|safe }}</section>
+<section class="post cohost">
+    <h1>{{ title }}</h1>
+    {{ content|safe }}
+</section>
