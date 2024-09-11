@@ -1,7 +1,7 @@
 use std::{
     env::args,
     fs::{read_dir, DirEntry, File},
-    io::Write,
+    io::{Read, Write},
     path::Path,
 };
 
@@ -23,13 +23,15 @@ fn main() -> eyre::Result<()> {
     let input_path = Path::new(&input_path);
     let output_path = args().nth(2).unwrap();
     let output_path = Path::new(&output_path);
+    let attachments_path = args().nth(3).unwrap();
+    let attachments_path = Path::new(&attachments_path);
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
 
     let results = dir_entries
         .into_par_iter()
         .map(|entry| -> eyre::Result<()> {
             let entry = entry?;
-            convert_chost(&entry, output_path)
+            convert_chost(&entry, output_path, attachments_path)
                 .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
             Ok(())
         })
@@ -41,7 +43,11 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<()> {
+fn convert_chost(
+    entry: &DirEntry,
+    output_path: &Path,
+    attachments_path: &Path,
+) -> eyre::Result<()> {
     let input_path = entry.path();
     let output_name = entry.file_name();
     let output_name = output_name.to_str().ok_or_eyre("unsupported file name")?;
@@ -79,9 +85,10 @@ fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<()> {
                     width,
                     height,
                 } => {
-                    let src = clean_text(&format!(
-                        "https://cohost.org/rc/attachment-redirect/{attachmentId}"
-                    ));
+                    let url = format!("https://cohost.org/rc/attachment-redirect/{attachmentId}");
+                    let path = attachments_path.join(&attachmentId);
+                    cached_get(&url, &path)?;
+                    let src = clean_text(&format!("attachments/{attachmentId}"));
                     output.write_all(format!(r#"<img loading="lazy" src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
                 }
                 Attachment::Unknown { fields } => {
@@ -95,4 +102,19 @@ fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
+    if let Ok(mut file) = File::open(path) {
+        trace!("cache hit: {url}");
+        let mut result = Vec::default();
+        file.read_to_end(&mut result)?;
+        return Ok(result);
+    }
+
+    trace!("cache miss: {url}");
+    let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
+    File::create(path)?.write_all(&result)?;
+
+    Ok(result)
 }
