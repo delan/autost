@@ -6,9 +6,9 @@ use std::{
 };
 
 use ammonia::clean_text;
-use autost::cohost::Post;
+use autost::cohost::{Attachment, Block, Post};
 use jane_eyre::eyre::{self, OptionExt};
-use tracing::{info, warn};
+use tracing::{info, trace, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 fn main() -> eyre::Result<()> {
@@ -33,6 +33,7 @@ fn main() -> eyre::Result<()> {
         };
         let output_path = output_path.join(format!("{output_name}.md"));
 
+        trace!("parsing post {input_path:?}");
         let post: Post = serde_json::from_reader(File::open(&input_path)?)?;
 
         // TODO: handle shares.
@@ -41,7 +42,6 @@ fn main() -> eyre::Result<()> {
             continue;
         }
 
-        // TODO: handle attachments (`.blocks[] | select(.type == "attachment")`).
         info!("Converting {input_path:?} -> {output_path:?}");
         let mut output = File::create(output_path)?;
         let title = clean_text(&post.headline);
@@ -51,7 +51,32 @@ fn main() -> eyre::Result<()> {
         output.write_all(
             format!(r#"<meta name="published" content="{published}">{n}{n}"#).as_bytes(),
         )?;
-        output.write_all(post.plainTextBody.as_bytes())?;
+        for block in post.blocks {
+            match block {
+                Block::Markdown { markdown } => {
+                    output.write_all(format!("{}\n\n", markdown.content).as_bytes())?;
+                }
+                Block::Attachment { attachment } => match attachment {
+                    Attachment::Image {
+                        attachmentId,
+                        altText,
+                        width,
+                        height,
+                    } => {
+                        let src = clean_text(&format!(
+                            "https://cohost.org/rc/attachment-redirect/{attachmentId}"
+                        ));
+                        output.write_all(format!(r#"<img src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
+                    }
+                    Attachment::Unknown { fields } => {
+                        warn!("unknown attachment kind: {fields:?}");
+                    }
+                },
+                Block::Unknown { fields } => {
+                    warn!("unknown block type: {fields:?}");
+                }
+            }
+        }
     }
 
     Ok(())
