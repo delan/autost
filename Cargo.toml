@@ -1,0 +1,9 @@
+[package]
+name = "autost"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ammonia = "4.0.0"
+comrak = "0.28.0"
+jane-eyre = "0.3.0"
