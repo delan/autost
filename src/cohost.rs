@@ -15,6 +15,7 @@ pub struct Post {
     pub postId: usize,
     pub transparentShareOfPostId: Option<usize>,
     pub shareOfPostId: Option<usize>,
+    pub publishedAt: String,
     pub headline: String,
     pub plainTextBody: String,
 }

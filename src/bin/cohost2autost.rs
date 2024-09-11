@@ -45,8 +45,12 @@ fn main() -> eyre::Result<()> {
         info!("Converting {input_path:?} -> {output_path:?}");
         let mut output = File::create(output_path)?;
         let title = clean_text(&post.headline);
-        output.write_all(format!(r#"<meta name="title" content="{title}">"#).as_bytes())?;
-        output.write_all(b"\n\n")?;
+        let published = clean_text(&post.publishedAt);
+        let n = "\n";
+        output.write_all(format!(r#"<meta name="title" content="{title}">{n}"#).as_bytes())?;
+        output.write_all(
+            format!(r#"<meta name="published" content="{published}">{n}{n}"#).as_bytes(),
+        )?;
         output.write_all(post.plainTextBody.as_bytes())?;
     }
 

@@ -21,6 +21,7 @@ struct PostsTemplate {
 
 struct PostTemplate {
     title: String,
+    published: String,
     content: String,
 }
 
@@ -54,11 +55,13 @@ fn main() -> eyre::Result<()> {
 
         posts.push(PostTemplate {
             title: post.title.unwrap_or("".to_owned()),
+            published: post.published.unwrap_or("".to_owned()),
             content: safe_html,
         });
     }
 
     // reader step: generate posts page.
+    posts.sort_by(|p, q| p.published.cmp(&q.published).reverse());
     let template = PostsTemplate { posts };
     println!("{}", template.render()?);
 
@@ -69,6 +72,7 @@ fn main() -> eyre::Result<()> {
 struct Post {
     unsafe_html: String,
     title: Option<String>,
+    published: Option<String>,
 }
 
 fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
@@ -85,6 +89,7 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
         .read_from(&mut unsafe_html.as_bytes())?;
 
     let mut title = None;
+    let mut published = None;
     let mut queue = vec![dom.document.clone()];
     while !queue.is_empty() {
         let node = queue.remove(0);
@@ -93,8 +98,15 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
                     if name == &QualName::new(None, ns!(html), local_name!("meta")) {
-                        if attr_value(&attrs.borrow(), "name")? == Some("title") {
-                            title = attr_value(&attrs.borrow(), "content")?.map(|t| t.to_owned());
+                        let content = attr_value(&attrs.borrow(), "content")?.map(|t| t.to_owned());
+                        match attr_value(&attrs.borrow(), "name")? {
+                            Some("title") => {
+                                title = content;
+                            }
+                            Some("published") => {
+                                published = content;
+                            }
+                            _ => {}
                         }
                         continue;
                     }
@@ -113,20 +125,25 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
     html5ever::serialize(&mut unsafe_html, &html_root, Default::default())?;
     let unsafe_html = String::from_utf8(unsafe_html)?;
 
-    Ok(Post { unsafe_html, title })
+    Ok(Post {
+        unsafe_html,
+        title,
+        published,
+    })
 }
 
 #[test]
 fn test_extract_metadata() -> eyre::Result<()> {
-    fn post(unsafe_html: &str, title: Option<&str>) -> Post {
+    fn post(unsafe_html: &str, title: Option<&str>, published: Option<&str>) -> Post {
         Post {
             unsafe_html: unsafe_html.to_owned(),
             title: title.map(|t| t.to_owned()),
+            published: published.map(|t| t.to_owned()),
         }
     }
     assert_eq!(
         extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
-        post("bar", Some("foo"))
+        post("bar", Some("foo"), None)
     );
 
     Ok(())
