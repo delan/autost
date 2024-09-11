@@ -54,7 +54,9 @@
         margin-bottom: 2em;
     }
 </style>
+{% for post in posts %}
 <section class="post cohost">
-    <h1>{{ title }}</h1>
-    {{ content|safe }}
+    <h1>{{ post.title }}</h1>
+    {{ post.content|safe }}
 </section>
+{% endfor %}

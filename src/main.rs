@@ -13,44 +13,53 @@ use markup5ever_rcdom::{NodeData, RcDom, SerializableHandle};
 
 use crate::dom::attr_value;
 
-#[derive(askama::Template)]
-#[template(path = "post.html")]
-struct PostTemplate<'input> {
-    title: &'input str,
-    content: &'input str,
+#[derive(Template)]
+#[template(path = "posts.html")]
+struct PostsTemplate {
+    posts: Vec<PostTemplate>,
+}
+
+struct PostTemplate {
+    title: String,
+    content: String,
 }
 
 fn main() -> eyre::Result<()> {
     jane_eyre::install()?;
 
-    let path = args().nth(1).unwrap();
-    let mut file = File::open(path)?;
-    let mut markdown = String::default();
-    file.read_to_string(&mut markdown)?;
+    let mut posts = vec![];
 
-    // author step: render markdown to html.
-    let mut options = Options::default();
-    options.render.unsafe_ = true;
-    let unsafe_html = comrak::markdown_to_html(&markdown, &options);
+    for path in args().skip(1) {
+        let mut file = File::open(path)?;
+        let mut markdown = String::default();
+        file.read_to_string(&mut markdown)?;
 
-    // reader step: extract metadata.
-    let post = extract_metadata(&unsafe_html)?;
+        // author step: render markdown to html.
+        let mut options = Options::default();
+        options.render.unsafe_ = true;
+        let unsafe_html = comrak::markdown_to_html(&markdown, &options);
 
-    // reader step: filter html.
-    let safe_html = ammonia::Builder::default()
-        .add_generic_attributes(["style"])
-        .add_tag_attributes("details", ["open"])
-        .add_tags(["meta"])
-        .add_tag_attributes("meta", ["name", "content"])
-        .id_prefix(Some("user-content-")) // cohost compatibility
-        .clean(&post.unsafe_html)
-        .to_string();
+        // reader step: extract metadata.
+        let post = extract_metadata(&unsafe_html)?;
 
-    // reader step: generate post page.
-    let template = PostTemplate {
-        title: &post.title.unwrap_or("".to_owned()),
-        content: &safe_html,
-    };
+        // reader step: filter html.
+        let safe_html = ammonia::Builder::default()
+            .add_generic_attributes(["style"])
+            .add_tag_attributes("details", ["open"])
+            .add_tags(["meta"])
+            .add_tag_attributes("meta", ["name", "content"])
+            .id_prefix(Some("user-content-")) // cohost compatibility
+            .clean(&post.unsafe_html)
+            .to_string();
+
+        posts.push(PostTemplate {
+            title: post.title.unwrap_or("".to_owned()),
+            content: safe_html,
+        });
+    }
+
+    // reader step: generate posts page.
+    let template = PostsTemplate { posts };
     println!("{}", template.render()?);
 
     Ok(())
