@@ -7,6 +7,7 @@ what if you could have a single-user self-hosted thing with the same posting and
 
 ```
 $ mkdir -p path/to/chosts
+$ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 $ cargo run --bin cohost2json -- projectName path/to/chosts
 ```
 

@@ -1,7 +1,15 @@
-use std::{env::args, fs::File, path::Path};
+use std::{
+    env::{self, args},
+    fs::File,
+    path::Path,
+};
 
 use autost::cohost::{Post, PostsResponse};
 use jane_eyre::eyre;
+use reqwest::{
+    blocking::Client,
+    header::{self, HeaderMap, HeaderValue},
+};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -16,10 +24,21 @@ fn main() -> eyre::Result<()> {
     let output_path = args().nth(2).unwrap();
     let output_path = Path::new(&output_path);
 
+    let mut headers = HeaderMap::new();
+    if let Ok(connect_sid) = env::var("COHOST_COOKIE") {
+        info!("COHOST_COOKIE is set; output will include private or logged-in-only chosts!");
+        let mut cookie_value = HeaderValue::from_str(&format!("connect.sid={connect_sid}"))?;
+        cookie_value.set_sensitive(true);
+        headers.insert(header::COOKIE, cookie_value);
+    } else {
+        info!("COHOST_COOKIE not set; output will exclude private or logged-in-only chosts!");
+    }
+    let client = Client::builder().default_headers(headers).build()?;
+
     for page in 0.. {
         let url = format!("https://cohost.org/api/v1/project/{project}/posts?page={page}");
         info!("GET {url}");
-        let response: PostsResponse = reqwest::blocking::get(url)?.json()?;
+        let response: PostsResponse = client.get(url).send()?.json()?;
 
         // nItems may be zero if none of the posts on this page are currently visible,
         // but nPages will only be zero when we have run out of pages.
