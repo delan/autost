@@ -64,3 +64,32 @@ pub enum Attachment {
         fields: HashMap<String, Value>,
     },
 }
+
+pub fn attachment_id_to_url(id: &str) -> String {
+    format!("https://cohost.org/rc/attachment-redirect/{id}")
+}
+
+pub fn attachment_url_to_id(url: &str) -> Option<&str> {
+    url.strip_prefix("https://cohost.org/rc/attachment-redirect/")
+        .or_else(|| url.strip_prefix("https://cohost.org/api/v1/attachments/"))
+        .or_else(|| url.strip_prefix("https://staging.cohostcdn.org/attachment/"))
+        .filter(|id_plus| id_plus.len() >= 36)
+        .map(|id_plus| &id_plus[..36])
+}
+
+#[test]
+fn test_attachment_url_to_id() {
+    assert_eq!(
+        attachment_url_to_id(
+            "https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444?query"
+        ),
+        Some("44444444-4444-4444-4444-444444444444")
+    );
+    assert_eq!(
+        attachment_url_to_id(
+            "https://cohost.org/api/v1/attachments/44444444-4444-4444-4444-444444444444?query"
+        ),
+        Some("44444444-4444-4444-4444-444444444444")
+    );
+    assert_eq!(attachment_url_to_id("https://staging.cohostcdn.org/attachment/44444444-4444-4444-4444-444444444444/file.jpg?query"), Some("44444444-4444-4444-4444-444444444444"));
+}

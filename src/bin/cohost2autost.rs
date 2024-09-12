@@ -6,10 +6,16 @@ use std::{
 };
 
 use ammonia::clean_text;
-use autost::cohost::{Attachment, Block, Post};
+use autost::{
+    cohost::{attachment_id_to_url, attachment_url_to_id, Attachment, Block, Post},
+    dom::{find_attr_mut, parse, serialize, tendril_to_str, Traverse},
+};
+use comrak::Options;
+use html5ever::{local_name, namespace_url, ns, QualName};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
+use markup5ever_rcdom::NodeData;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 fn main() -> eyre::Result<()> {
@@ -76,7 +82,8 @@ fn convert_chost(
     for block in post.blocks {
         match block {
             Block::Markdown { markdown } => {
-                output.write_all(format!("{}\n\n", markdown.content).as_bytes())?;
+                let markdown = process_markdown(&markdown.content, attachments_path)?;
+                output.write_all(format!("{markdown}\n\n").as_bytes())?;
             }
             Block::Attachment { attachment } => match attachment {
                 Attachment::Image {
@@ -85,10 +92,7 @@ fn convert_chost(
                     width,
                     height,
                 } => {
-                    let url = format!("https://cohost.org/rc/attachment-redirect/{attachmentId}");
-                    let path = attachments_path.join(&attachmentId);
-                    cached_get(&url, &path)?;
-                    let src = clean_text(&format!("attachments/{attachmentId}"));
+                    let src = cached_attachment_url(&attachmentId, attachments_path)?;
                     output.write_all(format!(r#"<img loading="lazy" src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
                 }
                 Attachment::Unknown { fields } => {
@@ -102,6 +106,51 @@ fn convert_chost(
     }
 
     Ok(())
+}
+
+fn process_markdown(markdown: &str, attachments_path: &Path) -> eyre::Result<String> {
+    // render markdown to html.
+    let mut options = Options::default();
+    options.render.unsafe_ = true;
+    let html = comrak::markdown_to_html(&markdown, &options);
+
+    let dom = parse(html.as_bytes())?;
+
+    for node in Traverse::new(dom.document.clone()) {
+        match &node.data {
+            NodeData::Element { name, attrs, .. } => {
+                let img = QualName::new(None, ns!(html), local_name!("img"));
+                let a = QualName::new(None, ns!(html), local_name!("a"));
+                let element_attr_names = match name {
+                    name if name == &img => Some(("img", "src")),
+                    name if name == &a => Some(("a", "href")),
+                    _ => None,
+                };
+                if let Some((element_name, attr_name)) = element_attr_names {
+                    if let Some(attr) = find_attr_mut(&mut attrs.borrow_mut(), attr_name) {
+                        let old_url = tendril_to_str(&attr.value)?;
+                        if let Some(id) = attachment_url_to_id(old_url) {
+                            trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
+                            let new_url = cached_attachment_url(id, attachments_path)?;
+                            attr.value = new_url.into();
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(serialize(dom)?)
+}
+
+fn cached_attachment_url(id: &str, attachments_path: &Path) -> eyre::Result<String> {
+    debug!("caching attachment: {id}");
+    let url = attachment_id_to_url(id);
+    let path = attachments_path.join(id);
+    cached_get(&url, &path)?;
+
+    Ok(format!("attachments/{id}"))
 }
 
 fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {

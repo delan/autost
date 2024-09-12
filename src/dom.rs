@@ -60,19 +60,32 @@ pub fn serialize(dom: RcDom) -> eyre::Result<String> {
     Ok(result)
 }
 
+pub fn find_attr_mut<'attrs>(
+    attrs: &'attrs mut [Attribute],
+    name: &str,
+) -> Option<&'attrs mut Attribute> {
+    for attr in attrs.iter_mut() {
+        if attr.name == QualName::new(None, Namespace::default(), LocalName::from(name)) {
+            return Some(attr);
+        }
+    }
+
+    None
+}
+
 pub fn attr_value<'attrs>(
     attrs: &'attrs [Attribute],
     name: &str,
 ) -> eyre::Result<Option<&'attrs str>> {
     for attr in attrs.iter() {
         if attr.name == QualName::new(None, Namespace::default(), LocalName::from(name)) {
-            return Ok(Some(tendril_to_owned(&attr.value)?));
+            return Ok(Some(tendril_to_str(&attr.value)?));
         }
     }
 
     Ok(None)
 }
 
-fn tendril_to_owned(tendril: &StrTendril) -> eyre::Result<&str> {
+pub fn tendril_to_str(tendril: &StrTendril) -> eyre::Result<&str> {
     Ok(str::from_utf8(tendril.borrow())?)
 }
