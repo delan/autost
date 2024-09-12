@@ -30,7 +30,6 @@
     section.post {
         border: 1px solid black;
         max-width: 40em;
-        padding: 1em;
         margin: 0 auto;
 
         position: relative;
@@ -38,25 +37,30 @@
         overflow: clip;
         overflow-wrap: break-word;
     }
+    section.post > .content {
+        margin: 1em;
+    }
     /* cohost compatibility */
-    section.post.cohost img,
-    section.post.cohost video {
+    section.post.cohost > .content img,
+    section.post.cohost > .content video {
         max-width: 100%;
         height: auto;
     }
-    section.post.cohost img,
-    section.post.cohost video,
-    section.post.cohost audio {
+    section.post.cohost > .content img,
+    section.post.cohost > .content video,
+    section.post.cohost > .content audio {
         display: block;
     }
-    section.post.cohost :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    section.post.cohost > .content :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
         margin-top: 2em;
         margin-bottom: 2em;
     }
 </style>
 {% for post in posts %}
 <section class="post cohost">
-    <h1><a href="{{ post.post_page_href }}">{{ post.title }}</a></h1>
-    {{ post.content|safe }}
+    <div class="content">
+        <h1><a href="{{ post.post_page_href }}">{{ post.title }}</a></h1>
+        {{ post.content|safe }}
+    </div>
 </section>
 {% endfor %}
