@@ -6,6 +6,7 @@ use std::{
 };
 
 use ammonia::clean_text;
+use askama::Template;
 use autost::{
     cohost::{attachment_id_to_url, attachment_url_to_id, Attachment, Block, Post},
     dom::{find_attr_mut, parse, serialize, tendril_to_str, Traverse},
@@ -88,7 +89,7 @@ fn convert_chost(
                     html,
                     attachment_ids,
                 } = process_markdown(&markdown.content)?;
-                output.write_all(format!("{html}\n\n").as_bytes())?;
+                output.write_all(html.as_bytes())?;
                 all_attachment_ids.extend(attachment_ids);
             }
             Block::Attachment { attachment } => match attachment {
@@ -99,8 +100,13 @@ fn convert_chost(
                     height,
                 } => {
                     all_attachment_ids.push(attachmentId.to_owned());
-                    let src = cached_attachment_url(&attachmentId);
-                    output.write_all(format!(r#"<img loading="lazy" src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
+                    let template = CohostImgTemplate {
+                        src: cached_attachment_url(&attachmentId),
+                        alt: altText,
+                        width,
+                        height,
+                    };
+                    output.write_all(template.render()?.as_bytes())?;
                 }
                 Attachment::Unknown { fields } => {
                     warn!("{input_path:?}: unknown attachment kind: {fields:?}");
@@ -110,6 +116,7 @@ fn convert_chost(
                 warn!("{input_path:?}: unknown block type: {fields:?}");
             }
         }
+        output.write_all(b"\n\n")?;
     }
 
     for attachment_id in all_attachment_ids {
@@ -117,6 +124,15 @@ fn convert_chost(
     }
 
     Ok(())
+}
+
+#[derive(Template)]
+#[template(path = "cohost-img.html")]
+struct CohostImgTemplate {
+    src: String,
+    alt: String,
+    width: usize,
+    height: usize,
 }
 
 #[derive(Debug, PartialEq)]
