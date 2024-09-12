@@ -17,8 +17,8 @@ $ mkdir -p path/to/autosts path/to/attachments
 $ cargo run --bin cohost2autost -- path/to/chosts path/to/autosts path/to/attachments
 ```
 
-## how to render your autosts to a page
+## how to render your autosts to pages
 
 ```
-$ cargo run -- path/to/autosts/* > autosts.html
+$ cargo run -- path/to/output path/to/autosts/*
 ```

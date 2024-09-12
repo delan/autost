@@ -56,7 +56,7 @@
 </style>
 {% for post in posts %}
 <section class="post cohost">
-    <h1>{{ post.title }}</h1>
+    <h1><a href="{{ post.post_page_href }}">{{ post.title }}</a></h1>
     {{ post.content|safe }}
 </section>
 {% endfor %}

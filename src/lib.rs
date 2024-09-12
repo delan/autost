@@ -1,4 +1,6 @@
 use askama::Template;
+use jane_eyre::eyre;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 pub mod cohost;
 pub mod dom;
@@ -8,6 +10,16 @@ pub mod dom;
 pub struct PostMeta {
     pub title: String,
     pub published: String,
+}
+
+pub fn cli_init() -> eyre::Result<()> {
+    jane_eyre::install()?;
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
+
+    Ok(())
 }
 
 /// render markdown in a cohost-compatible way.

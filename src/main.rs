@@ -1,32 +1,45 @@
-use std::{env::args, fs::File, io::Read};
+use std::{
+    env::args,
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+};
 
 use askama::Template;
 use autost::{
+    cli_init,
     dom::{attr_value, parse, serialize},
     render_markdown,
 };
 use html5ever::{local_name, namespace_url, ns, QualName};
-use jane_eyre::eyre;
+use jane_eyre::eyre::{self, OptionExt};
 use markup5ever_rcdom::NodeData;
+use tracing::info;
 
-#[derive(Template)]
+#[derive(Clone, Debug, Template)]
 #[template(path = "posts.html")]
 struct PostsTemplate {
-    posts: Vec<PostTemplate>,
+    posts: Vec<TemplatedPost>,
 }
 
-struct PostTemplate {
+#[derive(Clone, Debug)]
+struct TemplatedPost {
+    post_page_href: String,
     title: String,
     published: String,
     content: String,
 }
 
 fn main() -> eyre::Result<()> {
-    jane_eyre::install()?;
+    cli_init()?;
 
     let mut posts = vec![];
 
-    for path in args().skip(1) {
+    let output_path = args().nth(1).unwrap();
+    let output_path = Path::new(&output_path);
+
+    for path in args().skip(2) {
+        let path = Path::new(&path);
         let mut file = File::open(&path)?;
         let mut unsafe_source = String::default();
         file.read_to_string(&mut unsafe_source)?;
@@ -52,17 +65,35 @@ fn main() -> eyre::Result<()> {
             .clean(&post.unsafe_html)
             .to_string();
 
-        posts.push(PostTemplate {
+        let original_name = path.file_name().ok_or_eyre("post has no file name")?;
+        let original_name = original_name.to_str().ok_or_eyre("unsupported file name")?;
+        let (post_page_name, _) = original_name
+            .rsplit_once(".")
+            .unwrap_or((original_name, ""));
+        let post_page_name = format!("{post_page_name}.html");
+        let post = TemplatedPost {
+            post_page_href: post_page_name.clone(),
             title: post.title.unwrap_or("".to_owned()),
             published: post.published.unwrap_or("".to_owned()),
             content: safe_html,
-        });
+        };
+
+        // generate post page.
+        let template = PostsTemplate {
+            posts: vec![post.clone()],
+        };
+        let post_page_path = output_path.join(post_page_name);
+        info!("writing post page: {post_page_path:?}");
+        writeln!(File::create(post_page_path)?, "{}", template.render()?)?;
+
+        posts.push(post);
     }
 
     // reader step: generate posts page.
     posts.sort_by(|p, q| p.published.cmp(&q.published).reverse());
     let template = PostsTemplate { posts };
-    println!("{}", template.render()?);
+    let posts_page_path = output_path.join("index.html");
+    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
 
     Ok(())
 }

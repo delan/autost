@@ -7,6 +7,7 @@ use std::{
 
 use askama::Template;
 use autost::{
+    cli_init,
     cohost::{attachment_id_to_url, attachment_url_to_id, Attachment, Block, Post},
     dom::{find_attr_mut, parse, serialize, tendril_to_str, Traverse},
     render_markdown, PostMeta,
@@ -16,14 +17,9 @@ use jane_eyre::eyre::{self, eyre, Context, OptionExt};
 use markup5ever_rcdom::NodeData;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{debug, info, trace, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 fn main() -> eyre::Result<()> {
-    jane_eyre::install()?;
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
-        .with(EnvFilter::from_default_env())
-        .init();
+    cli_init()?;
 
     let input_path = args().nth(1).unwrap();
     let input_path = Path::new(&input_path);
