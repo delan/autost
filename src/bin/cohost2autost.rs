@@ -5,12 +5,11 @@ use std::{
     path::Path,
 };
 
-use ammonia::clean_text;
 use askama::Template;
 use autost::{
     cohost::{attachment_id_to_url, attachment_url_to_id, Attachment, Block, Post},
     dom::{find_attr_mut, parse, serialize, tendril_to_str, Traverse},
-    render_markdown,
+    render_markdown, PostMeta,
 };
 use html5ever::{local_name, namespace_url, ns, QualName};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
@@ -74,12 +73,13 @@ fn convert_chost(
 
     info!("{input_path:?}: converting -> {output_path:?}");
     let mut output = File::create(output_path)?;
-    let title = clean_text(&post.headline);
-    let published = clean_text(&post.publishedAt);
-    let n = "\n";
-    output.write_all(format!(r#"<meta name="title" content="{title}">{n}"#).as_bytes())?;
-    output
-        .write_all(format!(r#"<meta name="published" content="{published}">{n}{n}"#).as_bytes())?;
+
+    let meta = PostMeta {
+        title: post.headline,
+        published: post.publishedAt,
+    };
+    output.write_all(meta.render()?.as_bytes())?;
+    output.write_all(b"\n\n")?;
 
     let mut all_attachment_ids = vec![];
     for block in post.blocks {

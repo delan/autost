@@ -1,5 +1,14 @@
+use askama::Template;
+
 pub mod cohost;
 pub mod dom;
+
+#[derive(Template)]
+#[template(path = "post-meta.html")]
+pub struct PostMeta {
+    pub title: String,
+    pub published: String,
+}
 
 /// render markdown in a cohost-compatible way.
 ///
