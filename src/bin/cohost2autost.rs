@@ -60,7 +60,7 @@ fn convert_chost(
     let Some(output_name) = output_name.strip_suffix(".json") else {
         return Ok(());
     };
-    let output_path = output_path.join(format!("{output_name}.md"));
+    let output_path = output_path.join(format!("{output_name}.html"));
 
     trace!("{input_path:?}: parsing");
     let post: Post = serde_json::from_reader(File::open(&input_path)?)?;

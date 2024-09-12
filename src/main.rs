@@ -27,12 +27,16 @@ fn main() -> eyre::Result<()> {
     let mut posts = vec![];
 
     for path in args().skip(1) {
-        let mut file = File::open(path)?;
-        let mut markdown = String::default();
-        file.read_to_string(&mut markdown)?;
+        let mut file = File::open(&path)?;
+        let mut unsafe_source = String::default();
+        file.read_to_string(&mut unsafe_source)?;
 
-        // author step: render markdown to html.
-        let unsafe_html = render_markdown(&markdown);
+        let unsafe_html = if path.ends_with(".md") {
+            // author step: render markdown to html.
+            render_markdown(&unsafe_source)
+        } else {
+            unsafe_source
+        };
 
         // reader step: extract metadata.
         let post = extract_metadata(&unsafe_html)?;
