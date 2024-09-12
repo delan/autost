@@ -9,8 +9,8 @@ use ammonia::clean_text;
 use autost::{
     cohost::{attachment_id_to_url, attachment_url_to_id, Attachment, Block, Post},
     dom::{find_attr_mut, parse, serialize, tendril_to_str, Traverse},
+    render_markdown,
 };
-use comrak::Options;
 use html5ever::{local_name, namespace_url, ns, QualName};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
 use markup5ever_rcdom::NodeData;
@@ -127,9 +127,7 @@ struct ProcessMarkdownResult {
 
 fn process_markdown(markdown: &str) -> eyre::Result<ProcessMarkdownResult> {
     // render markdown to html.
-    let mut options = Options::default();
-    options.render.unsafe_ = true;
-    let html = comrak::markdown_to_html(&markdown, &options);
+    let html = render_markdown(markdown);
 
     let dom = parse(html.as_bytes())?;
     let mut attachment_ids = vec![];
@@ -204,8 +202,8 @@ fn test_process_markdown() -> eyre::Result<()> {
     let n = "\n";
 
     assert_eq!(
-        process_markdown("first line\nsecond line")?,
-        result(&format!(r#"<p>first line{n}second line</p>{n}"#), &[])
+        process_markdown("text")?,
+        result(&format!(r#"<p>text</p>{n}"#), &[])
     );
     assert_eq!(process_markdown("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
         result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));

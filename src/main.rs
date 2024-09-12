@@ -1,8 +1,10 @@
 use std::{env::args, fs::File, io::Read};
 
 use askama::Template;
-use autost::dom::{attr_value, parse, serialize};
-use comrak::Options;
+use autost::{
+    dom::{attr_value, parse, serialize},
+    render_markdown,
+};
 use html5ever::{local_name, namespace_url, ns, QualName};
 use jane_eyre::eyre;
 use markup5ever_rcdom::NodeData;
@@ -30,9 +32,7 @@ fn main() -> eyre::Result<()> {
         file.read_to_string(&mut markdown)?;
 
         // author step: render markdown to html.
-        let mut options = Options::default();
-        options.render.unsafe_ = true;
-        let unsafe_html = comrak::markdown_to_html(&markdown, &options);
+        let unsafe_html = render_markdown(&markdown);
 
         // reader step: extract metadata.
         let post = extract_metadata(&unsafe_html)?;
