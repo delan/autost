@@ -79,11 +79,17 @@ fn convert_chost(
     output.write_all(format!(r#"<meta name="title" content="{title}">{n}"#).as_bytes())?;
     output
         .write_all(format!(r#"<meta name="published" content="{published}">{n}{n}"#).as_bytes())?;
+
+    let mut all_attachment_ids = vec![];
     for block in post.blocks {
         match block {
             Block::Markdown { markdown } => {
-                let markdown = process_markdown(&markdown.content, attachments_path)?;
-                output.write_all(format!("{markdown}\n\n").as_bytes())?;
+                let ProcessMarkdownResult {
+                    html,
+                    attachment_ids,
+                } = process_markdown(&markdown.content)?;
+                output.write_all(format!("{html}\n\n").as_bytes())?;
+                all_attachment_ids.extend(attachment_ids);
             }
             Block::Attachment { attachment } => match attachment {
                 Attachment::Image {
@@ -92,7 +98,8 @@ fn convert_chost(
                     width,
                     height,
                 } => {
-                    let src = cached_attachment_url(&attachmentId, attachments_path)?;
+                    all_attachment_ids.push(attachmentId.to_owned());
+                    let src = cached_attachment_url(&attachmentId);
                     output.write_all(format!(r#"<img loading="lazy" src="{src}" alt="{altText}" width="{width}" height="{height}">{n}{n}"#).as_bytes())?;
                 }
                 Attachment::Unknown { fields } => {
@@ -105,16 +112,27 @@ fn convert_chost(
         }
     }
 
+    for attachment_id in all_attachment_ids {
+        cache_attachment(&attachment_id, attachments_path)?;
+    }
+
     Ok(())
 }
 
-fn process_markdown(markdown: &str, attachments_path: &Path) -> eyre::Result<String> {
+#[derive(Debug, PartialEq)]
+struct ProcessMarkdownResult {
+    html: String,
+    attachment_ids: Vec<String>,
+}
+
+fn process_markdown(markdown: &str) -> eyre::Result<ProcessMarkdownResult> {
     // render markdown to html.
     let mut options = Options::default();
     options.render.unsafe_ = true;
     let html = comrak::markdown_to_html(&markdown, &options);
 
     let dom = parse(html.as_bytes())?;
+    let mut attachment_ids = vec![];
 
     for node in Traverse::new(dom.document.clone()) {
         match &node.data {
@@ -131,8 +149,8 @@ fn process_markdown(markdown: &str, attachments_path: &Path) -> eyre::Result<Str
                         let old_url = tendril_to_str(&attr.value)?;
                         if let Some(id) = attachment_url_to_id(old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
-                            let new_url = cached_attachment_url(id, attachments_path)?;
-                            attr.value = new_url.into();
+                            attachment_ids.push(id.to_owned());
+                            attr.value = cached_attachment_url(id).into();
                         }
                     }
                 }
@@ -141,16 +159,23 @@ fn process_markdown(markdown: &str, attachments_path: &Path) -> eyre::Result<Str
         }
     }
 
-    Ok(serialize(dom)?)
+    Ok(ProcessMarkdownResult {
+        html: serialize(dom)?,
+        attachment_ids,
+    })
 }
 
-fn cached_attachment_url(id: &str, attachments_path: &Path) -> eyre::Result<String> {
+fn cached_attachment_url(id: &str) -> String {
+    format!("attachments/{id}")
+}
+
+fn cache_attachment(id: &str, attachments_path: &Path) -> eyre::Result<()> {
     debug!("caching attachment: {id}");
     let url = attachment_id_to_url(id);
     let path = attachments_path.join(id);
     cached_get(&url, &path)?;
 
-    Ok(format!("attachments/{id}"))
+    Ok(())
 }
 
 fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
@@ -166,4 +191,30 @@ fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
     File::create(path)?.write_all(&result)?;
 
     Ok(result)
+}
+
+#[test]
+fn test_process_markdown() -> eyre::Result<()> {
+    fn result(html: &str, attachment_ids: &[&str]) -> ProcessMarkdownResult {
+        ProcessMarkdownResult {
+            html: html.to_owned(),
+            attachment_ids: attachment_ids.iter().map(|&x| x.to_owned()).collect(),
+        }
+    }
+    let n = "\n";
+
+    assert_eq!(
+        process_markdown("first line\nsecond line")?,
+        result(&format!(r#"<p>first line{n}second line</p>{n}"#), &[])
+    );
+    assert_eq!(process_markdown("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
+        result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+    assert_eq!(process_markdown("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>")?,
+        result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+    assert_eq!(process_markdown("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
+        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+    assert_eq!(process_markdown("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>")?,
+        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+
+    Ok(())
 }
