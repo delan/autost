@@ -12,11 +12,14 @@ use askama::Template;
 use autost::{
     cli_init,
     cohost::{attachment_id_to_url, attachment_url_to_id, Ast, Attachment, Block, Post},
-    dom::{create_fragment, find_attr_mut, parse, serialize, tendril_to_str, Traverse},
+    dom::{
+        attr_value, create_element, create_fragment, find_attr_mut, parse, serialize,
+        tendril_to_str, Traverse,
+    },
     render_markdown, PostMeta,
 };
 use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
-use jane_eyre::eyre::{self, eyre, Context, OptionExt};
+use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::Value;
@@ -123,10 +126,10 @@ fn convert_chost(
         } {
             trace!("replacing blocks {start}..{end} with ast");
             let dom = process_ast(ast);
-            let ProcessAttachmentsResults {
+            let ProcessChostFragmentResult {
                 html,
                 attachment_ids,
-            } = process_attachments(dom)?;
+            } = process_chost_fragment(dom)?;
             output.write_all(html.as_bytes())?;
             all_attachment_ids.extend(attachment_ids);
             continue;
@@ -134,10 +137,10 @@ fn convert_chost(
 
         match block {
             Block::Markdown { markdown } => {
-                let ProcessAttachmentsResults {
+                let ProcessChostFragmentResult {
                     html,
                     attachment_ids,
-                } = process_markdown(&markdown.content)?;
+                } = render_markdown_block(&markdown.content)?;
                 output.write_all(html.as_bytes())?;
                 all_attachment_ids.extend(attachment_ids);
                 continue;
@@ -184,6 +187,7 @@ static KNOWN_GOOD_ATTRIBUTES: LazyLock<BTreeSet<(Option<&'static str>, &'static 
         let mut result = BTreeSet::default();
         result.insert((None, "id"));
         result.insert((None, "style"));
+        result.insert((Some("Mention"), "handle"));
         result.insert((Some("a"), "href"));
         result.insert((Some("details"), "open"));
         result.insert((Some("img"), "alt"));
@@ -294,22 +298,22 @@ struct CohostImgTemplate {
 }
 
 #[derive(Debug, PartialEq)]
-struct ProcessAttachmentsResults {
+struct ProcessChostFragmentResult {
     html: String,
     attachment_ids: Vec<String>,
 }
 
-fn process_markdown(markdown: &str) -> eyre::Result<ProcessAttachmentsResults> {
-    // render markdown to html.
+fn render_markdown_block(markdown: &str) -> eyre::Result<ProcessChostFragmentResult> {
     let html = render_markdown(markdown);
     let dom = parse(html.as_bytes())?;
 
-    process_attachments(dom)
+    process_chost_fragment(dom)
 }
 
-fn process_attachments(dom: RcDom) -> eyre::Result<ProcessAttachmentsResults> {
+fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentResult> {
     let mut attachment_ids = vec![];
 
+    // rewrite cohost attachment urls to relative cached paths.
     for node in Traverse::new(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
@@ -335,7 +339,44 @@ fn process_attachments(dom: RcDom) -> eyre::Result<ProcessAttachmentsResults> {
         }
     }
 
-    Ok(ProcessAttachmentsResults {
+    // rewrite `<Mention handle>` elements into ordinary links.
+    let mut queue = vec![dom.document.clone()];
+    while !queue.is_empty() {
+        let node = queue.remove(0);
+        let mut children = vec![];
+        for kid in node.children.borrow().iter() {
+            match &kid.data {
+                NodeData::Element { name, attrs, .. } => {
+                    let attrs = attrs.borrow();
+                    let handle =
+                        if name == &QualName::new(None, ns!(html), LocalName::from("Mention")) {
+                            attr_value(&attrs, "handle")?
+                        } else {
+                            None
+                        };
+                    if let Some(handle) = handle {
+                        let new_kid = create_element(&mut dom, "a");
+                        new_kid.children.replace(kid.children.take());
+                        let NodeData::Element { attrs, .. } = &new_kid.data else {
+                            bail!("irrefutable! guaranteed by create_element");
+                        };
+                        attrs.borrow_mut().push(Attribute {
+                            name: QualName::new(None, ns!(), local_name!("href")),
+                            value: format!("https://cohost.org/{handle}").into(),
+                        });
+                        children.push(new_kid);
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+            children.push(kid.clone());
+            queue.push(kid.clone());
+        }
+        node.children.replace(children);
+    }
+
+    Ok(ProcessChostFragmentResult {
         html: serialize(dom)?,
         attachment_ids,
     })
@@ -370,9 +411,9 @@ fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
 }
 
 #[test]
-fn test_process_markdown() -> eyre::Result<()> {
-    fn result(html: &str, attachment_ids: &[&str]) -> ProcessAttachmentsResults {
-        ProcessAttachmentsResults {
+fn test_render_markdown_block() -> eyre::Result<()> {
+    fn result(html: &str, attachment_ids: &[&str]) -> ProcessChostFragmentResult {
+        ProcessChostFragmentResult {
             html: html.to_owned(),
             attachment_ids: attachment_ids.iter().map(|&x| x.to_owned()).collect(),
         }
@@ -380,16 +421,16 @@ fn test_process_markdown() -> eyre::Result<()> {
     let n = "\n";
 
     assert_eq!(
-        process_markdown("text")?,
+        render_markdown_block("text")?,
         result(&format!(r#"<p>text</p>{n}"#), &[])
     );
-    assert_eq!(process_markdown("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
+    assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
         result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
-    assert_eq!(process_markdown("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>")?,
+    assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>")?,
         result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
-    assert_eq!(process_markdown("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
+    assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
         result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
-    assert_eq!(process_markdown("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>")?,
+    assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>")?,
         result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
 
     Ok(())
