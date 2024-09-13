@@ -154,6 +154,7 @@ fn convert_chost(
                 } => {
                     all_attachment_ids.push(attachmentId.to_owned());
                     let template = CohostImgTemplate {
+                        data_cohost_src: attachment_id_to_url(&attachmentId),
                         src: cached_attachment_url(&attachmentId),
                         alt: altText,
                         width,
@@ -291,6 +292,7 @@ fn process_ast(root: Ast) -> RcDom {
 #[derive(Template)]
 #[template(path = "cohost-img.html")]
 struct CohostImgTemplate {
+    data_cohost_src: String,
     src: String,
     alt: String,
     width: usize,
@@ -325,12 +327,21 @@ fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentRe
                     _ => None,
                 };
                 if let Some((element_name, attr_name)) = element_attr_names {
-                    if let Some(attr) = find_attr_mut(&mut attrs.borrow_mut(), attr_name) {
-                        let old_url = tendril_to_str(&attr.value)?;
-                        if let Some(id) = attachment_url_to_id(old_url) {
+                    let mut attrs = attrs.borrow_mut();
+                    if let Some(attr) = find_attr_mut(&mut attrs, attr_name) {
+                        let old_url = tendril_to_str(&attr.value)?.to_owned();
+                        if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
                             attr.value = cached_attachment_url(id).into();
+                            attrs.push(Attribute {
+                                name: QualName::new(
+                                    None,
+                                    ns!(),
+                                    LocalName::from(format!("data-cohost-{attr_name}")),
+                                ),
+                                value: old_url.into(),
+                            });
                         }
                     }
                 }
@@ -425,13 +436,13 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         result(&format!(r#"<p>text</p>{n}"#), &[])
     );
     assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
-        result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+        result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
     assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>")?,
-        result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+        result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
     assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
-        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
     assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>")?,
-        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
 
     Ok(())
 }

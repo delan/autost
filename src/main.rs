@@ -57,6 +57,7 @@ fn main() -> eyre::Result<()> {
         // reader step: filter html.
         let safe_html = ammonia::Builder::default()
             .add_generic_attributes(["style", "id"])
+            .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost
             .add_tag_attributes("details", ["open"])
             .add_tag_attributes("img", ["loading"])
             .add_tags(["meta"])
