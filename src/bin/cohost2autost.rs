@@ -1,9 +1,11 @@
 use std::{
     cell::RefCell,
+    collections::BTreeSet,
     env::args,
     fs::{read_dir, DirEntry, File},
     io::{Read, Write},
     path::Path,
+    sync::{LazyLock, Mutex},
 };
 
 use askama::Template;
@@ -42,6 +44,18 @@ fn main() -> eyre::Result<()> {
         .collect::<Vec<_>>();
     for result in results {
         result?;
+    }
+
+    trace!("saw html attributes: {:?}", ATTRIBUTES_SEEN.lock());
+    if let Ok(attributes) = NOT_KNOWN_GOOD_ATTRIBUTES_SEEN.lock() {
+        if !attributes.is_empty() {
+            let attributes = attributes
+                .iter()
+                .map(|(tag, attr)| format!("<{tag} {attr}>"))
+                .collect::<Vec<_>>();
+            let attributes = attributes.join(" ");
+            warn!("saw attributes not on known-good-attributes list! check if output is correct for: {attributes}");
+        }
     }
 
     Ok(())
@@ -162,6 +176,23 @@ fn convert_chost(
     Ok(())
 }
 
+static ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
+static NOT_KNOWN_GOOD_ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> =
+    Mutex::new(BTreeSet::new());
+static KNOWN_GOOD_ATTRIBUTES: LazyLock<BTreeSet<(Option<&'static str>, &'static str)>> =
+    LazyLock::new(|| {
+        let mut result = BTreeSet::default();
+        result.insert((None, "id"));
+        result.insert((None, "style"));
+        result.insert((Some("a"), "href"));
+        result.insert((Some("details"), "open"));
+        result.insert((Some("img"), "alt"));
+        result.insert((Some("img"), "src"));
+        result.insert((Some("img"), "title"));
+        result.insert((Some("ol"), "start"));
+        result
+    });
+
 fn process_ast(root: Ast) -> RcDom {
     let (dom, html_root) = create_fragment();
     let mut ast_queue = vec![(root, html_root.clone())];
@@ -183,10 +214,23 @@ fn process_ast(root: Ast) -> RcDom {
                 properties,
                 children,
             } => {
-                let name = QualName::new(None, ns!(html), LocalName::from(tagName));
+                let name = QualName::new(None, ns!(html), LocalName::from(tagName.clone()));
                 let attrs = properties
                     .into_iter()
                     .filter_map(|(name, value)| {
+                        // the `astMap` contains idl attributes like `<details>.open=true` and `<ol>.start=2`, not
+                        // content attributes like `<details open>` and `<ol start="2">`. to be extra cautious about
+                        // converting attributes correctly, warn if we see attributes not on our known-good list.
+                        ATTRIBUTES_SEEN.lock()
+                            .unwrap()
+                            .insert((tagName.clone(), name.clone()));
+                        if !KNOWN_GOOD_ATTRIBUTES.contains(&(None, &name)) && !KNOWN_GOOD_ATTRIBUTES.contains(&(Some(&tagName), &name)) {
+                            warn!("saw attribute not on known-good-attributes list! check if output is correct for: <{tagName} {name}>");
+                            NOT_KNOWN_GOOD_ATTRIBUTES_SEEN.lock()
+                                .unwrap()
+                                .insert((tagName.clone(), name.clone()));
+                        }
+
                         // per html5ever::Attribute docs:
                         // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
                         // attributes this way, but the tree builder will adjust certain attribute names inside foreign
