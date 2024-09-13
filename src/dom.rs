@@ -74,6 +74,15 @@ pub fn serialize(dom: RcDom) -> eyre::Result<String> {
     Ok(result)
 }
 
+/// create a [`RcDom`] whose document has exactly one child, a wrapper <html> element.
+pub fn create_fragment() -> (RcDom, Handle) {
+    let mut dom = RcDom::default();
+    let root = create_element(&mut dom, "html");
+    dom.document.children.borrow_mut().push(root.clone());
+
+    (dom, root)
+}
+
 pub fn create_element(dom: &mut RcDom, html_local_name: &str) -> Handle {
     let name = QualName::new(None, ns!(html), LocalName::from(html_local_name));
     dom.create_element(name, vec![], ElementFlags::default())

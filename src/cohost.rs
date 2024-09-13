@@ -19,8 +19,15 @@ pub struct Post {
     pub shareOfPostId: Option<usize>,
     pub publishedAt: String,
     pub headline: String,
-    pub blocks: Vec<Block>,
+
+    /// markdown source only, without attachments or asks.
     pub plainTextBody: String,
+
+    /// post body (markdown), attachments, and asks (markdown).
+    pub blocks: Vec<Block>,
+
+    /// fully rendered versions of markdown blocks.
+    pub astMap: AstMap,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +70,38 @@ pub enum Attachment {
         #[serde(flatten)]
         fields: HashMap<String, Value>,
     },
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct AstMap {
+    pub spans: Vec<Span>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct Span {
+    pub ast: String,
+    pub startIndex: usize,
+    pub endIndex: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+#[allow(non_snake_case)]
+pub enum Ast {
+    #[serde(rename = "root")]
+    Root { children: Vec<Ast> },
+
+    #[serde(rename = "element")]
+    Element {
+        tagName: String,
+        properties: HashMap<String, Value>,
+        children: Vec<Ast>,
+    },
+
+    #[serde(rename = "text")]
+    Text { value: String },
 }
 
 pub fn attachment_id_to_url(id: &str) -> String {

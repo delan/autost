@@ -30,6 +30,8 @@ pub fn cli_init() -> eyre::Result<()> {
 /// - :emotes: not handled
 /// - single newline always yields `<br>`
 ///   (this was not the case for older chosts, as reflected in their `.astMap`)
+/// - blank lines in `<details>` close the element in some situations?
+/// - spaced numbered lists yield separate `<ol start>` instead of `<li><p>`
 pub fn render_markdown(markdown: &str) -> String {
     let mut options = comrak::Options::default();
     options.render.unsafe_ = true;

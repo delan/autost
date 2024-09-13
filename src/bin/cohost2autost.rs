@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     env::args,
     fs::{read_dir, DirEntry, File},
     io::{Read, Write},
@@ -8,14 +9,15 @@ use std::{
 use askama::Template;
 use autost::{
     cli_init,
-    cohost::{attachment_id_to_url, attachment_url_to_id, Attachment, Block, Post},
-    dom::{find_attr_mut, parse, serialize, tendril_to_str, Traverse},
+    cohost::{attachment_id_to_url, attachment_url_to_id, Ast, Attachment, Block, Post},
+    dom::{create_fragment, find_attr_mut, parse, serialize, tendril_to_str, Traverse},
     render_markdown, PostMeta,
 };
-use html5ever::{local_name, namespace_url, ns, QualName};
+use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
-use markup5ever_rcdom::NodeData;
+use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde_json::Value;
 use tracing::{debug, info, trace, warn};
 
 fn main() -> eyre::Result<()> {
@@ -45,6 +47,7 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
+#[tracing::instrument(level = "error", skip(output_path, attachments_path))]
 fn convert_chost(
     entry: &DirEntry,
     output_path: &Path,
@@ -58,16 +61,16 @@ fn convert_chost(
     };
     let output_path = output_path.join(format!("{output_name}.html"));
 
-    trace!("{input_path:?}: parsing");
+    trace!("parsing");
     let post: Post = serde_json::from_reader(File::open(&input_path)?)?;
 
     // TODO: handle shares.
     if post.transparentShareOfPostId.is_some() || post.shareOfPostId.is_some() {
-        warn!("{input_path:?}: TODO: skipping share post {}", post.postId);
+        debug!("TODO: skipping share post");
         return Ok(());
     }
 
-    info!("{input_path:?}: converting -> {output_path:?}");
+    info!("converting -> {output_path:?}");
     let mut output = File::create(output_path)?;
 
     let meta = PostMeta {
@@ -78,15 +81,52 @@ fn convert_chost(
     output.write_all(b"\n\n")?;
 
     let mut all_attachment_ids = vec![];
-    for block in post.blocks {
+    let mut spans = post
+        .astMap
+        .spans
+        .iter()
+        .map(|span| -> eyre::Result<(Ast, usize, usize)> {
+            Ok((
+                serde_json::from_str(&span.ast)?,
+                span.startIndex,
+                span.endIndex,
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    spans.sort_by_key(|(_ast, start, end)| (*start, *end));
+
+    for (i, block) in post.blocks.into_iter().enumerate() {
+        // posts in the cohost api provide an `astMap` that contains the perfect rendering of
+        // markdown blocks. since our own markdown rendering is far from perfect, we use their
+        // rendering instead of our own when available.
+        while spans.first().map_or(false, |(_ast, _start, end)| i >= *end) {
+            spans.remove(0);
+        }
+        if let Some((ast, start, end)) = match spans.first() {
+            Some((_, _, end)) if i == *end - 1 => Some(spans.remove(0)),
+            Some((_, start, end)) if (*start..*end).contains(&i) => continue,
+            _ => None,
+        } {
+            trace!("replacing blocks {start}..{end} with ast");
+            let dom = process_ast(ast);
+            let ProcessAttachmentsResults {
+                html,
+                attachment_ids,
+            } = process_attachments(dom)?;
+            output.write_all(html.as_bytes())?;
+            all_attachment_ids.extend(attachment_ids);
+            continue;
+        }
+
         match block {
             Block::Markdown { markdown } => {
-                let ProcessMarkdownResult {
+                let ProcessAttachmentsResults {
                     html,
                     attachment_ids,
                 } = process_markdown(&markdown.content)?;
                 output.write_all(html.as_bytes())?;
                 all_attachment_ids.extend(attachment_ids);
+                continue;
             }
             Block::Attachment { attachment } => match attachment {
                 Attachment::Image {
@@ -105,11 +145,11 @@ fn convert_chost(
                     output.write_all(template.render()?.as_bytes())?;
                 }
                 Attachment::Unknown { fields } => {
-                    warn!("{input_path:?}: unknown attachment kind: {fields:?}");
+                    warn!("unknown attachment kind: {fields:?}");
                 }
             },
             Block::Unknown { fields } => {
-                warn!("{input_path:?}: unknown block type: {fields:?}");
+                warn!("unknown block type: {fields:?}");
             }
         }
         output.write_all(b"\n\n")?;
@@ -122,6 +162,84 @@ fn convert_chost(
     Ok(())
 }
 
+fn process_ast(root: Ast) -> RcDom {
+    let (dom, html_root) = create_fragment();
+    let mut ast_queue = vec![(root, html_root.clone())];
+
+    while !ast_queue.is_empty() {
+        let (node, parent) = ast_queue.remove(0);
+
+        match node {
+            Ast::Root { children } => {
+                ast_queue.extend(
+                    children
+                        .into_iter()
+                        .map(|node| (node, parent.clone()))
+                        .collect::<Vec<_>>(),
+                );
+            }
+            Ast::Element {
+                tagName,
+                properties,
+                children,
+            } => {
+                let name = QualName::new(None, ns!(html), LocalName::from(tagName));
+                let attrs = properties
+                    .into_iter()
+                    .filter_map(|(name, value)| {
+                        // per html5ever::Attribute docs:
+                        // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
+                        // attributes this way, but the tree builder will adjust certain attribute names inside foreign
+                        // content (MathML, SVG).”
+                        let name = QualName::new(None, ns!(), LocalName::from(name));
+                        match value {
+                            Value::String(value) => Some(Attribute {
+                                name,
+                                value: value.into(),
+                            }),
+                            Value::Number(value) => Some(Attribute {
+                                name,
+                                value: value.to_string().into(),
+                            }),
+                            Value::Bool(value) => value.then_some(Attribute {
+                                name,
+                                value: "".into(),
+                            }),
+                            _ => {
+                                warn!(r"unknown attribute value type: {:?}: {:?}", name, value);
+                                None
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
+                let element = Node::new(NodeData::Element {
+                    name,
+                    attrs,
+                    template_contents: RefCell::new(None),
+                    mathml_annotation_xml_integration_point: false,
+                });
+
+                parent.children.borrow_mut().push(element.clone());
+                ast_queue.extend(
+                    children
+                        .into_iter()
+                        .map(|node| (node, element.clone()))
+                        .collect::<Vec<_>>(),
+                );
+            }
+            Ast::Text { value } => {
+                let text = Node::new(NodeData::Text {
+                    contents: RefCell::new(value.into()),
+                });
+                parent.children.borrow_mut().push(text);
+            }
+        }
+    }
+
+    dom
+}
+
 #[derive(Template)]
 #[template(path = "cohost-img.html")]
 struct CohostImgTemplate {
@@ -132,16 +250,20 @@ struct CohostImgTemplate {
 }
 
 #[derive(Debug, PartialEq)]
-struct ProcessMarkdownResult {
+struct ProcessAttachmentsResults {
     html: String,
     attachment_ids: Vec<String>,
 }
 
-fn process_markdown(markdown: &str) -> eyre::Result<ProcessMarkdownResult> {
+fn process_markdown(markdown: &str) -> eyre::Result<ProcessAttachmentsResults> {
     // render markdown to html.
     let html = render_markdown(markdown);
-
     let dom = parse(html.as_bytes())?;
+
+    process_attachments(dom)
+}
+
+fn process_attachments(dom: RcDom) -> eyre::Result<ProcessAttachmentsResults> {
     let mut attachment_ids = vec![];
 
     for node in Traverse::new(dom.document.clone()) {
@@ -169,7 +291,7 @@ fn process_markdown(markdown: &str) -> eyre::Result<ProcessMarkdownResult> {
         }
     }
 
-    Ok(ProcessMarkdownResult {
+    Ok(ProcessAttachmentsResults {
         html: serialize(dom)?,
         attachment_ids,
     })
@@ -205,8 +327,8 @@ fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
 
 #[test]
 fn test_process_markdown() -> eyre::Result<()> {
-    fn result(html: &str, attachment_ids: &[&str]) -> ProcessMarkdownResult {
-        ProcessMarkdownResult {
+    fn result(html: &str, attachment_ids: &[&str]) -> ProcessAttachmentsResults {
+        ProcessAttachmentsResults {
             html: html.to_owned(),
             attachment_ids: attachment_ids.iter().map(|&x| x.to_owned()).collect(),
         }
