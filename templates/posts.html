@@ -63,6 +63,9 @@
 {% for post in posts %}
 <section class="post cohost">
     <div class="content">
+        {% if let Some((href, name)) = post.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
+        {% if post.author.is_some() && post.published.is_some() %}—{% endif %}
+        {% if let Some(published) = post.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
         <h1><a href="{{ post.post_page_href }}">{% if let Some(title) = post.title %}{{ title }}{% endif %}</a></h1>
         {{ post.content|safe }}
     </div>
