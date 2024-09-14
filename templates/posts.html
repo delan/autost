@@ -27,47 +27,58 @@
         box-sizing: border-box;
         font-family: Atkinson Hyperlegible;
     }
-    section.post {
+    article.post {
         border: 1px solid black;
         max-width: 40em;
-        margin: 0 auto;
+        margin: 1em auto;
 
         position: relative;
         contain: inline-size style layout paint;
         overflow: clip;
         overflow-wrap: break-word;
     }
-    section.post > .content {
+    article.post > header,
+    article.post > footer {
+        padding: 1em;
+        background: #c0c0c0;
+    }
+    article.post > header > h1 {
+        margin: 0.5rem 0 0;
+    }
+    article.post > .content {
         margin: 1em;
     }
-    section.post > .content :link,
-    section.post > .content :visited {
+    article.post :link,
+    article.post :visited {
         color: currentColor;
     }
     /* cohost compatibility */
-    section.post.cohost > .content img,
-    section.post.cohost > .content video {
+    article.post.cohost > .content img,
+    article.post.cohost > .content video {
         max-width: 100%;
         height: auto;
     }
-    section.post.cohost > .content img,
-    section.post.cohost > .content video,
-    section.post.cohost > .content audio {
+    article.post.cohost > .content img,
+    article.post.cohost > .content video,
+    article.post.cohost > .content audio {
         display: block;
     }
-    section.post.cohost > .content :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
+    article.post.cohost > .content :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
         margin-top: 2em;
         margin-bottom: 2em;
     }
 </style>
 {% for post in posts %}
-<section class="post cohost">
-    <div class="content">
+<article class="post cohost">
+    <header>
         {% if let Some((href, name)) = post.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
         {% if post.author.is_some() && post.published.is_some() %}—{% endif %}
         {% if let Some(published) = post.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
         <h1><a href="{{ post.post_page_href }}">{% if let Some(title) = post.title %}{{ title }}{% endif %}</a></h1>
+    </header>
+    <div class="content">
         {{ post.content|safe }}
     </div>
-</section>
+    <footer></footer>
+</article>
 {% endfor %}
