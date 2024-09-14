@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     collections::BTreeSet,
     env::args,
-    fs::{read_dir, DirEntry, File},
+    fs::{create_dir_all, read_dir, DirEntry, File},
     io::{Read, Write},
     path::Path,
     sync::{LazyLock, Mutex},
@@ -19,7 +19,7 @@ use autost::{
     render_markdown, PostMeta,
 };
 use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
-use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
+use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde_json::Value;
@@ -71,26 +71,54 @@ fn convert_chost(
     attachments_path: &Path,
 ) -> eyre::Result<()> {
     let input_path = entry.path();
-    let output_name = entry.file_name();
-    let output_name = output_name.to_str().ok_or_eyre("unsupported file name")?;
-    let Some(output_name) = output_name.strip_suffix(".json") else {
-        return Ok(());
-    };
-    let output_path = output_path.join(format!("{output_name}.html"));
 
     trace!("parsing");
-    let post: Post = serde_json::from_reader(File::open(&input_path)?)?;
+    let mut post: Post = serde_json::from_reader(File::open(&input_path)?)?;
+    let post_id = post.postId;
 
-    // TODO: handle shares.
-    if post.transparentShareOfPostId.is_some() || post.shareOfPostId.is_some() {
-        debug!("TODO: skipping share post");
-        return Ok(());
+    // each post has a “share tree”, a flat array of every post this post is in
+    // reply to, from top to bottom.
+    let shared_posts = post.shareTree;
+    let shared_post_filenames = shared_posts
+        .iter()
+        .map(|post| format!("{}/{}.html", post_id, post.postId))
+        .collect::<Vec<_>>();
+    let shared_post_paths = shared_post_filenames
+        .iter()
+        .map(|shared_post_filename| output_path.join(shared_post_filename))
+        .collect::<Vec<_>>();
+    post.shareTree = vec![];
+
+    if !shared_posts.is_empty() {
+        create_dir_all(output_path.join(post_id.to_string()))?;
     }
 
-    info!("converting -> {output_path:?}");
+    for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_paths) {
+        convert_single_chost(shared_post, vec![], output_path.as_path(), attachments_path)?;
+    }
+
+    let output_path = output_path.join(format!("{post_id}.html"));
+    convert_single_chost(
+        post,
+        shared_post_filenames,
+        output_path.as_path(),
+        attachments_path,
+    )?;
+
+    Ok(())
+}
+
+fn convert_single_chost(
+    post: Post,
+    shared_post_filenames: Vec<String>,
+    output_path: &Path,
+    attachments_path: &Path,
+) -> eyre::Result<()> {
+    info!("writing: {output_path:?}");
     let mut output = File::create(output_path)?;
 
     let meta = PostMeta {
+        references: shared_post_filenames,
         title: Some(post.headline),
         published: Some(post.publishedAt),
         author: Some((

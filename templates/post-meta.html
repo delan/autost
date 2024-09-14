@@ -1,3 +1,4 @@
+{% for url in references %}<link rel="references" href="{{ url }}">{% endfor %}
 {% if let Some(title) = title %}<meta name="title" content="{{ title }}">{% endif %}
 {% if let Some(published) = published %}<meta name="published" content="{{ published }}">{% endif %}
 {% if let Some((href, name)) = author %}<link rel="author" href="{{ href }}" name="{{ name }}">{% endif %}

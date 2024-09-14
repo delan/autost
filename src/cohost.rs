@@ -21,6 +21,7 @@ pub struct Post {
     pub headline: String,
     pub tags: Vec<String>,
     pub postingProject: PostingProject,
+    pub shareTree: Vec<Post>,
 
     /// markdown source only, without attachments or asks.
     pub plainTextBody: String,

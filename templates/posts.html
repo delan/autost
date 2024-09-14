@@ -27,15 +27,19 @@
         box-sizing: border-box;
         font-family: Atkinson Hyperlegible;
     }
-    article.post {
+    article.post_group {
         border: 1px solid black;
         max-width: 40em;
         margin: 1em auto;
-
+    }
+    article.post {
         position: relative;
         contain: inline-size style layout paint;
         overflow: clip;
         overflow-wrap: break-word;
+    }
+    article.post:not(:first-child) {
+        border-top: 1px solid black;
     }
     article.post > header,
     article.post > footer {
@@ -68,7 +72,9 @@
         margin-bottom: 2em;
     }
 </style>
-{% for post in posts %}
+{% for post_group in post_groups %}
+<article class="post_group">
+{% for post in post_group.posts %}
 <article class="post cohost">
     <header>
         {% if let Some((href, name)) = post.meta.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
@@ -80,5 +86,7 @@
         {{ post.content|safe }}
     </div>
     <footer>{% for tag in post.meta.tags %}#{{ tag }} {% endfor %}</footer>
+</article>
+{% endfor %}
 </article>
 {% endfor %}
