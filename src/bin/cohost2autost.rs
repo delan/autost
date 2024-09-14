@@ -91,8 +91,12 @@ fn convert_chost(
     let mut output = File::create(output_path)?;
 
     let meta = PostMeta {
-        title: post.headline,
-        published: post.publishedAt,
+        title: Some(post.headline),
+        published: Some(post.publishedAt),
+        author: Some((
+            format!("https://cohost.org/{}", post.postingProject.handle),
+            post.postingProject.displayName,
+        )),
     };
     output.write_all(meta.render()?.as_bytes())?;
     output.write_all(b"\n\n")?;

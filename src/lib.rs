@@ -8,8 +8,9 @@ pub mod dom;
 #[derive(Template)]
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
-    pub title: String,
-    pub published: String,
+    pub title: Option<String>,
+    pub published: Option<String>,
+    pub author: Option<(String, String)>,
 }
 
 pub fn cli_init() -> eyre::Result<()> {

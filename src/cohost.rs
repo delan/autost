@@ -19,6 +19,7 @@ pub struct Post {
     pub shareOfPostId: Option<usize>,
     pub publishedAt: String,
     pub headline: String,
+    pub postingProject: PostingProject,
 
     /// markdown source only, without attachments or asks.
     pub plainTextBody: String,
@@ -28,6 +29,15 @@ pub struct Post {
 
     /// fully rendered versions of markdown blocks.
     pub astMap: AstMap,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct PostingProject {
+    pub handle: String,
+    pub displayName: String,
+    pub privacy: String,
+    pub loggedOutPostVisibility: String,
 }
 
 #[derive(Debug, Deserialize)]
