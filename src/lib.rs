@@ -40,8 +40,8 @@ pub struct PostGroup {
 
 #[derive(Clone, Debug)]
 pub struct TemplatedPost {
-    pub post_page_filename: String,
-    pub post_page_href: String,
+    pub post_page_filename: Option<String>,
+    pub post_page_href: Option<String>,
     pub meta: PostMeta,
     pub content: String,
 }
@@ -82,8 +82,8 @@ impl TemplatedPost {
         let post_page_filename = format!("{post_page_filename}.html");
 
         Ok(TemplatedPost {
-            post_page_filename: post_page_filename.clone(),
-            post_page_href: post_page_filename.clone(),
+            post_page_filename: Some(post_page_filename.clone()),
+            post_page_href: Some(post_page_filename.clone()),
             meta: post.meta,
             content: safe_html,
         })

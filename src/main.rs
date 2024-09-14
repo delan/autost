@@ -2,7 +2,7 @@ use std::{env::args, fs::File, io::Write, path::Path};
 
 use askama::Template;
 use autost::{cli_init, PostGroup, PostsPageTemplate, TemplatedPost};
-use jane_eyre::eyre::{self};
+use jane_eyre::eyre::{self, OptionExt};
 use tracing::info;
 
 fn main() -> eyre::Result<()> {
@@ -18,7 +18,11 @@ fn main() -> eyre::Result<()> {
 
         let post = TemplatedPost::load(path)?;
         let meta = post.meta.clone();
-        let post_page_path = output_path.join(&post.post_page_filename);
+        let post_page_path = output_path.join(
+            post.post_page_filename
+                .as_ref()
+                .ok_or_eyre("guaranteed by TemplatedPost::load")?,
+        );
 
         let mut posts = post
             .meta
@@ -27,6 +31,11 @@ fn main() -> eyre::Result<()> {
             .flat_map(|filename| path.parent().map(|path| path.join(filename)))
             .map(|path| TemplatedPost::load(&path))
             .collect::<Result<Vec<_>, _>>()?;
+        for post in posts.iter_mut() {
+            // don’t linkify shared posts, because they don’t have post pages.
+            post.post_page_filename = None;
+            post.post_page_href = None;
+        }
         posts.push(post);
 
         let post_group = PostGroup { posts, meta };

@@ -80,7 +80,11 @@
         {% if let Some((href, name)) = post.meta.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
         {% if post.meta.author.is_some() && post.meta.published.is_some() %}—{% endif %}
         {% if let Some(published) = post.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
-        <h1><a href="{{ post.post_page_href }}">{% if let Some(title) = post.meta.title %}{{ title }}{% endif %}</a></h1>
+        <h1>
+            {% if let Some(href) = post.post_page_href %}<a href="{{ href }}">{% endif %}
+            {% if let Some(title) = post.meta.title %}{{ title }}{% endif %}
+            {% if let Some(href) = post.post_page_href %}</a>{% endif %}
+        </h1>
     </header>
     <div class="content">
         {{ post.content|safe }}
