@@ -79,6 +79,6 @@
     <div class="content">
         {{ post.content|safe }}
     </div>
-    <footer></footer>
+    <footer>{% for tag in post.meta.tags %}#{{ tag }} {% endfor %}</footer>
 </article>
 {% endfor %}

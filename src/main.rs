@@ -87,9 +87,7 @@ fn main() -> eyre::Result<()> {
 fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let dom = parse(&mut unsafe_html.as_bytes())?;
 
-    let mut title = None;
-    let mut published = None;
-    let mut author = None;
+    let mut meta = PostMeta::default();
     let mut queue = vec![dom.document.clone()];
     while !queue.is_empty() {
         let node = queue.remove(0);
@@ -101,10 +99,15 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         let content = attr_value(&attrs.borrow(), "content")?.map(|t| t.to_owned());
                         match attr_value(&attrs.borrow(), "name")? {
                             Some("title") => {
-                                title = content;
+                                meta.title = content;
                             }
                             Some("published") => {
-                                published = content;
+                                meta.published = content;
+                            }
+                            Some("tags") => {
+                                if let Some(tag) = content {
+                                    meta.tags.push(tag);
+                                }
                             }
                             _ => {}
                         }
@@ -114,7 +117,7 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         let href = attr_value(&attrs.borrow(), "href")?.map(|t| t.to_owned());
                         match attr_value(&attrs.borrow(), "rel")? {
                             Some("author") => {
-                                author = href.zip(name);
+                                meta.author = href.zip(name);
                             }
                             _ => {}
                         }
@@ -131,11 +134,7 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
 
     Ok(ExtractedPost {
         unsafe_html: serialize(dom)?,
-        meta: PostMeta {
-            title,
-            published,
-            author,
-        },
+        meta,
     })
 }
 
@@ -146,6 +145,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
         title: Option<&str>,
         published: Option<&str>,
         author: Option<(&str, &str)>,
+        tags: &[&str],
     ) -> ExtractedPost {
         ExtractedPost {
             unsafe_html: unsafe_html.to_owned(),
@@ -153,12 +153,13 @@ fn test_extract_metadata() -> eyre::Result<()> {
                 title: title.map(|t| t.to_owned()),
                 published: published.map(|t| t.to_owned()),
                 author: author.map(|(name, href)| (name.to_owned(), href.to_owned())),
+                tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
             },
         }
     }
     assert_eq!(
         extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
-        post("bar", Some("foo"), None, None),
+        post("bar", Some("foo"), None, None, &[]),
     );
 
     Ok(())

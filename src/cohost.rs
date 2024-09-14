@@ -19,6 +19,7 @@ pub struct Post {
     pub shareOfPostId: Option<usize>,
     pub publishedAt: String,
     pub headline: String,
+    pub tags: Vec<String>,
     pub postingProject: PostingProject,
 
     /// markdown source only, without attachments or asks.

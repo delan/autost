@@ -5,12 +5,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 pub mod cohost;
 pub mod dom;
 
-#[derive(Clone, Debug, PartialEq, Template)]
+#[derive(Clone, Debug, Default, PartialEq, Template)]
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
     pub title: Option<String>,
     pub published: Option<String>,
     pub author: Option<(String, String)>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, PartialEq)]

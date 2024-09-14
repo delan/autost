@@ -97,6 +97,7 @@ fn convert_chost(
             format!("https://cohost.org/{}", post.postingProject.handle),
             post.postingProject.displayName,
         )),
+        tags: post.tags,
     };
     output.write_all(meta.render()?.as_bytes())?;
     output.write_all(b"\n\n")?;
