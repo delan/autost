@@ -5,12 +5,31 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 pub mod cohost;
 pub mod dom;
 
-#[derive(Template)]
+#[derive(Clone, Debug, PartialEq, Template)]
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
     pub title: Option<String>,
     pub published: Option<String>,
     pub author: Option<(String, String)>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ExtractedPost {
+    pub unsafe_html: String,
+    pub meta: PostMeta,
+}
+
+#[derive(Clone, Debug, Template)]
+#[template(path = "posts.html")]
+pub struct PostsPageTemplate {
+    pub posts: Vec<TemplatedPost>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TemplatedPost {
+    pub post_page_href: String,
+    pub meta: PostMeta,
+    pub content: String,
 }
 
 pub fn cli_init() -> eyre::Result<()> {

@@ -9,27 +9,12 @@ use askama::Template;
 use autost::{
     cli_init,
     dom::{attr_value, parse, serialize},
-    render_markdown,
+    render_markdown, ExtractedPost, PostMeta, PostsPageTemplate, TemplatedPost,
 };
 use html5ever::{local_name, namespace_url, ns, QualName};
 use jane_eyre::eyre::{self, OptionExt};
 use markup5ever_rcdom::NodeData;
 use tracing::info;
-
-#[derive(Clone, Debug, Template)]
-#[template(path = "posts.html")]
-struct PostsTemplate {
-    posts: Vec<TemplatedPost>,
-}
-
-#[derive(Clone, Debug)]
-struct TemplatedPost {
-    post_page_href: String,
-    title: Option<String>,
-    published: Option<String>,
-    author: Option<(String, String)>,
-    content: String,
-}
 
 fn main() -> eyre::Result<()> {
     cli_init()?;
@@ -75,14 +60,12 @@ fn main() -> eyre::Result<()> {
         let post_page_name = format!("{post_page_name}.html");
         let post = TemplatedPost {
             post_page_href: post_page_name.clone(),
-            title: post.title,
-            published: post.published,
-            author: post.author,
+            meta: post.meta,
             content: safe_html,
         };
 
         // generate post page.
-        let template = PostsTemplate {
+        let template = PostsPageTemplate {
             posts: vec![post.clone()],
         };
         let post_page_path = output_path.join(post_page_name);
@@ -93,23 +76,15 @@ fn main() -> eyre::Result<()> {
     }
 
     // reader step: generate posts page.
-    posts.sort_by(|p, q| p.published.cmp(&q.published).reverse());
-    let template = PostsTemplate { posts };
+    posts.sort_by(|p, q| p.meta.published.cmp(&q.meta.published).reverse());
+    let template = PostsPageTemplate { posts };
     let posts_page_path = output_path.join("index.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
 
     Ok(())
 }
 
-#[derive(Debug, PartialEq)]
-struct Post {
-    unsafe_html: String,
-    title: Option<String>,
-    published: Option<String>,
-    author: Option<(String, String)>,
-}
-
-fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
+fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let dom = parse(&mut unsafe_html.as_bytes())?;
 
     let mut title = None;
@@ -154,11 +129,13 @@ fn extract_metadata(unsafe_html: &str) -> eyre::Result<Post> {
         node.children.replace(children);
     }
 
-    Ok(Post {
+    Ok(ExtractedPost {
         unsafe_html: serialize(dom)?,
-        title,
-        published,
-        author,
+        meta: PostMeta {
+            title,
+            published,
+            author,
+        },
     })
 }
 
@@ -169,12 +146,14 @@ fn test_extract_metadata() -> eyre::Result<()> {
         title: Option<&str>,
         published: Option<&str>,
         author: Option<(&str, &str)>,
-    ) -> Post {
-        Post {
+    ) -> ExtractedPost {
+        ExtractedPost {
             unsafe_html: unsafe_html.to_owned(),
-            title: title.map(|t| t.to_owned()),
-            published: published.map(|t| t.to_owned()),
-            author: author.map(|(name, href)| (name.to_owned(), href.to_owned())),
+            meta: PostMeta {
+                title: title.map(|t| t.to_owned()),
+                published: published.map(|t| t.to_owned()),
+                author: author.map(|(name, href)| (name.to_owned(), href.to_owned())),
+            },
         }
     }
     assert_eq!(

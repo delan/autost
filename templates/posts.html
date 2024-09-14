@@ -71,10 +71,10 @@
 {% for post in posts %}
 <article class="post cohost">
     <header>
-        {% if let Some((href, name)) = post.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
-        {% if post.author.is_some() && post.published.is_some() %}—{% endif %}
-        {% if let Some(published) = post.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
-        <h1><a href="{{ post.post_page_href }}">{% if let Some(title) = post.title %}{{ title }}{% endif %}</a></h1>
+        {% if let Some((href, name)) = post.meta.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
+        {% if post.meta.author.is_some() && post.meta.published.is_some() %}—{% endif %}
+        {% if let Some(published) = post.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
+        <h1><a href="{{ post.post_page_href }}">{% if let Some(title) = post.meta.title %}{{ title }}{% endif %}</a></h1>
     </header>
     <div class="content">
         {{ post.content|safe }}
