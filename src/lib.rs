@@ -41,18 +41,26 @@ pub struct PostsPageTemplate {
     pub post_groups: Vec<PostGroup>,
 }
 
+#[derive(Clone, Debug, Template)]
+#[template(path = "feed.xml")]
+pub struct AtomFeedTemplate {
+    pub post_groups: Vec<PostGroup>,
+}
+
 #[derive(Clone, Debug)]
 pub struct PostGroup {
     pub href: String,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
+    pub overall_title: String,
 }
 
 #[derive(Clone, Debug)]
 pub struct TemplatedPost {
     pub filename: String,
     pub meta: PostMeta,
-    pub content: String,
+    pub original_html: String,
+    pub safe_html: String,
 }
 
 impl TemplatedPost {
@@ -93,7 +101,8 @@ impl TemplatedPost {
         Ok(TemplatedPost {
             filename,
             meta: post.meta,
-            content: safe_html,
+            original_html: unsafe_html,
+            safe_html,
         })
     }
 }

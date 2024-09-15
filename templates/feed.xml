@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>TODO: feed title</title>
+{% for post_group in post_groups %}
+<entry>
+<id>{{ post_group.href }}</id>
+{% if let Some(published) = post_group.meta.published %}<published>{{ published }}</published>{% endif %}
+<title>{{ post_group.overall_title }}</title>
+<content type="html">
+{% for post in post_group.posts %}
+{{ post.original_html }}
+{% endfor %}
+</content>
+</entry>
+{% endfor %}
+</feed>

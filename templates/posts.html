@@ -173,7 +173,7 @@
         </h1>
     </header>
     {% if !post.meta.is_transparent_share %}
-    <div class="content">{{ post.content|safe }}</div>
+    <div class="content">{{ post.safe_html|safe }}</div>
     {% endif %}
     <footer>{% for tag in post.meta.tags %}#{{ tag }} {% endfor %}</footer>
 </article>
