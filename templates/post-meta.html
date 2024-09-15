@@ -1,10 +1,10 @@
-{% for url in references %}<link rel="references" href="{{ url }}">{% endfor %}
-{% if let Some(title) = title %}<meta name="title" content="{{ title }}">{% endif %}
-{% if let Some(published) = published %}<meta name="published" content="{{ published }}">{% endif %}
-{% if let Some(author) = author %}
+{%~ for url in references ~%}<link rel="references" href="{{ url }}">{{~ "\n" ~}}{%~ endfor -%}
+{%~ if let Some(title) = title ~%}<meta name="title" content="{{ title }}">{%~ endif ~%}
+{%~ if let Some(published) = published ~%}<meta name="published" content="{{ published }}">{%~ endif ~%}
+{%~ if let Some(author) = author -%}
 <link rel="author" href="{{ author.href }}" name="{{ author.name }}">
 <meta name="author_display_name" content="{{ author.display_name }}">
 <meta name="author_display_handle" content="{{ author.display_handle }}">
-{% endif %}
-{% for tag in tags %}<meta name="tags" content="{{ tag }}">{% endfor %}
-{% if is_transparent_share %}<meta name="is_transparent_share">{% endif %}
+{%- endif ~%}
+{%~ for tag in tags ~%}<meta name="tags" content="{{ tag }}">{{ "\n" }}{%~ endfor -%}
+{%~ if is_transparent_share ~%}<meta name="is_transparent_share">{%~ endif ~%}
