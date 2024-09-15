@@ -1,5 +1,9 @@
 {% for url in references %}<link rel="references" href="{{ url }}">{% endfor %}
 {% if let Some(title) = title %}<meta name="title" content="{{ title }}">{% endif %}
 {% if let Some(published) = published %}<meta name="published" content="{{ published }}">{% endif %}
-{% if let Some((href, name)) = author %}<link rel="author" href="{{ href }}" name="{{ name }}">{% endif %}
+{% if let Some(author) = author %}
+<link rel="author" href="{{ author.href }}" name="{{ author.name }}">
+<meta name="author_display_name" content="{{ author.display_name }}">
+<meta name="author_display_handle" content="{{ author.display_handle }}">
+{% endif %}
 {% for tag in tags %}<meta name="tags" content="{{ tag }}">{% endfor %}

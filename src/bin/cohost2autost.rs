@@ -15,7 +15,7 @@ use autost::{
         debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut, parse,
         serialize, tendril_to_str, Traverse,
     },
-    render_markdown, PostMeta,
+    render_markdown, Author, PostMeta,
 };
 use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
 use jane_eyre::eyre::{self, bail, eyre, Context};
@@ -118,10 +118,15 @@ fn convert_single_chost(
         references: shared_post_filenames,
         title: Some(post.headline),
         published: Some(post.publishedAt),
-        author: Some((
-            format!("https://cohost.org/{}", post.postingProject.handle),
-            post.postingProject.displayName,
-        )),
+        author: Some(Author {
+            href: format!("https://cohost.org/{}", post.postingProject.handle),
+            name: format!(
+                "{} (@{})",
+                post.postingProject.displayName, post.postingProject.handle
+            ),
+            display_name: post.postingProject.displayName,
+            display_handle: format!("@{}", post.postingProject.handle),
+        }),
         tags: post.tags,
     };
     output.write_all(meta.render()?.as_bytes())?;

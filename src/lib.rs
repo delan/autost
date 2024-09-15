@@ -16,8 +16,16 @@ pub struct PostMeta {
     pub references: Vec<String>,
     pub title: Option<String>,
     pub published: Option<String>,
-    pub author: Option<(String, String)>,
+    pub author: Option<Author>,
     pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Author {
+    pub href: String,
+    pub name: String,
+    pub display_name: String,
+    pub display_handle: String,
 }
 
 #[derive(Debug, PartialEq)]
