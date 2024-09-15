@@ -1,11 +1,9 @@
 use std::{
     cell::RefCell,
-    collections::BTreeSet,
     env::args,
     fs::{create_dir_all, read_dir, DirEntry, File},
     io::{Read, Write},
     path::Path,
-    sync::{LazyLock, Mutex},
 };
 
 use askama::Template;
@@ -13,8 +11,9 @@ use autost::{
     cli_init,
     cohost::{attachment_id_to_url, attachment_url_to_id, Ast, Attachment, Block, Post},
     dom::{
-        attr_value, create_element, create_fragment, find_attr_mut, parse, serialize,
-        tendril_to_str, Traverse,
+        attr_value, convert_idl_to_content_attribute, create_element, create_fragment,
+        debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut, parse,
+        serialize, tendril_to_str, Traverse,
     },
     render_markdown, PostMeta,
 };
@@ -22,7 +21,6 @@ use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
 use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use serde_json::Value;
 use tracing::{debug, info, trace, warn};
 
 fn main() -> eyre::Result<()> {
@@ -49,16 +47,15 @@ fn main() -> eyre::Result<()> {
         result?;
     }
 
-    trace!("saw html attributes: {:?}", ATTRIBUTES_SEEN.lock());
-    if let Ok(attributes) = NOT_KNOWN_GOOD_ATTRIBUTES_SEEN.lock() {
-        if !attributes.is_empty() {
-            let attributes = attributes
-                .iter()
-                .map(|(tag, attr)| format!("<{tag} {attr}>"))
-                .collect::<Vec<_>>();
-            let attributes = attributes.join(" ");
-            warn!("saw attributes not on known-good-attributes list! check if output is correct for: {attributes}");
-        }
+    trace!("saw html attributes: {:?}", debug_attributes_seen());
+    let not_known_good_attributes_seen = debug_not_known_good_attributes_seen();
+    if !not_known_good_attributes_seen.is_empty() {
+        let attributes = not_known_good_attributes_seen
+            .iter()
+            .map(|(tag, attr)| format!("<{tag} {attr}>"))
+            .collect::<Vec<_>>();
+        let attributes = attributes.join(" ");
+        warn!("saw attributes not on known-good-attributes list! check if output is correct for: {attributes}");
     }
 
     Ok(())
@@ -213,24 +210,6 @@ fn convert_single_chost(
     Ok(())
 }
 
-static ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
-static NOT_KNOWN_GOOD_ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> =
-    Mutex::new(BTreeSet::new());
-static KNOWN_GOOD_ATTRIBUTES: LazyLock<BTreeSet<(Option<&'static str>, &'static str)>> =
-    LazyLock::new(|| {
-        let mut result = BTreeSet::default();
-        result.insert((None, "id"));
-        result.insert((None, "style"));
-        result.insert((Some("Mention"), "handle"));
-        result.insert((Some("a"), "href"));
-        result.insert((Some("details"), "open"));
-        result.insert((Some("img"), "alt"));
-        result.insert((Some("img"), "src"));
-        result.insert((Some("img"), "title"));
-        result.insert((Some("ol"), "start"));
-        result
-    });
-
 fn process_ast(root: Ast) -> RcDom {
     let (dom, html_root) = create_fragment();
     let mut ast_queue = vec![(root, html_root.clone())];
@@ -257,41 +236,8 @@ fn process_ast(root: Ast) -> RcDom {
                     .into_iter()
                     .filter_map(|(name, value)| {
                         // the `astMap` contains idl attributes like `<details>.open=true` and `<ol>.start=2`, not
-                        // content attributes like `<details open>` and `<ol start="2">`. to be extra cautious about
-                        // converting attributes correctly, warn if we see attributes not on our known-good list.
-                        ATTRIBUTES_SEEN.lock()
-                            .unwrap()
-                            .insert((tagName.clone(), name.clone()));
-                        if !KNOWN_GOOD_ATTRIBUTES.contains(&(None, &name)) && !KNOWN_GOOD_ATTRIBUTES.contains(&(Some(&tagName), &name)) {
-                            warn!("saw attribute not on known-good-attributes list! check if output is correct for: <{tagName} {name}>");
-                            NOT_KNOWN_GOOD_ATTRIBUTES_SEEN.lock()
-                                .unwrap()
-                                .insert((tagName.clone(), name.clone()));
-                        }
-
-                        // per html5ever::Attribute docs:
-                        // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
-                        // attributes this way, but the tree builder will adjust certain attribute names inside foreign
-                        // content (MathML, SVG).”
-                        let name = QualName::new(None, ns!(), LocalName::from(name));
-                        match value {
-                            Value::String(value) => Some(Attribute {
-                                name,
-                                value: value.into(),
-                            }),
-                            Value::Number(value) => Some(Attribute {
-                                name,
-                                value: value.to_string().into(),
-                            }),
-                            Value::Bool(value) => value.then_some(Attribute {
-                                name,
-                                value: "".into(),
-                            }),
-                            _ => {
-                                warn!(r"unknown attribute value type: {:?}: {:?}", name, value);
-                                None
-                            }
-                        }
+                        // content attributes like `<details open>` and `<ol start="2">`.
+                        convert_idl_to_content_attribute(&tagName, &name, value)
                     })
                     .collect::<Vec<_>>()
                     .into();
