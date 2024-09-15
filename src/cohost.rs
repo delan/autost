@@ -52,6 +52,9 @@ pub enum Block {
     #[serde(rename = "attachment")]
     Attachment { attachment: Attachment },
 
+    #[serde(rename = "ask")]
+    Ask { ask: Ask },
+
     #[serde(untagged)]
     Unknown {
         #[serde(flatten)]
@@ -82,6 +85,22 @@ pub enum Attachment {
         #[serde(flatten)]
         fields: HashMap<String, Value>,
     },
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct Ask {
+    pub content: String,
+    pub askingProject: Option<AskingProject>,
+    pub anon: bool,
+    pub loggedIn: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct AskingProject {
+    pub handle: String,
+    pub displayName: String,
 }
 
 #[derive(Debug, Deserialize)]

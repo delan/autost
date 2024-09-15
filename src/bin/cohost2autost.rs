@@ -9,7 +9,10 @@ use std::{
 use askama::Template;
 use autost::{
     cli_init,
-    cohost::{attachment_id_to_url, attachment_url_to_id, Ast, Attachment, Block, Post},
+    cohost::{
+        attachment_id_to_url, attachment_url_to_id, Ask, AskingProject, Ast, Attachment, Block,
+        Post,
+    },
     dom::{
         attr_value, convert_idl_to_content_attribute, create_element, create_fragment,
         debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut, parse,
@@ -201,6 +204,26 @@ fn convert_single_chost(
                     warn!("unknown attachment kind: {fields:?}");
                 }
             },
+            Block::Ask {
+                ask:
+                    Ask {
+                        askingProject,
+                        content,
+                        ..
+                    },
+            } => {
+                let ProcessChostFragmentResult {
+                    html,
+                    attachment_ids,
+                } = render_markdown_block(&content)?;
+                let template = AskTemplate {
+                    author: askingProject,
+                    content: html,
+                };
+                output.write_all(template.render()?.as_bytes())?;
+                all_attachment_ids.extend(attachment_ids);
+                continue;
+            }
             Block::Unknown { fields } => {
                 warn!("unknown block type: {fields:?}");
             }
@@ -281,6 +304,13 @@ struct CohostImgTemplate {
     alt: String,
     width: usize,
     height: usize,
+}
+
+#[derive(Template)]
+#[template(path = "ask.html")]
+struct AskTemplate {
+    author: Option<AskingProject>,
+    content: String,
 }
 
 #[derive(Debug, PartialEq)]

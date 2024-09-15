@@ -1,0 +1,17 @@
+<!-- TODO: no support for css classes in asks, because they are part of untrusted post content -->
+<article class="ask" style="padding: 1em; border: 1px solid black;">
+    <header>
+        <div class="meta">
+            {% if let Some(author) = author %}
+            <span itemprop="author">
+                <a href="https://cohost.org/{{ author.handle }}">{{ author.displayName }}</a>
+                <a href="https://cohost.org/{{ author.handle }}" class="handle">@{{ author.handle }}</a>
+            </span>
+            {% else %}
+            eggbug
+            {% endif %}
+            asked…
+        </div>
+    </header>
+    {{ content|safe }}
+</article>
