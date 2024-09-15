@@ -1,6 +1,7 @@
 use std::{
     cell::RefCell,
     env::args,
+    ffi::OsString,
     fs::{create_dir_all, read_dir, DirEntry, File},
     io::{Read, Write},
     path::Path,
@@ -35,12 +36,18 @@ fn main() -> eyre::Result<()> {
     let output_path = Path::new(&output_path);
     let attachments_path = args().nth(3).unwrap();
     let attachments_path = Path::new(&attachments_path);
+    let specific_post_filenames = args().skip(4).map(OsString::from).collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
 
     let results = dir_entries
         .into_par_iter()
         .map(|entry| -> eyre::Result<()> {
             let entry = entry?;
+            if !specific_post_filenames.is_empty() {
+                if !specific_post_filenames.contains(&entry.file_name()) {
+                    return Ok(());
+                }
+            }
             convert_chost(&entry, output_path, attachments_path)
                 .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
             Ok(())
