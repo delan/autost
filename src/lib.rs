@@ -34,14 +34,14 @@ pub struct PostsPageTemplate {
 
 #[derive(Clone, Debug)]
 pub struct PostGroup {
+    pub href: String,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
 }
 
 #[derive(Clone, Debug)]
 pub struct TemplatedPost {
-    pub post_page_filename: Option<String>,
-    pub post_page_href: Option<String>,
+    pub filename: String,
     pub meta: PostMeta,
     pub content: String,
 }
@@ -74,16 +74,15 @@ impl TemplatedPost {
             .clean(&post.unsafe_html)
             .to_string();
 
-        let original_name = path.file_name().ok_or_eyre("post has no file name")?;
-        let original_name = original_name.to_str().ok_or_eyre("unsupported file name")?;
-        let (post_page_filename, _) = original_name
+        let original_name = path.file_name().ok_or_eyre("post has no filename")?;
+        let original_name = original_name.to_str().ok_or_eyre("unsupported filename")?;
+        let (filename, _) = original_name
             .rsplit_once(".")
             .unwrap_or((original_name, ""));
-        let post_page_filename = format!("{post_page_filename}.html");
+        let filename = format!("{filename}.html");
 
         Ok(TemplatedPost {
-            post_page_filename: Some(post_page_filename.clone()),
-            post_page_href: Some(post_page_filename.clone()),
+            filename,
             meta: post.meta,
             content: safe_html,
         })
