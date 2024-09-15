@@ -7,3 +7,4 @@
 <meta name="author_display_handle" content="{{ author.display_handle }}">
 {% endif %}
 {% for tag in tags %}<meta name="tags" content="{{ tag }}">{% endfor %}
+{% if is_transparent_share %}<meta name="is_transparent_share">{% endif %}

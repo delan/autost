@@ -172,9 +172,9 @@
             {% if post_group.meta.references.is_empty() %}</a>{% endif %}
         </h1>
     </header>
-    <div class="content">
-        {{ post.content|safe }}
-    </div>
+    {% if !post.meta.is_transparent_share %}
+    <div class="content">{{ post.content|safe }}</div>
+    {% endif %}
     <footer>{% for tag in post.meta.tags %}#{{ tag }} {% endfor %}</footer>
 </article>
 {% endfor %}

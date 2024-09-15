@@ -42,6 +42,9 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                                     meta.tags.push(tag);
                                 }
                             }
+                            Some("is_transparent_share") => {
+                                meta.is_transparent_share = true;
+                            }
                             _ => {}
                         }
                         continue;
@@ -99,6 +102,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
         published: Option<&str>,
         author: Option<Author>,
         tags: &[&str],
+        is_transparent_share: bool,
     ) -> ExtractedPost {
         ExtractedPost {
             unsafe_html: unsafe_html.to_owned(),
@@ -108,12 +112,13 @@ fn test_extract_metadata() -> eyre::Result<()> {
                 published: published.map(|t| t.to_owned()),
                 author,
                 tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+                is_transparent_share,
             },
         }
     }
     assert_eq!(
         extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
-        post("bar", &[], Some("foo"), None, None, &[]),
+        post("bar", &[], Some("foo"), None, None, &[], false),
     );
 
     Ok(())

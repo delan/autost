@@ -18,6 +18,7 @@ pub struct PostMeta {
     pub published: Option<String>,
     pub author: Option<Author>,
     pub tags: Vec<String>,
+    pub is_transparent_share: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

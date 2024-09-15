@@ -131,6 +131,7 @@ fn convert_single_chost(
             display_handle: format!("@{}", post.postingProject.handle),
         }),
         tags: post.tags,
+        is_transparent_share: post.transparentShareOfPostId.is_some(),
     };
     output.write_all(meta.render()?.as_bytes())?;
     output.write_all(b"\n\n")?;
