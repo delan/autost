@@ -32,6 +32,10 @@
         max-width: 40em;
         margin: 1em auto;
     }
+    article.post_group :link,
+    article.post_group :visited {
+        color: currentColor;
+    }
     article.post {
         position: relative;
         contain: inline-size style layout paint;
@@ -41,6 +45,7 @@
     article.post:not(:first-child) {
         border-top: 1px solid black;
     }
+    article.post_group > header,
     article.post > header,
     article.post > footer:not(:empty) {
         padding: 1em;
@@ -51,10 +56,6 @@
     }
     article.post > .content {
         margin: 1em;
-    }
-    article.post :link,
-    article.post :visited {
-        color: currentColor;
     }
     /* cohost compatibility */
     article.post.cohost > .content img,
@@ -74,6 +75,13 @@
 </style>
 {% for post_group in post_groups %}
 <article class="post_group">
+{% if !post_group.meta.references.is_empty() %}
+<header>
+    {% if let Some((href, name)) = post_group.meta.author %}<a href="{{ href }}">{{ name }}</a>{% endif %}
+    {% if post_group.meta.author.is_some() && post_group.meta.published.is_some() %}—{% endif %}
+    {% if let Some(published) = post_group.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
+</header>
+{% endif %}
 {% for post in post_group.posts %}
 <article class="post cohost">
     <header>
