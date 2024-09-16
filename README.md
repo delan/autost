@@ -14,18 +14,18 @@ $ cargo run --bin cohost2json -- projectName path/to/chosts
 ## how to convert chosts to autosts
 
 ```
-$ mkdir -p path/to/autosts path/to/attachments
-$ cargo run --bin cohost2autost -- path/to/chosts path/to/autosts path/to/attachments
+$ mkdir -p path/to/autosts site/attachments
+$ cargo run --bin cohost2autost -- path/to/chosts path/to/autosts site/attachments
 ```
 
 or to convert specific chosts only:
 
 ```
-$ cargo run --bin cohost2autost -- path/to/chosts path/to/autosts path/to/attachments 123456.json 234567.json
+$ cargo run --bin cohost2autost -- path/to/chosts path/to/autosts site/attachments 123456.json 234567.json
 ```
 
 ## how to render your autosts to pages
 
 ```
-$ cargo run -- path/to/output path/to/autosts/*
+$ cargo run -- site path/to/autosts/*
 ```
