@@ -38,6 +38,9 @@ body > nav li {
     display: inline list-item;
     margin: 1em;
 }
+ul.tags a {
+    display: inline-block;
+}
 article.post_group {
     border: 1px solid black;
     max-width: 40em;

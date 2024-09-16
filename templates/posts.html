@@ -7,7 +7,7 @@
     <ul>
     {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
-    <ul>
+    <ul class="tags">
     {% for tag in SETTINGS.interesting_tags -%}<li><a href="{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
     </ul>
     <hr>
