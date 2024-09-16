@@ -16,8 +16,8 @@ use autost::{
     },
     dom::{
         attr_value, convert_idl_to_content_attribute, create_element, create_fragment,
-        debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut, parse,
-        serialize, tendril_to_str, Traverse,
+        debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut,
+        make_attribute_name, parse, serialize, tendril_to_str, Traverse,
     },
     render_markdown, Author, PostMeta,
 };
@@ -25,6 +25,7 @@ use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
 use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use reqwest::redirect::Policy;
 use tracing::{debug, info, trace, warn};
 
 fn main() -> eyre::Result<()> {
@@ -41,15 +42,29 @@ fn main() -> eyre::Result<()> {
 
     let results = dir_entries
         .into_par_iter()
-        .map(|entry| -> eyre::Result<()> {
+        .map(|entry| -> eyre::Result<Vec<String>> {
             let entry = entry?;
             if !specific_post_filenames.is_empty() {
                 if !specific_post_filenames.contains(&entry.file_name()) {
-                    return Ok(());
+                    return Ok(vec![]);
                 }
             }
-            convert_chost(&entry, output_path, attachments_path)
-                .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
+            let result = convert_chost(&entry, output_path)
+                .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()));
+            Ok(result?)
+        })
+        .collect::<Vec<_>>();
+
+    let mut all_attachment_ids = vec![];
+    for result in results {
+        all_attachment_ids.extend(result?);
+    }
+
+    let results = all_attachment_ids
+        .into_par_iter()
+        .map(|attachment_id| -> eyre::Result<()> {
+            cache_attachment_image(&attachment_id, attachments_path)?;
+            cache_attachment_thumb(&attachment_id, &attachments_path.join("thumbs"))?;
             Ok(())
         })
         .collect::<Vec<_>>();
@@ -71,12 +86,8 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tracing::instrument(level = "error", skip(output_path, attachments_path))]
-fn convert_chost(
-    entry: &DirEntry,
-    output_path: &Path,
-    attachments_path: &Path,
-) -> eyre::Result<()> {
+#[tracing::instrument(level = "error", skip(output_path))]
+fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<Vec<String>> {
     let input_path = entry.path();
 
     trace!("parsing");
@@ -100,8 +111,14 @@ fn convert_chost(
         create_dir_all(output_path.join(post_id.to_string()))?;
     }
 
+    let mut attachment_ids = vec![];
     for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_paths) {
-        convert_single_chost(shared_post, vec![], output_path.as_path(), attachments_path)?;
+        convert_single_chost(
+            shared_post,
+            vec![],
+            output_path.as_path(),
+            &mut attachment_ids,
+        )?;
     }
 
     let output_path = output_path.join(format!("{post_id}.html"));
@@ -109,17 +126,17 @@ fn convert_chost(
         post,
         shared_post_filenames,
         output_path.as_path(),
-        attachments_path,
+        &mut attachment_ids,
     )?;
 
-    Ok(())
+    Ok(attachment_ids)
 }
 
 fn convert_single_chost(
     post: Post,
     shared_post_filenames: Vec<String>,
     output_path: &Path,
-    attachments_path: &Path,
+    all_attachment_ids: &mut Vec<String>,
 ) -> eyre::Result<()> {
     info!("writing: {output_path:?}");
     let mut output = File::create(output_path)?;
@@ -143,7 +160,6 @@ fn convert_single_chost(
     output.write_all(meta.render()?.as_bytes())?;
     output.write_all(b"\n\n")?;
 
-    let mut all_attachment_ids = vec![];
     let mut spans = post
         .astMap
         .spans
@@ -201,7 +217,8 @@ fn convert_single_chost(
                     all_attachment_ids.push(attachmentId.to_owned());
                     let template = CohostImgTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        src: cached_attachment_url(&attachmentId),
+                        thumb_src: cached_attachment_thumb_url(&attachmentId),
+                        src: cached_attachment_image_url(&attachmentId),
                         alt: altText,
                         width,
                         height,
@@ -237,10 +254,6 @@ fn convert_single_chost(
             }
         }
         output.write_all(b"\n\n")?;
-    }
-
-    for attachment_id in all_attachment_ids {
-        cache_attachment(&attachment_id, attachments_path)?;
     }
 
     Ok(())
@@ -308,6 +321,7 @@ fn process_ast(root: Ast) -> RcDom {
 #[template(path = "cohost-img.html")]
 struct CohostImgTemplate {
     data_cohost_src: String,
+    thumb_src: String,
     src: String,
     alt: String,
     width: usize,
@@ -355,7 +369,7 @@ fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentRe
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = cached_attachment_url(id).into();
+                            attr.value = cached_attachment_image_url(id).into();
                             attrs.push(Attribute {
                                 name: QualName::new(
                                     None,
@@ -365,6 +379,12 @@ fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentRe
                                 value: old_url.into(),
                             });
                         }
+                    }
+                    if element_name == "img" {
+                        attrs.push(Attribute {
+                            name: make_attribute_name("loading"),
+                            value: "lazy".into(),
+                        });
                     }
                 }
             }
@@ -415,20 +435,41 @@ fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentRe
     })
 }
 
-fn cached_attachment_url(id: &str) -> String {
+fn cached_attachment_image_url(id: &str) -> String {
     format!("attachments/{id}")
 }
 
-fn cache_attachment(id: &str, attachments_path: &Path) -> eyre::Result<()> {
-    debug!("caching attachment: {id}");
+fn cached_attachment_thumb_url(id: &str) -> String {
+    format!("attachments/thumbs/{id}")
+}
+
+fn cache_attachment_image(id: &str, attachments_path: &Path) -> eyre::Result<()> {
+    debug!("caching attachment image: {id}");
     let url = attachment_id_to_url(id);
     let path = attachments_path.join(id);
-    cached_get(&url, &path)?;
+    cached_get(&url, &path, None)?;
 
     Ok(())
 }
 
-fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
+fn cache_attachment_thumb(id: &str, attachments_path: &Path) -> eyre::Result<()> {
+    fn thumb(url: &str) -> String {
+        format!("{url}?width=675")
+    }
+
+    debug!("caching attachment thumb: {id}");
+    let url = attachment_id_to_url(id);
+    let path = attachments_path.join(id);
+    cached_get(&url, &path, Some(thumb))?;
+
+    Ok(())
+}
+
+fn cached_get(
+    url: &str,
+    path: &Path,
+    transform_redirect_target: Option<fn(&str) -> String>,
+) -> eyre::Result<Vec<u8>> {
     if let Ok(mut file) = File::open(path) {
         trace!("cache hit: {url}");
         let mut result = Vec::default();
@@ -437,6 +478,30 @@ fn cached_get(url: &str, path: &Path) -> eyre::Result<Vec<u8>> {
     }
 
     trace!("cache miss: {url}");
+
+    // cohost attachment redirects don’t preserve query params, so if we want to add any,
+    // we need to add them to the destination of the redirect.
+    // FIXME: this will silently misbehave if the endpoint introduces a second redirect!
+    let transformed_url = if let Some(transform) = transform_redirect_target {
+        let client = reqwest::blocking::Client::builder()
+            .redirect(Policy::none())
+            .build()?;
+        let redirect = client.head(url).send()?;
+        if let Some(location) = redirect.headers().get("location") {
+            Some(transform(location.to_str()?))
+        } else {
+            Some(transform(url))
+        }
+    } else {
+        None
+    };
+
+    let url = if let Some(transformed_url) = transformed_url {
+        trace!("transformed redirect target: {transformed_url}");
+        transformed_url
+    } else {
+        url.to_owned()
+    };
     let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
     File::create(path)?.write_all(&result)?;
 
@@ -458,9 +523,9 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         result(&format!(r#"<p>text</p>{n}"#), &[])
     );
     assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
-        result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+        result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
     assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>")?,
-        result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+        result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
     assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
         result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
     assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>")?,
