@@ -6,7 +6,7 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct Settings {
     pub base_url: String,
-    pub feed_title: String,
+    pub site_title: String,
     pub interesting_tags: Vec<String>,
 }
 

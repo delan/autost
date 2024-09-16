@@ -47,7 +47,7 @@ fn main() -> eyre::Result<()> {
             href: filename.clone(),
             posts,
             meta,
-            overall_title,
+            overall_title: overall_title.clone(),
         };
 
         for tag in post_group.meta.tags.iter() {
@@ -68,6 +68,7 @@ fn main() -> eyre::Result<()> {
         // reader step: generate post page.
         let template = PostsPageTemplate {
             post_groups: vec![post_group.clone()],
+            page_title: format!("{overall_title} — {}", SETTINGS.site_title),
             feed_href: None,
         };
         let path = output_path.join(filename);
@@ -85,14 +86,14 @@ fn main() -> eyre::Result<()> {
     // author step: generate atom feeds.
     let template = AtomFeedTemplate {
         post_groups: post_groups_with_interesting_tags.clone(),
-        feed_title: SETTINGS.feed_title.clone(),
+        feed_title: SETTINGS.site_title.clone(),
     };
     let atom_feed_path = output_path.join("index.feed.xml");
     writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
     for (tag, post_groups) in post_groups_by_interesting_tag.clone().into_iter() {
         let template = AtomFeedTemplate {
             post_groups,
-            feed_title: format!("{} — {tag}", SETTINGS.feed_title),
+            feed_title: format!("{} — {tag}", SETTINGS.site_title),
         };
         let atom_feed_path = output_path.join(format!("{tag}.feed.xml"));
         writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
@@ -130,12 +131,14 @@ fn main() -> eyre::Result<()> {
     // reader step: generate posts pages.
     let template = PostsPageTemplate {
         post_groups,
+        page_title: format!("all posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
     let posts_page_path = output_path.join("all.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     let template = PostsPageTemplate {
         post_groups: post_groups_with_interesting_tags,
+        page_title: format!("posts — {}", SETTINGS.site_title),
         feed_href: Some("index.feed.xml".to_owned()),
     };
     let posts_page_path = output_path.join("index.html");
@@ -143,6 +146,7 @@ fn main() -> eyre::Result<()> {
     for (tag, post_groups) in post_groups_by_interesting_tag.into_iter() {
         let template = PostsPageTemplate {
             post_groups,
+            page_title: format!("#{tag} — {}", SETTINGS.site_title),
             feed_href: Some(format!("{tag}.feed.xml")),
         };
         let posts_page_path = output_path.join(format!("{tag}.html"));

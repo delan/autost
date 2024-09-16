@@ -43,6 +43,7 @@ pub struct ExtractedPost {
 #[template(path = "posts.html")]
 pub struct PostsPageTemplate {
     pub post_groups: Vec<PostGroup>,
+    pub page_title: String,
     pub feed_href: Option<String>,
 }
 
