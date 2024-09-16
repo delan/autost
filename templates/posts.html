@@ -175,7 +175,12 @@
     {% if !post.meta.is_transparent_share %}
     <div class="content">{{ post.safe_html|safe }}</div>
     {% endif %}
-    <footer>{% for tag in post.meta.tags %}#{{ tag }} {% endfor %}</footer>
+    <footer>{% for tag in post.meta.tags %}
+        {%- if SETTINGS.interesting_tags.contains(tag) -%}<a href="{{ tag }}.html">{%- endif -%}
+        <span>#{{ tag }}</span>
+        {%- if SETTINGS.interesting_tags.contains(tag) -%}</a>{%- endif -%}
+        &#x2003;
+    {% endfor %}</footer>
 </article>
 {% endfor %}
 </article>

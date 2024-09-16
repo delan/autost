@@ -1,14 +1,18 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{cmp::Ordering, fs::File, io::Read, path::Path, sync::LazyLock};
 
 use askama::Template;
-use jane_eyre::eyre::{self, OptionExt};
+use jane_eyre::eyre::{self, Context, OptionExt};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use crate::meta::extract_metadata;
+use crate::{meta::extract_metadata, settings::Settings};
 
 pub mod cohost;
 pub mod dom;
 pub mod meta;
+pub mod settings;
+
+pub static SETTINGS: LazyLock<Settings> =
+    LazyLock::new(|| Settings::load().context("failed to load settings").unwrap());
 
 #[derive(Clone, Debug, Default, PartialEq, Template)]
 #[template(path = "post-meta.html")]
@@ -61,6 +65,12 @@ pub struct TemplatedPost {
     pub meta: PostMeta,
     pub original_html: String,
     pub safe_html: String,
+}
+
+impl PostGroup {
+    pub fn reverse_chronological(p: &PostGroup, q: &PostGroup) -> Ordering {
+        p.meta.published.cmp(&q.meta.published).reverse()
+    }
 }
 
 impl TemplatedPost {
