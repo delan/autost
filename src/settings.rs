@@ -8,6 +8,13 @@ pub struct Settings {
     pub base_url: String,
     pub site_title: String,
     pub interesting_tags: Vec<String>,
+    pub nav: Vec<NavLink>,
+}
+
+#[derive(Deserialize)]
+pub struct NavLink {
+    pub href: String,
+    pub text: String,
 }
 
 impl Settings {

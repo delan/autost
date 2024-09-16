@@ -4,12 +4,16 @@
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
 <title>{{ page_title }}</title>
 <nav>
-    <ul class="tags">
-    {% for tag in SETTINGS.interesting_tags -%}
-    <li><a href="{{ tag }}.html">#{{ tag }}</a>
-    {%- endfor %}
+    <ul>
+    {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
-    <p>{%~ if let Some(feed_href) = feed_href ~%}<a href="{{ feed_href }}">atom feed</a>{%~ endif ~%}
+    <ul>
+    {% for tag in SETTINGS.interesting_tags -%}<li><a href="{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
+    </ul>
+    <hr>
+    <ul>
+    {%~ if let Some(feed_href) = feed_href ~%}<li><a href="{{ feed_href }}">atom feed</a>{%~ endif ~%}
+    </ul>
 </nav>
 {% for post_group in post_groups %}
 <article class="post_group">

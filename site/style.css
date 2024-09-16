@@ -30,11 +30,11 @@ body {
 body > nav {
     text-align: center;
 }
-ul.tags {
+body > nav ul {
     list-style: "";
     padding: 0;
 }
-ul.tags li {
+body > nav li {
     display: inline list-item;
     margin: 1em;
 }
