@@ -6,6 +6,7 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 pub struct Settings {
     pub base_url: String,
+    pub external_base_url: String,
     pub site_title: String,
     pub interesting_tags: Vec<String>,
     pub nav: Vec<NavLink>,
@@ -25,6 +26,9 @@ impl Settings {
 
         if !result.base_url.ends_with("/") {
             bail!("base_url setting must end with slash!");
+        }
+        if !result.external_base_url.ends_with("/") {
+            bail!("external_base_url setting must end with slash!");
         }
 
         Ok(result)

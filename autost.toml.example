@@ -1,4 +1,5 @@
 base_url = "/"
+external_base_url = "https://example.com/"
 site_title = "ao!!"
 interesting_tags = ["photography", "cooking"]
 
