@@ -24,12 +24,14 @@
 :root {
     font-family: Atkinson Hyperlegible;
 }
-nav.tags ul {
-    list-style: "";
+body > nav {
     text-align: center;
+}
+ul.tags {
+    list-style: "";
     padding: 0;
 }
-nav.tags li {
+ul.tags li {
     display: inline list-item;
     margin: 1em;
 }
@@ -38,8 +40,8 @@ article.post_group {
     max-width: 40em;
     margin: 1em auto;
 }
-nav.tags :link,
-nav.tags :visited,
+body > nav :link,
+body > nav :visited,
 article.post_group :link,
 article.post_group :visited {
     color: currentColor;

@@ -3,12 +3,13 @@
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
 <title>{{ page_title }}</title>
-<nav class="tags">
-    <ul>
+<nav>
+    <ul class="tags">
     {% for tag in SETTINGS.interesting_tags -%}
     <li><a href="{{ tag }}.html">#{{ tag }}</a>
     {%- endfor %}
     </ul>
+    <p>{%~ if let Some(feed_href) = feed_href ~%}<a href="{{ feed_href }}">atom feed</a>{%~ endif ~%}
 </nav>
 {% for post_group in post_groups %}
 <article class="post_group">
