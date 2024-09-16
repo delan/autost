@@ -1,7 +1,13 @@
 autost
 ======
 
+**warning: this is currently a prototype. do not expect robustness or even usefulness.**
+
 what if you could have a single-user self-hosted thing with the same posting and reading ux as cohost? what if you could then follow people and get a chronological timeline of their posts? what if you could share their posts too?
+
+- **phase 1: convert chosts (we are here!)**
+- phase 2: compose new posts
+- phase 3: follow others
 
 ## how to dump your own chosts
 
