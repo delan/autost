@@ -25,7 +25,9 @@ html {
     font-family: Atkinson Hyperlegible, system-ui, sans-serif;
 }
 body {
-    margin: 1em;
+    margin: 1em auto;
+    padding: 0 1em;
+    max-width: 42em;
 }
 body > nav {
     text-align: center;
@@ -43,7 +45,6 @@ ul.tags a {
 }
 article.post_group {
     border: 1px solid black;
-    max-width: 40em;
     margin: 1em auto;
 }
 body > nav :link,
