@@ -21,8 +21,11 @@
 * {
     box-sizing: border-box;
 }
-:root {
-    font-family: Atkinson Hyperlegible;
+html {
+    font-family: Atkinson Hyperlegible, system-ui, sans-serif;
+}
+body {
+    margin: 1em;
 }
 body > nav {
     text-align: center;
