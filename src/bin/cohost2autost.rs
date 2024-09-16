@@ -4,7 +4,7 @@ use std::{
     ffi::OsString,
     fs::{create_dir_all, read_dir, DirEntry, File},
     io::{Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use askama::Template;
@@ -443,16 +443,18 @@ fn cached_attachment_thumb_url(id: &str) -> String {
     format!("attachments/thumbs/{id}")
 }
 
-fn cache_attachment_image(id: &str, attachments_path: &Path) -> eyre::Result<()> {
+#[tracing::instrument(level = "error")]
+fn cache_attachment_image(id: &str, attachments_path: &Path) -> eyre::Result<PathBuf> {
     debug!("caching attachment image: {id}");
     let url = attachment_id_to_url(id);
     let path = attachments_path.join(id);
-    cached_get(&url, &path, None)?;
+    create_dir_all(&path)?;
 
-    Ok(())
+    Ok(cached_get_attachment(&url, &path, None)?)
 }
 
-fn cache_attachment_thumb(id: &str, attachments_path: &Path) -> eyre::Result<()> {
+#[tracing::instrument(level = "error")]
+fn cache_attachment_thumb(id: &str, attachments_path: &Path) -> eyre::Result<PathBuf> {
     fn thumb(url: &str) -> String {
         format!("{url}?width=675")
     }
@@ -460,52 +462,64 @@ fn cache_attachment_thumb(id: &str, attachments_path: &Path) -> eyre::Result<()>
     debug!("caching attachment thumb: {id}");
     let url = attachment_id_to_url(id);
     let path = attachments_path.join(id);
-    cached_get(&url, &path, Some(thumb))?;
+    create_dir_all(&path)?;
 
-    Ok(())
+    Ok(cached_get_attachment(&url, &path, Some(thumb))?)
 }
 
-fn cached_get(
+fn cached_get_attachment(
     url: &str,
     path: &Path,
     transform_redirect_target: Option<fn(&str) -> String>,
-) -> eyre::Result<Vec<u8>> {
-    if let Ok(mut file) = File::open(path) {
-        trace!("cache hit: {url}");
-        let mut result = Vec::default();
-        file.read_to_end(&mut result)?;
-        return Ok(result);
+) -> eyre::Result<PathBuf> {
+    // if the attachment id directory exists...
+    if let Ok(mut entries) = read_dir(path) {
+        // and the directory contains a file...
+        if let Some(entry) = entries.next() {
+            // and we can open the file...
+            let path = entry?.path();
+            if let Ok(mut file) = File::open(&path) {
+                trace!("cache hit: {url}");
+                // check if we can read the file.
+                let mut result = Vec::default();
+                file.read_to_end(&mut result)?;
+                return Ok(path);
+            }
+        }
     }
 
     trace!("cache miss: {url}");
 
+    let client = reqwest::blocking::Client::builder()
+        .redirect(Policy::none())
+        .build()?;
+    let redirect = client.head(url).send()?;
+    let Some(location) = redirect.headers().get("location") else {
+        bail!("expected redirect but got {}: {url}", redirect.status());
+    };
+    let location = location.to_str()?;
+
+    let Some((_, original_filename)) = location.rsplit_once("/") else {
+        bail!("redirect target has no slashes: {location}");
+    };
+    trace!("original filename: {original_filename}");
+
     // cohost attachment redirects don’t preserve query params, so if we want to add any,
     // we need to add them to the destination of the redirect.
     // FIXME: this will silently misbehave if the endpoint introduces a second redirect!
-    let transformed_url = if let Some(transform) = transform_redirect_target {
-        let client = reqwest::blocking::Client::builder()
-            .redirect(Policy::none())
-            .build()?;
-        let redirect = client.head(url).send()?;
-        if let Some(location) = redirect.headers().get("location") {
-            Some(transform(location.to_str()?))
-        } else {
-            Some(transform(url))
-        }
-    } else {
-        None
-    };
-
-    let url = if let Some(transformed_url) = transformed_url {
+    let url = if let Some(transform) = transform_redirect_target {
+        let transformed_url = transform(url);
         trace!("transformed redirect target: {transformed_url}");
         transformed_url
     } else {
         url.to_owned()
     };
-    let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
-    File::create(path)?.write_all(&result)?;
 
-    Ok(result)
+    let path = path.join(original_filename);
+    let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
+    File::create(&path)?.write_all(&result)?;
+
+    Ok(path)
 }
 
 #[test]
