@@ -35,39 +35,31 @@ fn main() -> eyre::Result<()> {
     let input_path = Path::new(&input_path);
     let output_path = args().nth(2).unwrap();
     let output_path = Path::new(&output_path);
-    let attachments_path = args().nth(3).unwrap();
-    let attachments_path = Path::new(&attachments_path);
+    let attachment_images_path = args().nth(3).unwrap();
+    let attachment_images_path = Path::new(&attachment_images_path).to_owned();
+    let attachment_thumbs_path = attachment_images_path.join("thumbs");
     let specific_post_filenames = args().skip(4).map(OsString::from).collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
 
     let results = dir_entries
         .into_par_iter()
-        .map(|entry| -> eyre::Result<Vec<String>> {
+        .map(|entry| -> eyre::Result<()> {
             let entry = entry?;
             if !specific_post_filenames.is_empty() {
                 if !specific_post_filenames.contains(&entry.file_name()) {
-                    return Ok(vec![]);
+                    return Ok(());
                 }
             }
-            let result = convert_chost(&entry, output_path)
-                .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()));
-            Ok(result?)
-        })
-        .collect::<Vec<_>>();
-
-    let mut all_attachment_ids = vec![];
-    for result in results {
-        all_attachment_ids.extend(result?);
-    }
-
-    let results = all_attachment_ids
-        .into_par_iter()
-        .map(|attachment_id| -> eyre::Result<()> {
-            cache_attachment_image(&attachment_id, attachments_path)?;
-            cache_attachment_thumb(&attachment_id, &attachments_path.join("thumbs"))?;
+            let context = RealConvertChostContext {
+                attachment_images_path: attachment_images_path.clone(),
+                attachment_thumbs_path: attachment_thumbs_path.clone(),
+            };
+            convert_chost(&entry, output_path, &context)
+                .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
             Ok(())
         })
         .collect::<Vec<_>>();
+
     for result in results {
         result?;
     }
@@ -86,8 +78,29 @@ fn main() -> eyre::Result<()> {
     Ok(())
 }
 
-#[tracing::instrument(level = "error", skip(output_path))]
-fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<Vec<String>> {
+trait ConvertChostContext {
+    fn cache_attachment_image(&self, id: &str) -> eyre::Result<String>;
+    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String>;
+}
+struct RealConvertChostContext {
+    attachment_images_path: PathBuf,
+    attachment_thumbs_path: PathBuf,
+}
+impl ConvertChostContext for RealConvertChostContext {
+    fn cache_attachment_image(&self, id: &str) -> eyre::Result<String> {
+        cache_attachment_image(id, &self.attachment_images_path)
+    }
+    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
+        cache_attachment_thumb(id, &self.attachment_thumbs_path)
+    }
+}
+
+#[tracing::instrument(level = "error", skip(output_path, context))]
+fn convert_chost(
+    entry: &DirEntry,
+    output_path: &Path,
+    context: &dyn ConvertChostContext,
+) -> eyre::Result<()> {
     let input_path = entry.path();
 
     trace!("parsing");
@@ -111,32 +124,21 @@ fn convert_chost(entry: &DirEntry, output_path: &Path) -> eyre::Result<Vec<Strin
         create_dir_all(output_path.join(post_id.to_string()))?;
     }
 
-    let mut attachment_ids = vec![];
     for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_paths) {
-        convert_single_chost(
-            shared_post,
-            vec![],
-            output_path.as_path(),
-            &mut attachment_ids,
-        )?;
+        convert_single_chost(shared_post, vec![], output_path.as_path(), context)?;
     }
 
     let output_path = output_path.join(format!("{post_id}.html"));
-    convert_single_chost(
-        post,
-        shared_post_filenames,
-        output_path.as_path(),
-        &mut attachment_ids,
-    )?;
+    convert_single_chost(post, shared_post_filenames, output_path.as_path(), context)?;
 
-    Ok(attachment_ids)
+    Ok(())
 }
 
 fn convert_single_chost(
     post: Post,
     shared_post_filenames: Vec<String>,
     output_path: &Path,
-    all_attachment_ids: &mut Vec<String>,
+    context: &dyn ConvertChostContext,
 ) -> eyre::Result<()> {
     info!("writing: {output_path:?}");
     let mut output = File::create(output_path)?;
@@ -188,23 +190,15 @@ fn convert_single_chost(
         } {
             trace!("replacing blocks {start}..{end} with ast");
             let dom = process_ast(ast);
-            let ProcessChostFragmentResult {
-                html,
-                attachment_ids,
-            } = process_chost_fragment(dom)?;
+            let html = process_chost_fragment(dom, context)?;
             output.write_all(html.as_bytes())?;
-            all_attachment_ids.extend(attachment_ids);
             continue;
         }
 
         match block {
             Block::Markdown { markdown } => {
-                let ProcessChostFragmentResult {
-                    html,
-                    attachment_ids,
-                } = render_markdown_block(&markdown.content)?;
+                let html = render_markdown_block(&markdown.content, context)?;
                 output.write_all(html.as_bytes())?;
-                all_attachment_ids.extend(attachment_ids);
                 continue;
             }
             Block::Attachment { attachment } => match attachment {
@@ -214,11 +208,10 @@ fn convert_single_chost(
                     width,
                     height,
                 } => {
-                    all_attachment_ids.push(attachmentId.to_owned());
                     let template = CohostImgTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        thumb_src: cached_attachment_thumb_url(&attachmentId),
-                        src: cached_attachment_image_url(&attachmentId),
+                        thumb_src: context.cache_attachment_thumb(&attachmentId)?,
+                        src: context.cache_attachment_image(&attachmentId)?,
                         alt: altText,
                         width,
                         height,
@@ -237,16 +230,12 @@ fn convert_single_chost(
                         ..
                     },
             } => {
-                let ProcessChostFragmentResult {
-                    html,
-                    attachment_ids,
-                } = render_markdown_block(&content)?;
+                let html = render_markdown_block(&content, context)?;
                 let template = AskTemplate {
                     author: askingProject,
                     content: html,
                 };
                 output.write_all(template.render()?.as_bytes())?;
-                all_attachment_ids.extend(attachment_ids);
                 continue;
             }
             Block::Unknown { fields } => {
@@ -335,20 +324,20 @@ struct AskTemplate {
     content: String,
 }
 
-#[derive(Debug, PartialEq)]
-struct ProcessChostFragmentResult {
-    html: String,
-    attachment_ids: Vec<String>,
-}
-
-fn render_markdown_block(markdown: &str) -> eyre::Result<ProcessChostFragmentResult> {
+fn render_markdown_block(
+    markdown: &str,
+    context: &dyn ConvertChostContext,
+) -> eyre::Result<String> {
     let html = render_markdown(markdown);
     let dom = parse(html.as_bytes())?;
 
-    process_chost_fragment(dom)
+    process_chost_fragment(dom, context)
 }
 
-fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentResult> {
+fn process_chost_fragment(
+    mut dom: RcDom,
+    context: &dyn ConvertChostContext,
+) -> eyre::Result<String> {
     let mut attachment_ids = vec![];
 
     // rewrite cohost attachment urls to relative cached paths.
@@ -369,7 +358,7 @@ fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentRe
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = cached_attachment_image_url(id).into();
+                            attr.value = context.cache_attachment_image(id)?.into();
                             attrs.push(Attribute {
                                 name: QualName::new(
                                     None,
@@ -429,42 +418,61 @@ fn process_chost_fragment(mut dom: RcDom) -> eyre::Result<ProcessChostFragmentRe
         node.children.replace(children);
     }
 
-    Ok(ProcessChostFragmentResult {
-        html: serialize(dom)?,
-        attachment_ids,
-    })
+    Ok(serialize(dom)?)
 }
 
-fn cached_attachment_image_url(id: &str) -> String {
-    format!("attachments/{id}")
+fn cached_attachment_image_url(id: &str, images_path: &Path) -> eyre::Result<String> {
+    let path = images_path.join(id.to_string());
+    let mut entries = read_dir(&path)?;
+    let Some(entry) = entries.next() else {
+        bail!("directory is empty: {path:?}");
+    };
+    let original_filename = entry?.file_name();
+    let Some(original_filename) = original_filename.to_str() else {
+        bail!("unsupported filename: {original_filename:?}");
+    };
+
+    Ok(format!("attachments/{id}/{original_filename}"))
 }
 
-fn cached_attachment_thumb_url(id: &str) -> String {
-    format!("attachments/thumbs/{id}")
+fn cached_attachment_thumb_url(id: &str, thumbs_path: &Path) -> eyre::Result<String> {
+    let path = thumbs_path.join(id.to_string());
+    let mut entries = read_dir(&path)?;
+    let Some(entry) = entries.next() else {
+        bail!("directory is empty: {path:?}");
+    };
+    let original_filename = entry?.file_name();
+    let Some(original_filename) = original_filename.to_str() else {
+        bail!("unsupported filename: {original_filename:?}");
+    };
+
+    Ok(format!("attachments/thumbs/{id}/{original_filename}"))
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_image(id: &str, attachments_path: &Path) -> eyre::Result<PathBuf> {
+fn cache_attachment_image(id: &str, images_path: &Path) -> eyre::Result<String> {
     debug!("caching attachment image: {id}");
     let url = attachment_id_to_url(id);
-    let path = attachments_path.join(id);
+    let path = images_path.join(id);
     create_dir_all(&path)?;
+    cached_get_attachment(&url, &path, None)?;
 
-    Ok(cached_get_attachment(&url, &path, None)?)
+    Ok(cached_attachment_image_url(id, images_path)?)
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_thumb(id: &str, attachments_path: &Path) -> eyre::Result<PathBuf> {
+fn cache_attachment_thumb(id: &str, thumbs_path: &Path) -> eyre::Result<String> {
     fn thumb(url: &str) -> String {
         format!("{url}?width=675")
     }
 
     debug!("caching attachment thumb: {id}");
     let url = attachment_id_to_url(id);
-    let path = attachments_path.join(id);
+    let path = thumbs_path.join(id);
     create_dir_all(&path)?;
+    cached_get_attachment(&url, &path, Some(thumb))?;
 
-    Ok(cached_get_attachment(&url, &path, Some(thumb))?)
+    Ok(cached_attachment_thumb_url(id, thumbs_path)?)
 }
 
 fn cached_get_attachment(
@@ -524,26 +532,30 @@ fn cached_get_attachment(
 
 #[test]
 fn test_render_markdown_block() -> eyre::Result<()> {
-    fn result(html: &str, attachment_ids: &[&str]) -> ProcessChostFragmentResult {
-        ProcessChostFragmentResult {
-            html: html.to_owned(),
-            attachment_ids: attachment_ids.iter().map(|&x| x.to_owned()).collect(),
+    struct TestConvertChostContext {}
+    impl ConvertChostContext for TestConvertChostContext {
+        fn cache_attachment_image(&self, id: &str) -> eyre::Result<String> {
+            Ok(format!("images/{id}"))
+        }
+        fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
+            Ok(format!("thumbs/{id}"))
         }
     }
-    let n = "\n";
 
+    let n = "\n";
+    let context = TestConvertChostContext {};
     assert_eq!(
-        render_markdown_block("text")?,
-        result(&format!(r#"<p>text</p>{n}"#), &[])
+        render_markdown_block("text", &context)?,
+        format!(r#"<p>text</p>{n}"#)
     );
-    assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
-        result(&format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
-    assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>")?,
-        result(&format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#), &["44444444-4444-4444-4444-444444444444"]));
-    assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)")?,
-        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
-    assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>")?,
-        result(&format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#), &["44444444-4444-4444-4444-444444444444"]));
+    assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
+        format!(r#"<p><img src="images/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
+    assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>", &context)?,
+        format!(r#"<img src="images/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
+    assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
+        format!(r#"<p><a href="images/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+    assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>", &context)?,
+        format!(r#"<p><a href="images/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
 
     Ok(())
 }
