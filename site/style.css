@@ -24,11 +24,22 @@
 :root {
     font-family: Atkinson Hyperlegible;
 }
+nav.tags ul {
+    list-style: "";
+    text-align: center;
+    padding: 0;
+}
+nav.tags li {
+    display: inline list-item;
+    margin: 1em;
+}
 article.post_group {
     border: 1px solid black;
     max-width: 40em;
     margin: 1em auto;
 }
+nav.tags :link,
+nav.tags :visited,
 article.post_group :link,
 article.post_group :visited {
     color: currentColor;

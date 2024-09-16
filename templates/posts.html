@@ -3,6 +3,13 @@
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
 <title>{{ page_title }}</title>
+<nav class="tags">
+    <ul>
+    {% for tag in SETTINGS.interesting_tags -%}
+    <li><a href="{{ tag }}.html">#{{ tag }}</a>
+    {%- endfor %}
+    </ul>
+</nav>
 {% for post_group in post_groups %}
 <article class="post_group">
 {% if !post_group.meta.references.is_empty() %}
