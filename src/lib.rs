@@ -52,6 +52,7 @@ pub struct PostsPageTemplate {
 pub struct AtomFeedTemplate {
     pub post_groups: Vec<PostGroup>,
     pub feed_title: String,
+    pub updated: String,
 }
 
 #[derive(Clone, Debug)]

@@ -2,12 +2,14 @@ use std::{collections::BTreeMap, env::args, fs::File, io::Write, path::Path};
 
 use askama::Template;
 use autost::{cli_init, AtomFeedTemplate, PostGroup, PostsPageTemplate, TemplatedPost, SETTINGS};
+use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self};
 use tracing::{info, trace};
 
 fn main() -> eyre::Result<()> {
     cli_init()?;
 
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut post_groups = vec![];
     let mut post_groups_with_interesting_tags = vec![];
     let mut post_groups_by_interesting_tag = BTreeMap::default();
@@ -87,6 +89,7 @@ fn main() -> eyre::Result<()> {
     let template = AtomFeedTemplate {
         post_groups: post_groups_with_interesting_tags.clone(),
         feed_title: SETTINGS.site_title.clone(),
+        updated: now.clone(),
     };
     let atom_feed_path = output_path.join("index.feed.xml");
     writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
@@ -94,6 +97,7 @@ fn main() -> eyre::Result<()> {
         let template = AtomFeedTemplate {
             post_groups,
             feed_title: format!("{} — {tag}", SETTINGS.site_title),
+            updated: now.clone(),
         };
         let atom_feed_path = output_path.join(format!("{tag}.feed.xml"));
         writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
