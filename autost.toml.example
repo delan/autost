@@ -1,2 +1,3 @@
 base_url = "/"
+feed_title = "ao!!"
 interesting_tags = ["photography", "cooking"]

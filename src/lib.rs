@@ -43,12 +43,14 @@ pub struct ExtractedPost {
 #[template(path = "posts.html")]
 pub struct PostsPageTemplate {
     pub post_groups: Vec<PostGroup>,
+    pub feed_href: Option<String>,
 }
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
 pub struct AtomFeedTemplate {
     pub post_groups: Vec<PostGroup>,
+    pub feed_title: String,
 }
 
 #[derive(Clone, Debug)]

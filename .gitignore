@@ -1,3 +1,4 @@
 /target/
 /autost.toml
 /site/*.html
+/site/*.feed.xml

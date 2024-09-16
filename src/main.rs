@@ -68,6 +68,7 @@ fn main() -> eyre::Result<()> {
         // reader step: generate post page.
         let template = PostsPageTemplate {
             post_groups: vec![post_group.clone()],
+            feed_href: None,
         };
         let path = output_path.join(filename);
         info!("writing post page: {path:?}");
@@ -81,12 +82,21 @@ fn main() -> eyre::Result<()> {
     }
     trace!("post groups by tag: {post_groups_by_interesting_tag:#?}");
 
-    // author step: generate atom feed.
+    // author step: generate atom feeds.
     let template = AtomFeedTemplate {
-        post_groups: post_groups.clone(),
+        post_groups: post_groups_with_interesting_tags.clone(),
+        feed_title: SETTINGS.feed_title.clone(),
     };
-    let atom_feed_path = output_path.join("feed.xml");
+    let atom_feed_path = output_path.join("index.feed.xml");
     writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
+    for (tag, post_groups) in post_groups_by_interesting_tag.clone().into_iter() {
+        let template = AtomFeedTemplate {
+            post_groups,
+            feed_title: format!("{} — {tag}", SETTINGS.feed_title),
+        };
+        let atom_feed_path = output_path.join(format!("{tag}.feed.xml"));
+        writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
+    }
 
     let mut tags = tags.into_iter().collect::<Vec<_>>();
     tags.sort_by(|p, q| p.1.cmp(&q.1).reverse().then(p.0.cmp(&q.0)));
@@ -101,11 +111,13 @@ fn main() -> eyre::Result<()> {
     let interesting_tags_filenames = SETTINGS
         .interesting_tags
         .iter()
-        .map(|tag| format!("{tag}.html"));
+        .flat_map(|tag| [format!("{tag}.feed.xml"), format!("{tag}.html")]);
     let interesting_tags_posts_filenames = post_groups_with_interesting_tags
         .iter()
         .map(|post_group| post_group.href.clone());
-    let interesting_filenames = interesting_tags_filenames
+    let interesting_filenames = vec!["index.html".to_owned(), "index.feed.xml".to_owned()]
+        .into_iter()
+        .chain(interesting_tags_filenames)
         .chain(interesting_tags_posts_filenames)
         .map(|filename| format!("'{}'", filename.replace("'", "'\\''")))
         .collect::<Vec<_>>()
@@ -116,16 +128,23 @@ fn main() -> eyre::Result<()> {
     );
 
     // reader step: generate posts pages.
-    let template = PostsPageTemplate { post_groups };
+    let template = PostsPageTemplate {
+        post_groups,
+        feed_href: None,
+    };
     let posts_page_path = output_path.join("all.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     let template = PostsPageTemplate {
         post_groups: post_groups_with_interesting_tags,
+        feed_href: Some("index.feed.xml".to_owned()),
     };
     let posts_page_path = output_path.join("index.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     for (tag, post_groups) in post_groups_by_interesting_tag.into_iter() {
-        let template = PostsPageTemplate { post_groups };
+        let template = PostsPageTemplate {
+            post_groups,
+            feed_href: Some(format!("{tag}.feed.xml")),
+        };
         let posts_page_path = output_path.join(format!("{tag}.html"));
         writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     }
