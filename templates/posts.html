@@ -1,5 +1,6 @@
 <!doctype html><meta charset="utf-8">
 {%~ if let Some(feed_href) = feed_href ~%}<link rel="alternate" type="application/atom+xml" href="{{ feed_href }}">{%~ endif ~%}
+<meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
 <title>{{ page_title }}</title>
 {% for post_group in post_groups %}
