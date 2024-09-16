@@ -502,13 +502,14 @@ fn cached_get_attachment(
         .redirect(Policy::none())
         .build()?;
     let redirect = client.head(url).send()?;
-    let Some(location) = redirect.headers().get("location") else {
+
+    let Some(url) = redirect.headers().get("location") else {
         bail!("expected redirect but got {}: {url}", redirect.status());
     };
-    let location = location.to_str()?;
+    let url = url.to_str()?;
 
-    let Some((_, original_filename)) = location.rsplit_once("/") else {
-        bail!("redirect target has no slashes: {location}");
+    let Some((_, original_filename)) = url.rsplit_once("/") else {
+        bail!("redirect target has no slashes: {url}");
     };
     trace!("original filename: {original_filename}");
 
