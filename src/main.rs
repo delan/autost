@@ -4,7 +4,7 @@ use askama::Template;
 use autost::{cli_init, AtomFeedTemplate, PostGroup, PostsPageTemplate, TemplatedPost, SETTINGS};
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self};
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 fn main() -> eyre::Result<()> {
     cli_init()?;
@@ -98,7 +98,7 @@ fn main() -> eyre::Result<()> {
             feed_href: None,
         };
         let path = output_path.join(filename);
-        info!("writing post page: {path:?}");
+        debug!("writing post page: {path:?}");
         writeln!(File::create(path)?, "{}", template.render()?)?;
     }
 
@@ -138,6 +138,13 @@ fn main() -> eyre::Result<()> {
             .filter(|(tag, _)| SETTINGS.interesting_tags.contains(tag))
             .collect::<Vec<_>>()
     );
+    info!("interesting post groups: {}", interesting_post_groups.len());
+    info!("own skipped post groups: {}", skipped_own_post_groups.len());
+    info!(
+        "others’ skipped post groups: {}",
+        skipped_other_post_groups.len()
+    );
+    info!("all post groups: {}", post_groups.len());
 
     let interesting_tags_filenames = SETTINGS
         .interesting_tags
