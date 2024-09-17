@@ -4,6 +4,7 @@ site_title = "ao!!"
 self_authors = ["https://cohost.org/staff"]
 interesting_tags = ["photography", "cooking"]
 # interesting_archived_post_groups_list_path = "path/to/interesting.txt"
+# excluded_archived_post_groups_list_path = "path/to/excluded.txt"
 
 [[nav]]
 href = "."

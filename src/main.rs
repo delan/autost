@@ -12,6 +12,8 @@ fn main() -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut post_groups = vec![];
     let mut interesting_post_groups = vec![];
+    let mut marked_interesting_post_groups = vec![];
+    let mut excluded_post_groups = vec![];
     let mut skipped_own_post_groups = vec![];
     let mut skipped_other_post_groups = vec![];
     let mut post_groups_by_interesting_tag = BTreeMap::default();
@@ -58,8 +60,11 @@ fn main() -> eyre::Result<()> {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
         }
         post_groups.push(post_group.clone());
-        if SETTINGS.post_group_is_on_interesting_archived_list(&post_group) {
+        if SETTINGS.post_group_is_on_excluded_archived_list(&post_group) {
+            excluded_post_groups.push(post_group.clone());
+        } else if SETTINGS.post_group_is_on_interesting_archived_list(&post_group) {
             interesting_post_groups.push(post_group.clone());
+            marked_interesting_post_groups.push(post_group.clone());
         } else {
             let mut was_interesting = false;
             for tag in post_group.meta.tags.iter() {
@@ -104,6 +109,8 @@ fn main() -> eyre::Result<()> {
 
     post_groups.sort_by(PostGroup::reverse_chronological);
     interesting_post_groups.sort_by(PostGroup::reverse_chronological);
+    marked_interesting_post_groups.sort_by(PostGroup::reverse_chronological);
+    excluded_post_groups.sort_by(PostGroup::reverse_chronological);
     skipped_own_post_groups.sort_by(PostGroup::reverse_chronological);
     skipped_other_post_groups.sort_by(PostGroup::reverse_chronological);
     for (_, post_groups) in post_groups_by_interesting_tag.iter_mut() {
@@ -174,15 +181,32 @@ fn main() -> eyre::Result<()> {
     let posts_page_path = output_path.join("all.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     let template = PostsPageTemplate {
+        post_groups: excluded_post_groups,
+        page_title: format!("excluded archived posts — {}", SETTINGS.site_title),
+        feed_href: None,
+    };
+    let posts_page_path = output_path.join("excluded.html");
+    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+    let template = PostsPageTemplate {
+        post_groups: marked_interesting_post_groups,
+        page_title: format!(
+            "archived posts that were marked interesting — {}",
+            SETTINGS.site_title
+        ),
+        feed_href: None,
+    };
+    let posts_page_path = output_path.join("marked_interesting.html");
+    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+    let template = PostsPageTemplate {
         post_groups: skipped_own_post_groups,
-        page_title: format!("own skipped posts — {}", SETTINGS.site_title),
+        page_title: format!("own skipped archived posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
     let posts_page_path = output_path.join("skipped_own.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     let template = PostsPageTemplate {
         post_groups: skipped_other_post_groups,
-        page_title: format!("others’ skipped posts — {}", SETTINGS.site_title),
+        page_title: format!("others’ skipped archived posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
     let posts_page_path = output_path.join("skipped_other.html");

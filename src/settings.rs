@@ -17,6 +17,8 @@ pub struct Settings {
     pub interesting_tags: Vec<String>,
     interesting_archived_post_groups_list_path: Option<String>,
     pub interesting_archived_post_groups_list: Option<Vec<String>>,
+    excluded_archived_post_groups_list_path: Option<String>,
+    pub excluded_archived_post_groups_list: Option<Vec<String>>,
     pub nav: Vec<NavLink>,
 }
 
@@ -44,12 +46,25 @@ impl Settings {
                 .collect::<Result<Vec<_>, _>>()?;
             result.interesting_archived_post_groups_list = Some(list);
         }
+        if let Some(path) = result.excluded_archived_post_groups_list_path.as_ref() {
+            let list = BufReader::new(File::open(path)?)
+                .lines()
+                .collect::<Result<Vec<_>, _>>()?;
+            result.excluded_archived_post_groups_list = Some(list);
+        }
 
         Ok(result)
     }
 
     pub fn post_group_is_on_interesting_archived_list(&self, post_group: &PostGroup) -> bool {
         self.interesting_archived_post_groups_list
+            .as_ref()
+            .zip(post_group.meta.archived.as_ref())
+            .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
+    }
+
+    pub fn post_group_is_on_excluded_archived_list(&self, post_group: &PostGroup) -> bool {
+        self.excluded_archived_post_groups_list
             .as_ref()
             .zip(post_group.meta.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
