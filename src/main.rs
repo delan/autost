@@ -56,7 +56,7 @@ fn main() -> eyre::Result<()> {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
         }
         post_groups.push(post_group.clone());
-        if SETTINGS.interesting_post_groups.contains(&filename) {
+        if SETTINGS.post_group_is_on_interesting_archived_list(&post_group) {
             interesting_post_groups.push(post_group.clone());
         } else {
             for tag in post_group.meta.tags.iter() {
