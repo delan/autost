@@ -2,6 +2,7 @@ base_url = "/"
 external_base_url = "https://example.com/"
 site_title = "ao!!"
 interesting_tags = ["photography", "cooking"]
+interesting_post_groups = ["123456.html", "234567.html"]
 
 [[nav]]
 href = "."

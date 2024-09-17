@@ -11,7 +11,7 @@ fn main() -> eyre::Result<()> {
 
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut post_groups = vec![];
-    let mut post_groups_with_interesting_tags = vec![];
+    let mut interesting_post_groups = vec![];
     let mut post_groups_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
@@ -56,14 +56,18 @@ fn main() -> eyre::Result<()> {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
         }
         post_groups.push(post_group.clone());
-        for tag in post_group.meta.tags.iter() {
-            if SETTINGS.interesting_tags.contains(tag) {
-                post_groups_with_interesting_tags.push(post_group.clone());
-                post_groups_by_interesting_tag
-                    .entry(tag.clone())
-                    .or_insert(vec![])
-                    .push(post_group.clone());
-                break;
+        if SETTINGS.interesting_post_groups.contains(&filename) {
+            interesting_post_groups.push(post_group.clone());
+        } else {
+            for tag in post_group.meta.tags.iter() {
+                if SETTINGS.interesting_tags.contains(tag) {
+                    interesting_post_groups.push(post_group.clone());
+                    post_groups_by_interesting_tag
+                        .entry(tag.clone())
+                        .or_insert(vec![])
+                        .push(post_group.clone());
+                    break;
+                }
             }
         }
 
@@ -79,7 +83,7 @@ fn main() -> eyre::Result<()> {
     }
 
     post_groups.sort_by(PostGroup::reverse_chronological);
-    post_groups_with_interesting_tags.sort_by(PostGroup::reverse_chronological);
+    interesting_post_groups.sort_by(PostGroup::reverse_chronological);
     for (_, post_groups) in post_groups_by_interesting_tag.iter_mut() {
         post_groups.sort_by(PostGroup::reverse_chronological);
     }
@@ -87,7 +91,7 @@ fn main() -> eyre::Result<()> {
 
     // author step: generate atom feeds.
     let template = AtomFeedTemplate {
-        post_groups: post_groups_with_interesting_tags.clone(),
+        post_groups: interesting_post_groups.clone(),
         feed_title: SETTINGS.site_title.clone(),
         updated: now.clone(),
     };
@@ -117,7 +121,7 @@ fn main() -> eyre::Result<()> {
         .interesting_tags
         .iter()
         .flat_map(|tag| [format!("{tag}.feed.xml"), format!("{tag}.html")]);
-    let interesting_tags_posts_filenames = post_groups_with_interesting_tags
+    let interesting_tags_posts_filenames = interesting_post_groups
         .iter()
         .map(|post_group| post_group.href.clone());
     let interesting_filenames = vec!["index.html".to_owned(), "index.feed.xml".to_owned()]
@@ -141,7 +145,7 @@ fn main() -> eyre::Result<()> {
     let posts_page_path = output_path.join("all.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     let template = PostsPageTemplate {
-        post_groups: post_groups_with_interesting_tags,
+        post_groups: interesting_post_groups,
         page_title: format!("posts — {}", SETTINGS.site_title),
         feed_href: Some("index.feed.xml".to_owned()),
     };

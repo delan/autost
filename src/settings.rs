@@ -9,6 +9,7 @@ pub struct Settings {
     pub external_base_url: String,
     pub site_title: String,
     pub interesting_tags: Vec<String>,
+    pub interesting_post_groups: Vec<String>,
     pub nav: Vec<NavLink>,
 }
 
