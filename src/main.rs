@@ -12,6 +12,8 @@ fn main() -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut post_groups = vec![];
     let mut interesting_post_groups = vec![];
+    let mut skipped_own_post_groups = vec![];
+    let mut skipped_other_post_groups = vec![];
     let mut post_groups_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
@@ -59,6 +61,7 @@ fn main() -> eyre::Result<()> {
         if SETTINGS.post_group_is_on_interesting_archived_list(&post_group) {
             interesting_post_groups.push(post_group.clone());
         } else {
+            let mut was_interesting = false;
             for tag in post_group.meta.tags.iter() {
                 if SETTINGS.interesting_tags.contains(tag) {
                     interesting_post_groups.push(post_group.clone());
@@ -66,7 +69,24 @@ fn main() -> eyre::Result<()> {
                         .entry(tag.clone())
                         .or_insert(vec![])
                         .push(post_group.clone());
+                    was_interesting = true;
                     break;
+                }
+            }
+            if !was_interesting {
+                // if the post group had some input from us, that is, if it contains any posts that
+                // were authored by us with content and/or tags...
+                if post_group.posts.iter().any(|post| {
+                    (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
+                        && post
+                            .meta
+                            .author
+                            .as_ref()
+                            .is_some_and(|author| SETTINGS.self_authors.contains(&author.href))
+                }) {
+                    skipped_own_post_groups.push(post_group.clone());
+                } else {
+                    skipped_other_post_groups.push(post_group.clone());
                 }
             }
         }
@@ -84,6 +104,8 @@ fn main() -> eyre::Result<()> {
 
     post_groups.sort_by(PostGroup::reverse_chronological);
     interesting_post_groups.sort_by(PostGroup::reverse_chronological);
+    skipped_own_post_groups.sort_by(PostGroup::reverse_chronological);
+    skipped_other_post_groups.sort_by(PostGroup::reverse_chronological);
     for (_, post_groups) in post_groups_by_interesting_tag.iter_mut() {
         post_groups.sort_by(PostGroup::reverse_chronological);
     }
@@ -136,7 +158,7 @@ fn main() -> eyre::Result<()> {
         interesting_filenames
     );
 
-    // reader step: generate posts pages.
+    // reader step: generate internal posts pages.
     let template = PostsPageTemplate {
         post_groups,
         page_title: format!("all posts — {}", SETTINGS.site_title),
@@ -144,6 +166,22 @@ fn main() -> eyre::Result<()> {
     };
     let posts_page_path = output_path.join("all.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+    let template = PostsPageTemplate {
+        post_groups: skipped_own_post_groups,
+        page_title: format!("own skipped posts — {}", SETTINGS.site_title),
+        feed_href: None,
+    };
+    let posts_page_path = output_path.join("skipped_own.html");
+    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+    let template = PostsPageTemplate {
+        post_groups: skipped_other_post_groups,
+        page_title: format!("others’ skipped posts — {}", SETTINGS.site_title),
+        feed_href: None,
+    };
+    let posts_page_path = output_path.join("skipped_other.html");
+    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+
+    // reader step: generate posts pages.
     let template = PostsPageTemplate {
         post_groups: interesting_post_groups,
         page_title: format!("posts — {}", SETTINGS.site_title),

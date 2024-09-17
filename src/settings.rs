@@ -13,6 +13,7 @@ pub struct Settings {
     pub base_url: String,
     pub external_base_url: String,
     pub site_title: String,
+    pub self_authors: Vec<String>,
     pub interesting_tags: Vec<String>,
     interesting_archived_post_groups_list_path: Option<String>,
     pub interesting_archived_post_groups_list: Option<Vec<String>>,

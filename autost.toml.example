@@ -1,6 +1,7 @@
 base_url = "/"
 external_base_url = "https://example.com/"
 site_title = "ao!!"
+self_authors = ["https://cohost.org/staff"]
 interesting_tags = ["photography", "cooking"]
 # interesting_archived_post_groups_list_path = "path/to/interesting.txt"
 
