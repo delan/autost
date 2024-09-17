@@ -79,9 +79,9 @@ fn main() -> eyre::Result<()> {
                 }
             }
             if !was_interesting {
-                // if the post group had some input from us, that is, if it contains any posts that
-                // were authored by us with content and/or tags...
-                if post_group.posts.iter().any(|post| {
+                // if the post group had some input from us at publish time, that is, if the last
+                // post was authored by us with content and/or tags...
+                if post_group.posts.last().is_some_and(|post| {
                     (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
                         && post
                             .meta
