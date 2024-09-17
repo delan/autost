@@ -515,6 +515,7 @@ fn cached_get_attachment(
     let Some((_, original_filename)) = url.rsplit_once("/") else {
         bail!("redirect target has no slashes: {url}");
     };
+    let original_filename = urlencoding::decode(original_filename)?;
     trace!("original filename: {original_filename}");
 
     // cohost attachment redirects don’t preserve query params, so if we want to add any,
@@ -528,7 +529,7 @@ fn cached_get_attachment(
         url.to_owned()
     };
 
-    let path = path.join(original_filename);
+    let path = path.join(original_filename.as_ref());
     let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
     File::create(&path)?.write_all(&result)?;
 
