@@ -15,6 +15,7 @@ pub struct Settings {
     pub site_title: String,
     pub self_authors: Vec<String>,
     pub interesting_tags: Vec<String>,
+    pub interesting_output_filenames_list_path: Option<String>,
     interesting_archived_post_groups_list_path: Option<String>,
     pub interesting_archived_post_groups_list: Option<Vec<String>>,
     excluded_archived_post_groups_list_path: Option<String>,

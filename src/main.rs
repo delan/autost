@@ -164,13 +164,12 @@ fn main() -> eyre::Result<()> {
         .into_iter()
         .chain(interesting_tags_filenames)
         .chain(interesting_tags_posts_filenames)
-        .map(|filename| format!("'{}'", filename.replace("'", "'\\''")))
+        .map(|filename| format!("{}\n", filename))
         .collect::<Vec<_>>()
-        .join(" ");
-    info!(
-        "filenames reachable from interesting tags only: {}",
-        interesting_filenames
-    );
+        .join("");
+    if let Some(path) = &SETTINGS.interesting_output_filenames_list_path {
+        File::create(path)?.write_all(interesting_filenames.as_bytes())?;
+    }
 
     // reader step: generate internal posts pages.
     let template = PostsPageTemplate {

@@ -3,6 +3,7 @@ external_base_url = "https://example.com/"
 site_title = "ao!!"
 self_authors = ["https://cohost.org/staff"]
 interesting_tags = ["photography", "cooking"]
+# interesting_output_filenames_list_path = "path/to/output_interesting.txt"
 # interesting_archived_post_groups_list_path = "path/to/interesting.txt"
 # excluded_archived_post_groups_list_path = "path/to/excluded.txt"
 
