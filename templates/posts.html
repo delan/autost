@@ -22,9 +22,12 @@
     <div class="meta">
         {% if let Some(author) = post_group.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> <a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a></span>{% endif %}
         <span class="gap">{% if post_group.meta.author.is_some() && post_group.meta.published.is_some() %}—{% endif %}</span>
+        <span>
+        {% if let Some(archived) = post_group.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
         <a class="time" href="{{ post_group.href }}">
         {% if let Some(published) = post_group.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
         </a>
+        </span>
     </div>
 </header>
 {% endif %}
@@ -34,9 +37,12 @@
         <div class="meta">
             {% if let Some(author) = post.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> <a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a></span>{% endif %}
             <span class="gap">{% if post.meta.author.is_some() && post.meta.published.is_some() %}—{% endif %}</span>
+            <span>
+            {% if let Some(archived) = post.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
             {% if post_group.meta.references.is_empty() %}<a class="time" href="{{ post_group.href }}">{% endif %}
             {% if let Some(published) = post.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
             {% if post_group.meta.references.is_empty() %}</a>{% endif %}
+            </span>
         </div>
         <h1>
             {% if post_group.meta.references.is_empty() %}<a href="{{ post_group.href }}">{% endif %}

@@ -76,6 +76,8 @@ article.post > header .meta {
 }
 article.post_group > header .handle,
 article.post > header .handle,
+article.post_group > header .archived,
+article.post > header .archived,
 article.post_group > header .time,
 article.post > header .time,
 article.post_group > header time,

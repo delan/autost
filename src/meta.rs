@@ -52,6 +52,9 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         let href = attr_value(&attrs.borrow(), "href")?.map(|t| t.to_owned());
                         let name = attr_value(&attrs.borrow(), "name")?.map(|t| t.to_owned());
                         match attr_value(&attrs.borrow(), "rel")? {
+                            Some("archived") => {
+                                meta.archived = href;
+                            }
                             Some("references") => {
                                 if let Some(href) = href {
                                     meta.references.push(href);
@@ -97,6 +100,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
 fn test_extract_metadata() -> eyre::Result<()> {
     fn post(
         unsafe_html: &str,
+        archived: Option<&str>,
         references: &[&str],
         title: Option<&str>,
         published: Option<&str>,
@@ -107,6 +111,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
         ExtractedPost {
             unsafe_html: unsafe_html.to_owned(),
             meta: PostMeta {
+                archived: archived.map(|a| a.to_owned()),
                 references: references.iter().map(|&url| url.to_owned()).collect(),
                 title: title.map(|t| t.to_owned()),
                 published: published.map(|t| t.to_owned()),
@@ -118,7 +123,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
     }
     assert_eq!(
         extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
-        post("bar", &[], Some("foo"), None, None, &[], false),
+        post("bar", None, &[], Some("foo"), None, None, &[], false),
     );
 
     Ok(())

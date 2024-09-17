@@ -17,6 +17,7 @@ pub static SETTINGS: LazyLock<Settings> =
 #[derive(Clone, Debug, Default, PartialEq, Template)]
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
+    pub archived: Option<String>,
     pub references: Vec<String>,
     pub title: Option<String>,
     pub published: Option<String>,

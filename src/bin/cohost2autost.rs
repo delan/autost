@@ -144,6 +144,10 @@ fn convert_single_chost(
     let mut output = File::create(output_path)?;
 
     let meta = PostMeta {
+        archived: Some(format!(
+            "https://cohost.org/{}/post/{}",
+            post.postingProject.handle, post.filename
+        )),
         references: shared_post_filenames,
         title: Some(post.headline),
         published: Some(post.publishedAt),
