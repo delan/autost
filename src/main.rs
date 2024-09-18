@@ -22,6 +22,7 @@ fn main() -> eyre::Result<()> {
     let mut excluded_threads = vec![];
     let mut skipped_own_threads = vec![];
     let mut skipped_other_threads = vec![];
+    let mut untagged_interesting_threads = vec![];
     let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
@@ -99,6 +100,9 @@ fn main() -> eyre::Result<()> {
                         .push(thread.clone());
                 }
             }
+            if thread.meta.tags.is_empty() {
+                untagged_interesting_threads.push(thread.clone());
+            }
         } else {
             // if the thread had some input from us at publish time, that is, if the last post was
             // authored by us with content and/or tags...
@@ -133,6 +137,7 @@ fn main() -> eyre::Result<()> {
     excluded_threads.sort_by(Thread::reverse_chronological);
     skipped_own_threads.sort_by(Thread::reverse_chronological);
     skipped_other_threads.sort_by(Thread::reverse_chronological);
+    untagged_interesting_threads.sort_by(Thread::reverse_chronological);
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
         threads.sort_by(Thread::reverse_chronological);
     }
@@ -229,6 +234,13 @@ fn main() -> eyre::Result<()> {
         feed_href: None,
     };
     let posts_page_path = output_path.join("skipped_other.html");
+    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+    let template = ThreadsTemplate {
+        threads: untagged_interesting_threads,
+        page_title: format!("untagged interesting posts — {}", SETTINGS.site_title),
+        feed_href: None,
+    };
+    let posts_page_path = output_path.join("untagged.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
 
     // reader step: generate posts pages.
