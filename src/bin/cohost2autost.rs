@@ -199,13 +199,8 @@ fn convert_single_chost(
             continue;
         }
 
-        match block {
-            Block::Markdown { markdown } => {
-                let html = render_markdown_block(&markdown.content, context)?;
-                output.write_all(html.as_bytes())?;
-                continue;
-            }
-            Block::Attachment { attachment } => match attachment {
+        let mut handle_attachment = |attachment| -> eyre::Result<()> {
+            match attachment {
                 Attachment::Image {
                     attachmentId,
                     altText,
@@ -225,7 +220,17 @@ fn convert_single_chost(
                 Attachment::Unknown { fields } => {
                     warn!("unknown attachment kind: {fields:?}");
                 }
-            },
+            }
+            Ok(())
+        };
+
+        match block {
+            Block::Markdown { markdown } => {
+                let html = render_markdown_block(&markdown.content, context)?;
+                output.write_all(html.as_bytes())?;
+                continue;
+            }
+            Block::Attachment { attachment } => handle_attachment(attachment)?,
             Block::Ask {
                 ask:
                     Ask {
@@ -241,6 +246,14 @@ fn convert_single_chost(
                 };
                 output.write_all(template.render()?.as_bytes())?;
                 continue;
+            }
+            Block::AttachmentRow { attachments } => {
+                for block in attachments {
+                    match block {
+                        Block::Attachment { attachment } => handle_attachment(attachment)?,
+                        _ => warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}"),
+                    }
+                }
             }
             Block::Unknown { fields } => {
                 warn!("unknown block type: {fields:?}");

@@ -12,7 +12,7 @@ what if you could have a single-user self-hosted thing with the same posting and
         - [x] render asks
         - [x] render image attachments
         - [ ] render audio attachments
-        - [ ] render attachment rows (new post editor)
+        - [x] render attachment rows (new post editor)
     - [x] generate the main page (`index.html`)
     - [x] generate chost pages (`<postId>.html`)
     - [x] generate tag pages (`tagged/<tag>.html`)

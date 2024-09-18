@@ -53,6 +53,9 @@ pub enum Block {
     #[serde(rename = "attachment")]
     Attachment { attachment: Attachment },
 
+    #[serde(rename = "attachment-row")]
+    AttachmentRow { attachments: Vec<Block> },
+
     #[serde(rename = "ask")]
     Ask { ask: Ask },
 
