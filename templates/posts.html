@@ -1,4 +1,5 @@
 <!doctype html><meta charset="utf-8">
+<base href="{{ SETTINGS.base_url }}">{# you can change your base url without rerunning cohost2autost #}
 {%~ if let Some(feed_href) = feed_href ~%}<link rel="alternate" type="application/atom+xml" href="{{ feed_href }}">{%~ endif ~%}
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
@@ -8,7 +9,7 @@
     {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
     <ul class="tags">
-    {% for tag in SETTINGS.interesting_tags -%}<li><a href="{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
+    {% for tag in SETTINGS.interesting_tags -%}<li><a href="tagged/{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
     </ul>
     <hr>
     <ul>
@@ -54,7 +55,7 @@
     <div class="content">{{ post.safe_html|safe }}</div>
     {% endif %}
     <footer>{% for tag in post.meta.tags %}
-        {%- if SETTINGS.interesting_tags.contains(tag) -%}<a href="{{ tag }}.html">{%- endif -%}
+        {%- if SETTINGS.interesting_tags.contains(tag) -%}<a href="tagged/{{ tag }}.html">{%- endif -%}
         <span>#{{ tag }}</span>
         {%- if SETTINGS.interesting_tags.contains(tag) -%}</a>{%- endif -%}
         &#x2003;

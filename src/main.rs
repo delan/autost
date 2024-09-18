@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, env::args, fs::File, io::Write, path::Path};
+use std::{
+    collections::BTreeMap,
+    env::args,
+    fs::{create_dir_all, File},
+    io::Write,
+    path::Path,
+};
 
 use askama::Template;
 use autost::{cli_init, AtomFeedTemplate, PostGroup, PostsPageTemplate, TemplatedPost, SETTINGS};
@@ -117,6 +123,8 @@ fn main() -> eyre::Result<()> {
         post_groups.sort_by(PostGroup::reverse_chronological);
     }
     trace!("post groups by tag: {post_groups_by_interesting_tag:#?}");
+    let tagged_path = output_path.join("tagged");
+    create_dir_all(&tagged_path)?;
 
     // author step: generate atom feeds.
     let template = AtomFeedTemplate {
@@ -132,7 +140,7 @@ fn main() -> eyre::Result<()> {
             feed_title: format!("{} — {tag}", SETTINGS.site_title),
             updated: now.clone(),
         };
-        let atom_feed_path = output_path.join(format!("{tag}.feed.xml"));
+        let atom_feed_path = tagged_path.join(format!("{tag}.feed.xml"));
         writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
     }
 
@@ -153,10 +161,12 @@ fn main() -> eyre::Result<()> {
     );
     info!("all post groups: {}", post_groups.len());
 
-    let interesting_tags_filenames = SETTINGS
-        .interesting_tags
-        .iter()
-        .flat_map(|tag| [format!("{tag}.feed.xml"), format!("{tag}.html")]);
+    let interesting_tags_filenames = SETTINGS.interesting_tags.iter().flat_map(|tag| {
+        [
+            format!("tagged/{tag}.feed.xml"),
+            format!("tagged/{tag}.html"),
+        ]
+    });
     let interesting_tags_posts_filenames = interesting_post_groups
         .iter()
         .map(|post_group| post_group.href.clone());
@@ -223,9 +233,9 @@ fn main() -> eyre::Result<()> {
         let template = PostsPageTemplate {
             post_groups,
             page_title: format!("#{tag} — {}", SETTINGS.site_title),
-            feed_href: Some(format!("{tag}.feed.xml")),
+            feed_href: Some(format!("tagged/{tag}.feed.xml")),
         };
-        let posts_page_path = output_path.join(format!("{tag}.html"));
+        let posts_page_path = tagged_path.join(format!("{tag}.html"));
         writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
     }
 

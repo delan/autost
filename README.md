@@ -13,8 +13,9 @@ what if you could have a single-user self-hosted thing with the same posting and
         - [x] render image attachments
         - [ ] render audio attachments
         - [ ] render attachment rows (new post editor)
-    - [x] generate chost pages
-    - [x] generate tag pages
+    - [x] generate the main page (`index.html`)
+    - [x] generate chost pages (`<postId>.html`)
+    - [x] generate tag pages (`tagged/<tag>.html`)
 2. curate chosts
     - [x] select tags to include on the main page (`interesting_tags`)
     - [x] select posts to include on the main page (`interesting_archived_post_groups_list_path`)
@@ -24,7 +25,7 @@ what if you could have a single-user self-hosted thing with the same posting and
     - [ ] add tags to chosts without editing the originals
 3. compose new posts
 4. follow others
-    - [x] generate atom feeds (`index.feed.xml`, `<tag>.feed.xml`)
+    - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
 
 ## how to dump your own chosts
 
