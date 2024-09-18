@@ -31,7 +31,16 @@ fn main() -> eyre::Result<()> {
     for path in args().skip(2) {
         let path = Path::new(&path);
 
-        let post = TemplatedPost::load(path)?;
+        let mut post = TemplatedPost::load(path)?;
+        let mut extra_tags = SETTINGS
+            .extra_archived_thread_tags(&post)
+            .into_iter()
+            .filter(|tag| !post.meta.tags.contains(tag))
+            .map(|tag| tag.to_owned())
+            .collect::<Vec<_>>();
+        extra_tags.extend(post.meta.tags);
+        post.meta.tags = extra_tags;
+
         let filename = post.filename.clone();
         let meta = post.meta.clone();
 

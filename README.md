@@ -53,3 +53,17 @@ $ cargo run --bin cohost2autost -- path/to/chosts path/to/autosts site/attachmen
 ```
 $ cargo run -- site path/to/autosts/*
 ```
+
+## how to include or exclude specific chosts
+
+1. set the `interesting_archived_threads_list_path` or `excluded_archived_threads_list_path` to a text file
+2. in the text file, add a line for each chost with the original cohost url
+
+## how to add tags to converted chosts
+
+1. set the `archived_thread_tags_path` to a text file
+2. in the text file, add a line for each chost as follows:
+
+```
+https://cohost.org/project/post/123456-slug tag,another tag
+```
