@@ -75,39 +75,44 @@ fn main() -> eyre::Result<()> {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
         }
         threads.push(thread.clone());
+        let mut was_interesting = false;
         if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
             excluded_threads.push(thread.clone());
         } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
-            interesting_threads.push(thread.clone());
             marked_interesting_threads.push(thread.clone());
+            was_interesting = true;
         } else {
-            let mut was_interesting = false;
             for tag in thread.meta.tags.iter() {
                 if SETTINGS.interesting_tags.contains(tag) {
-                    interesting_threads.push(thread.clone());
-                    threads_by_interesting_tag
-                        .entry(tag.clone())
-                        .or_insert(vec![])
-                        .push(thread.clone());
                     was_interesting = true;
                     break;
                 }
             }
-            if !was_interesting {
-                // if the thread had some input from us at publish time, that is, if the last post
-                // was authored by us with content and/or tags...
-                if thread.posts.last().is_some_and(|post| {
-                    (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
-                        && post
-                            .meta
-                            .author
-                            .as_ref()
-                            .is_some_and(|author| SETTINGS.self_authors.contains(&author.href))
-                }) {
-                    skipped_own_threads.push(thread.clone());
-                } else {
-                    skipped_other_threads.push(thread.clone());
+        }
+        if was_interesting {
+            interesting_threads.push(thread.clone());
+            for tag in thread.meta.tags.iter() {
+                if SETTINGS.interesting_tags.contains(tag) {
+                    threads_by_interesting_tag
+                        .entry(tag.clone())
+                        .or_insert(vec![])
+                        .push(thread.clone());
                 }
+            }
+        } else {
+            // if the thread had some input from us at publish time, that is, if the last post was
+            // authored by us with content and/or tags...
+            if thread.posts.last().is_some_and(|post| {
+                (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
+                    && post
+                        .meta
+                        .author
+                        .as_ref()
+                        .is_some_and(|author| SETTINGS.self_authors.contains(&author.href))
+            }) {
+                skipped_own_threads.push(thread.clone());
+            } else {
+                skipped_other_threads.push(thread.clone());
             }
         }
 
