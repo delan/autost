@@ -6,7 +6,7 @@ use std::{
 use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
 
-use crate::PostGroup;
+use crate::Thread;
 
 #[derive(Deserialize)]
 pub struct Settings {
@@ -16,10 +16,10 @@ pub struct Settings {
     pub self_authors: Vec<String>,
     pub interesting_tags: Vec<String>,
     pub interesting_output_filenames_list_path: Option<String>,
-    interesting_archived_post_groups_list_path: Option<String>,
-    pub interesting_archived_post_groups_list: Option<Vec<String>>,
-    excluded_archived_post_groups_list_path: Option<String>,
-    pub excluded_archived_post_groups_list: Option<Vec<String>>,
+    interesting_archived_threads_list_path: Option<String>,
+    pub interesting_archived_threads_list: Option<Vec<String>>,
+    excluded_archived_threads_list_path: Option<String>,
+    pub excluded_archived_threads_list: Option<Vec<String>>,
     pub nav: Vec<NavLink>,
 }
 
@@ -41,33 +41,33 @@ impl Settings {
         if !result.external_base_url.ends_with("/") {
             bail!("external_base_url setting must end with slash!");
         }
-        if let Some(path) = result.interesting_archived_post_groups_list_path.as_ref() {
+        if let Some(path) = result.interesting_archived_threads_list_path.as_ref() {
             let list = BufReader::new(File::open(path)?)
                 .lines()
                 .collect::<Result<Vec<_>, _>>()?;
-            result.interesting_archived_post_groups_list = Some(list);
+            result.interesting_archived_threads_list = Some(list);
         }
-        if let Some(path) = result.excluded_archived_post_groups_list_path.as_ref() {
+        if let Some(path) = result.excluded_archived_threads_list_path.as_ref() {
             let list = BufReader::new(File::open(path)?)
                 .lines()
                 .collect::<Result<Vec<_>, _>>()?;
-            result.excluded_archived_post_groups_list = Some(list);
+            result.excluded_archived_threads_list = Some(list);
         }
 
         Ok(result)
     }
 
-    pub fn post_group_is_on_interesting_archived_list(&self, post_group: &PostGroup) -> bool {
-        self.interesting_archived_post_groups_list
+    pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
+        self.interesting_archived_threads_list
             .as_ref()
-            .zip(post_group.meta.archived.as_ref())
+            .zip(thread.meta.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
-    pub fn post_group_is_on_excluded_archived_list(&self, post_group: &PostGroup) -> bool {
-        self.excluded_archived_post_groups_list
+    pub fn thread_is_on_excluded_archived_list(&self, thread: &Thread) -> bool {
+        self.excluded_archived_threads_list
             .as_ref()
-            .zip(post_group.meta.archived.as_ref())
+            .zip(thread.meta.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 }

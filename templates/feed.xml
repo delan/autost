@@ -2,14 +2,14 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 <updated>{{ updated }}</updated>
 <title>{{ feed_title }}</title>
-{% for post_group in post_groups %}
+{% for thread in threads %}
 <entry>
-<id>{{ post_group.href }}</id>
-<link rel="alternate" href="{{ SETTINGS.external_base_url }}{{ post_group.href }}"/>
-{% if let Some(published) = post_group.meta.published %}<published>{{ published }}</published>{% endif %}
-<title>{{ post_group.overall_title }}</title>
+<id>{{ thread.href }}</id>
+<link rel="alternate" href="{{ SETTINGS.external_base_url }}{{ thread.href }}"/>
+{% if let Some(published) = thread.meta.published %}<published>{{ published }}</published>{% endif %}
+<title>{{ thread.overall_title }}</title>
 <content type="html">
-{% for post in post_group.posts %}
+{% for post in thread.posts %}
 {{ post.original_html }}
 {% endfor %}
 </content>

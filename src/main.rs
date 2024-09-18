@@ -7,7 +7,7 @@ use std::{
 };
 
 use askama::Template;
-use autost::{cli_init, AtomFeedTemplate, PostGroup, PostsPageTemplate, TemplatedPost, SETTINGS};
+use autost::{cli_init, AtomFeedTemplate, TemplatedPost, Thread, ThreadsTemplate, SETTINGS};
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self};
 use tracing::{debug, info, trace};
@@ -16,13 +16,13 @@ fn main() -> eyre::Result<()> {
     cli_init()?;
 
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    let mut post_groups = vec![];
-    let mut interesting_post_groups = vec![];
-    let mut marked_interesting_post_groups = vec![];
-    let mut excluded_post_groups = vec![];
-    let mut skipped_own_post_groups = vec![];
-    let mut skipped_other_post_groups = vec![];
-    let mut post_groups_by_interesting_tag = BTreeMap::default();
+    let mut threads = vec![];
+    let mut interesting_threads = vec![];
+    let mut marked_interesting_threads = vec![];
+    let mut excluded_threads = vec![];
+    let mut skipped_own_threads = vec![];
+    let mut skipped_other_threads = vec![];
+    let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
     let output_path = args().nth(1).unwrap();
@@ -44,8 +44,8 @@ fn main() -> eyre::Result<()> {
             .collect::<Result<Vec<_>, _>>()?;
         posts.push(post);
 
-        // TODO: skip post groups with other authors?
-        // TODO: skip post groups with private or logged-in-only authors?
+        // TODO: skip threads with other authors?
+        // TODO: skip threads with private or logged-in-only authors?
         // TODO: gate sensitive posts behind an interaction?
 
         let overall_title = posts
@@ -55,39 +55,39 @@ fn main() -> eyre::Result<()> {
             .and_then(|post| post.meta.title.clone())
             .unwrap_or("".to_owned());
 
-        let post_group = PostGroup {
+        let thread = Thread {
             href: filename.clone(),
             posts,
             meta,
             overall_title: overall_title.clone(),
         };
 
-        for tag in post_group.meta.tags.iter() {
+        for tag in thread.meta.tags.iter() {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
         }
-        post_groups.push(post_group.clone());
-        if SETTINGS.post_group_is_on_excluded_archived_list(&post_group) {
-            excluded_post_groups.push(post_group.clone());
-        } else if SETTINGS.post_group_is_on_interesting_archived_list(&post_group) {
-            interesting_post_groups.push(post_group.clone());
-            marked_interesting_post_groups.push(post_group.clone());
+        threads.push(thread.clone());
+        if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
+            excluded_threads.push(thread.clone());
+        } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
+            interesting_threads.push(thread.clone());
+            marked_interesting_threads.push(thread.clone());
         } else {
             let mut was_interesting = false;
-            for tag in post_group.meta.tags.iter() {
+            for tag in thread.meta.tags.iter() {
                 if SETTINGS.interesting_tags.contains(tag) {
-                    interesting_post_groups.push(post_group.clone());
-                    post_groups_by_interesting_tag
+                    interesting_threads.push(thread.clone());
+                    threads_by_interesting_tag
                         .entry(tag.clone())
                         .or_insert(vec![])
-                        .push(post_group.clone());
+                        .push(thread.clone());
                     was_interesting = true;
                     break;
                 }
             }
             if !was_interesting {
-                // if the post group had some input from us at publish time, that is, if the last
-                // post was authored by us with content and/or tags...
-                if post_group.posts.last().is_some_and(|post| {
+                // if the thread had some input from us at publish time, that is, if the last post
+                // was authored by us with content and/or tags...
+                if thread.posts.last().is_some_and(|post| {
                     (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
                         && post
                             .meta
@@ -95,16 +95,16 @@ fn main() -> eyre::Result<()> {
                             .as_ref()
                             .is_some_and(|author| SETTINGS.self_authors.contains(&author.href))
                 }) {
-                    skipped_own_post_groups.push(post_group.clone());
+                    skipped_own_threads.push(thread.clone());
                 } else {
-                    skipped_other_post_groups.push(post_group.clone());
+                    skipped_other_threads.push(thread.clone());
                 }
             }
         }
 
         // reader step: generate post page.
-        let template = PostsPageTemplate {
-            post_groups: vec![post_group.clone()],
+        let template = ThreadsTemplate {
+            threads: vec![thread.clone()],
             page_title: format!("{overall_title} — {}", SETTINGS.site_title),
             feed_href: None,
         };
@@ -113,30 +113,30 @@ fn main() -> eyre::Result<()> {
         writeln!(File::create(path)?, "{}", template.render()?)?;
     }
 
-    post_groups.sort_by(PostGroup::reverse_chronological);
-    interesting_post_groups.sort_by(PostGroup::reverse_chronological);
-    marked_interesting_post_groups.sort_by(PostGroup::reverse_chronological);
-    excluded_post_groups.sort_by(PostGroup::reverse_chronological);
-    skipped_own_post_groups.sort_by(PostGroup::reverse_chronological);
-    skipped_other_post_groups.sort_by(PostGroup::reverse_chronological);
-    for (_, post_groups) in post_groups_by_interesting_tag.iter_mut() {
-        post_groups.sort_by(PostGroup::reverse_chronological);
+    threads.sort_by(Thread::reverse_chronological);
+    interesting_threads.sort_by(Thread::reverse_chronological);
+    marked_interesting_threads.sort_by(Thread::reverse_chronological);
+    excluded_threads.sort_by(Thread::reverse_chronological);
+    skipped_own_threads.sort_by(Thread::reverse_chronological);
+    skipped_other_threads.sort_by(Thread::reverse_chronological);
+    for (_, threads) in threads_by_interesting_tag.iter_mut() {
+        threads.sort_by(Thread::reverse_chronological);
     }
-    trace!("post groups by tag: {post_groups_by_interesting_tag:#?}");
+    trace!("threads by tag: {threads_by_interesting_tag:#?}");
     let tagged_path = output_path.join("tagged");
     create_dir_all(&tagged_path)?;
 
     // author step: generate atom feeds.
     let template = AtomFeedTemplate {
-        post_groups: interesting_post_groups.clone(),
+        threads: interesting_threads.clone(),
         feed_title: SETTINGS.site_title.clone(),
         updated: now.clone(),
     };
     let atom_feed_path = output_path.join("index.feed.xml");
     writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
-    for (tag, post_groups) in post_groups_by_interesting_tag.clone().into_iter() {
+    for (tag, threads) in threads_by_interesting_tag.clone().into_iter() {
         let template = AtomFeedTemplate {
-            post_groups,
+            threads,
             feed_title: format!("{} — {tag}", SETTINGS.site_title),
             updated: now.clone(),
         };
@@ -153,13 +153,10 @@ fn main() -> eyre::Result<()> {
             .filter(|(tag, _)| SETTINGS.interesting_tags.contains(tag))
             .collect::<Vec<_>>()
     );
-    info!("interesting post groups: {}", interesting_post_groups.len());
-    info!("own skipped post groups: {}", skipped_own_post_groups.len());
-    info!(
-        "others’ skipped post groups: {}",
-        skipped_other_post_groups.len()
-    );
-    info!("all post groups: {}", post_groups.len());
+    info!("interesting threads: {}", interesting_threads.len());
+    info!("own skipped threads: {}", skipped_own_threads.len());
+    info!("others’ skipped threads: {}", skipped_other_threads.len());
+    info!("all threads: {}", threads.len());
 
     let interesting_tags_filenames = SETTINGS.interesting_tags.iter().flat_map(|tag| {
         [
@@ -167,9 +164,8 @@ fn main() -> eyre::Result<()> {
             format!("tagged/{tag}.html"),
         ]
     });
-    let interesting_tags_posts_filenames = interesting_post_groups
-        .iter()
-        .map(|post_group| post_group.href.clone());
+    let interesting_tags_posts_filenames =
+        interesting_threads.iter().map(|thread| thread.href.clone());
     let interesting_filenames = vec!["index.html".to_owned(), "index.feed.xml".to_owned()]
         .into_iter()
         .chain(interesting_tags_filenames)
@@ -182,22 +178,22 @@ fn main() -> eyre::Result<()> {
     }
 
     // reader step: generate internal posts pages.
-    let template = PostsPageTemplate {
-        post_groups,
+    let template = ThreadsTemplate {
+        threads,
         page_title: format!("all posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
     let posts_page_path = output_path.join("all.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = PostsPageTemplate {
-        post_groups: excluded_post_groups,
+    let template = ThreadsTemplate {
+        threads: excluded_threads,
         page_title: format!("excluded archived posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
     let posts_page_path = output_path.join("excluded.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = PostsPageTemplate {
-        post_groups: marked_interesting_post_groups,
+    let template = ThreadsTemplate {
+        threads: marked_interesting_threads,
         page_title: format!(
             "archived posts that were marked interesting — {}",
             SETTINGS.site_title
@@ -206,15 +202,15 @@ fn main() -> eyre::Result<()> {
     };
     let posts_page_path = output_path.join("marked_interesting.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = PostsPageTemplate {
-        post_groups: skipped_own_post_groups,
+    let template = ThreadsTemplate {
+        threads: skipped_own_threads,
         page_title: format!("own skipped archived posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
     let posts_page_path = output_path.join("skipped_own.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = PostsPageTemplate {
-        post_groups: skipped_other_post_groups,
+    let template = ThreadsTemplate {
+        threads: skipped_other_threads,
         page_title: format!("others’ skipped archived posts — {}", SETTINGS.site_title),
         feed_href: None,
     };
@@ -222,16 +218,16 @@ fn main() -> eyre::Result<()> {
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
 
     // reader step: generate posts pages.
-    let template = PostsPageTemplate {
-        post_groups: interesting_post_groups,
+    let template = ThreadsTemplate {
+        threads: interesting_threads,
         page_title: format!("posts — {}", SETTINGS.site_title),
         feed_href: Some("index.feed.xml".to_owned()),
     };
     let posts_page_path = output_path.join("index.html");
     writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    for (tag, post_groups) in post_groups_by_interesting_tag.into_iter() {
-        let template = PostsPageTemplate {
-            post_groups,
+    for (tag, threads) in threads_by_interesting_tag.into_iter() {
+        let template = ThreadsTemplate {
+            threads,
             page_title: format!("#{tag} — {}", SETTINGS.site_title),
             feed_href: Some(format!("tagged/{tag}.feed.xml")),
         };

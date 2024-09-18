@@ -18,8 +18,8 @@ what if you could have a single-user self-hosted thing with the same posting and
     - [x] generate tag pages (`tagged/<tag>.html`)
 2. curate chosts
     - [x] select tags to include on the main page (`interesting_tags`)
-    - [x] select posts to include on the main page (`interesting_archived_post_groups_list_path`)
-    - [x] select posts to exclude from the main page (`excluded_archived_post_groups_list_path`)
+    - [x] select posts to include on the main page (`interesting_archived_threads_list_path`)
+    - [x] select posts to exclude from the main page (`excluded_archived_threads_list_path`)
     - [x] deploy only included posts, to avoid enumeration (`interesting_output_filenames_list_path`)
     - [x] generate pages for all posts, posts not yet interesting/excluded, …
     - [ ] add tags to chosts without editing the originals

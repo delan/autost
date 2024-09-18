@@ -43,14 +43,14 @@ body > nav li {
 ul.tags a {
     display: inline-block;
 }
-article.post_group {
+article.thread {
     border: 1px solid black;
     margin: 1em auto;
 }
 body > nav :link,
 body > nav :visited,
-article.post_group :link,
-article.post_group :visited {
+article.thread :link,
+article.thread :visited {
     color: currentColor;
 }
 article.post {
@@ -62,29 +62,29 @@ article.post {
 article.post:not(:first-child) {
     border-top: 1px solid black;
 }
-article.post_group > header,
+article.thread > header,
 article.post > header,
 article.post > footer:not(:empty) {
     padding: 1em;
     background: #c0c0c0;
 }
-article.post_group > header .meta,
+article.thread > header .meta,
 article.post > header .meta {
     display: flex;
     flex-flow: row wrap;
     justify-content: space-between;
 }
-article.post_group > header .handle,
+article.thread > header .handle,
 article.post > header .handle,
-article.post_group > header .archived,
+article.thread > header .archived,
 article.post > header .archived,
-article.post_group > header .time,
+article.thread > header .time,
 article.post > header .time,
-article.post_group > header time,
+article.thread > header time,
 article.post > header time {
     color: #606060;
 }
-article.post_group > header .gap,
+article.thread > header .gap,
 article.post > header .gap {
     width: 2em;
     visibility: hidden;

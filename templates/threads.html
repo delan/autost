@@ -16,23 +16,23 @@
     {%~ if let Some(feed_href) = feed_href ~%}<li><a href="{{ feed_href }}">atom feed</a> for everything you see here{%~ endif ~%}
     </ul>
 </nav>
-{% for post_group in post_groups %}
-<article class="post_group">
-{% if !post_group.meta.references.is_empty() %}
+{% for thread in threads %}
+<article class="thread">
+{% if !thread.meta.references.is_empty() %}
 <header>
     <div class="meta">
-        {% if let Some(author) = post_group.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> <a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a></span>{% endif %}
-        <span class="gap">{% if post_group.meta.author.is_some() && post_group.meta.published.is_some() %}—{% endif %}</span>
+        {% if let Some(author) = thread.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> <a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a></span>{% endif %}
+        <span class="gap">{% if thread.meta.author.is_some() && thread.meta.published.is_some() %}—{% endif %}</span>
         <span>
-        {% if let Some(archived) = post_group.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
-        <a class="time" href="{{ post_group.href }}">
-        {% if let Some(published) = post_group.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
+        {% if let Some(archived) = thread.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
+        <a class="time" href="{{ thread.href }}">
+        {% if let Some(published) = thread.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
         </a>
         </span>
     </div>
 </header>
 {% endif %}
-{% for post in post_group.posts %}
+{% for post in thread.posts %}
 <article class="post cohost">
     <header>
         <div class="meta">
@@ -40,15 +40,15 @@
             <span class="gap">{% if post.meta.author.is_some() && post.meta.published.is_some() %}—{% endif %}</span>
             <span>
             {% if let Some(archived) = post.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
-            {% if post_group.meta.references.is_empty() %}<a class="time" href="{{ post_group.href }}">{% endif %}
+            {% if thread.meta.references.is_empty() %}<a class="time" href="{{ thread.href }}">{% endif %}
             {% if let Some(published) = post.meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
-            {% if post_group.meta.references.is_empty() %}</a>{% endif %}
+            {% if thread.meta.references.is_empty() %}</a>{% endif %}
             </span>
         </div>
         <h1>
-            {% if post_group.meta.references.is_empty() %}<a href="{{ post_group.href }}">{% endif %}
+            {% if thread.meta.references.is_empty() %}<a href="{{ thread.href }}">{% endif %}
             {% if let Some(title) = post.meta.title %}{{ title }}{% endif %}
-            {% if post_group.meta.references.is_empty() %}</a>{% endif %}
+            {% if thread.meta.references.is_empty() %}</a>{% endif %}
         </h1>
     </header>
     {% if !post.meta.is_transparent_share %}

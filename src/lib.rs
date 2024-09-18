@@ -41,9 +41,9 @@ pub struct ExtractedPost {
 }
 
 #[derive(Clone, Debug, Template)]
-#[template(path = "posts.html")]
-pub struct PostsPageTemplate {
-    pub post_groups: Vec<PostGroup>,
+#[template(path = "threads.html")]
+pub struct ThreadsTemplate {
+    pub threads: Vec<Thread>,
     pub page_title: String,
     pub feed_href: Option<String>,
 }
@@ -51,13 +51,13 @@ pub struct PostsPageTemplate {
 #[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
 pub struct AtomFeedTemplate {
-    pub post_groups: Vec<PostGroup>,
+    pub threads: Vec<Thread>,
     pub feed_title: String,
     pub updated: String,
 }
 
 #[derive(Clone, Debug)]
-pub struct PostGroup {
+pub struct Thread {
     pub href: String,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
@@ -72,8 +72,8 @@ pub struct TemplatedPost {
     pub safe_html: String,
 }
 
-impl PostGroup {
-    pub fn reverse_chronological(p: &PostGroup, q: &PostGroup) -> Ordering {
+impl Thread {
+    pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()
     }
 }
