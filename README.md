@@ -8,6 +8,7 @@ what if you could have a single-user self-hosted thing with the same posting and
 1. **archive chosts (we are here!)**
     - [x] download chosts from the api (`cohost2json`)
     - [x] extract and render chost content (`cohost2autost`)
+        - [x] download and rewrite cohost cdn links
         - [x] extract cohost-rendered chost content
         - [x] render asks
         - [x] render image attachments
@@ -22,7 +23,7 @@ what if you could have a single-user self-hosted thing with the same posting and
     - [x] select posts to exclude from the main page (`excluded_archived_threads_list_path`)
     - [x] deploy only included posts, to avoid enumeration (`interesting_output_filenames_list_path`)
     - [x] generate pages for all posts, posts not yet interesting/excluded, …
-    - [x] add tags to chosts without editing the originals
+    - [x] add tags to chosts without editing the originals (`archived_thread_tags_path`)
     - [x] automatically rename tags whenever encountered (tag synonyms; `renamed_tags`)
     - [x] add tags whenever a tag is encountered (tag implications; `implied_tags`)
 3. compose new posts
