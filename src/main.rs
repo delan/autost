@@ -101,7 +101,7 @@ fn main() -> eyre::Result<()> {
             was_interesting = true;
         } else {
             for tag in thread.meta.tags.iter() {
-                if SETTINGS.interesting_tags.contains(tag) {
+                if SETTINGS.tag_is_interesting(tag) {
                     was_interesting = true;
                     break;
                 }
@@ -110,7 +110,7 @@ fn main() -> eyre::Result<()> {
         if was_interesting {
             collections.push("index", thread.clone());
             for tag in thread.meta.tags.iter() {
-                if SETTINGS.interesting_tags.contains(tag) {
+                if SETTINGS.tag_is_interesting(tag) {
                     threads_by_interesting_tag
                         .entry(tag.clone())
                         .or_insert(vec![])
@@ -179,11 +179,11 @@ fn main() -> eyre::Result<()> {
     info!(
         "interesting tags: {:?}",
         tags.iter()
-            .filter(|(tag, _)| SETTINGS.interesting_tags.contains(tag))
+            .filter(|(tag, _)| SETTINGS.tag_is_interesting(tag))
             .collect::<Vec<_>>()
     );
 
-    let interesting_tags_filenames = SETTINGS.interesting_tags.iter().flat_map(|tag| {
+    let interesting_tags_filenames = SETTINGS.interesting_tags_iter().flat_map(|tag| {
         [
             format!("tagged/{tag}.feed.xml"),
             format!("tagged/{tag}.html"),

@@ -11,8 +11,11 @@ pub mod dom;
 pub mod meta;
 pub mod settings;
 
-pub static SETTINGS: LazyLock<Settings> =
-    LazyLock::new(|| Settings::load().context("failed to load settings").unwrap());
+pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
+    Settings::load_default()
+        .context("failed to load settings")
+        .unwrap()
+});
 
 #[derive(Clone, Debug, Default, PartialEq, Template)]
 #[template(path = "post-meta.html")]

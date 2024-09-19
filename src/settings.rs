@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::{BufRead, BufReader, Read},
+    path::Path,
 };
 
 use jane_eyre::eyre::{self, bail};
@@ -15,7 +16,7 @@ pub struct Settings {
     pub external_base_url: String,
     pub site_title: String,
     pub self_authors: Vec<String>,
-    pub interesting_tags: Vec<String>,
+    pub interesting_tags: Vec<Vec<String>>,
     archived_thread_tags_path: Option<String>,
     pub archived_thread_tags: Option<HashMap<String, Vec<String>>>,
     pub interesting_output_filenames_list_path: Option<String>,
@@ -33,9 +34,17 @@ pub struct NavLink {
 }
 
 impl Settings {
-    pub fn load() -> eyre::Result<Self> {
+    pub fn load_default() -> eyre::Result<Self> {
+        Self::load("autost.toml")
+    }
+
+    pub fn load_example() -> eyre::Result<Self> {
+        Self::load("autost.toml.example")
+    }
+
+    pub fn load(path: impl AsRef<Path>) -> eyre::Result<Self> {
         let mut result = String::default();
-        File::open("autost.toml")?.read_to_string(&mut result)?;
+        File::open(path)?.read_to_string(&mut result)?;
         let mut result: Settings = toml::from_str(&result)?;
 
         if !result.base_url.ends_with("/") {
@@ -77,6 +86,20 @@ impl Settings {
         Ok(result)
     }
 
+    pub fn tag_is_interesting(&self, tag: &str) -> bool {
+        self.interesting_tags_iter()
+            .find(|&interesting_tag| interesting_tag == tag)
+            .is_some()
+    }
+
+    pub fn interesting_tags_iter(&self) -> impl Iterator<Item = &str> {
+        self.interesting_tags.iter().flatten().map(|tag| &**tag)
+    }
+
+    pub fn interesting_tag_groups_iter(&self) -> impl Iterator<Item = &[String]> {
+        self.interesting_tags.iter().map(|tag| &**tag)
+    }
+
     pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
         self.interesting_archived_threads_list
             .as_ref()
@@ -99,4 +122,11 @@ impl Settings {
             .map(|result| &**result)
             .unwrap_or(&[])
     }
+}
+
+#[test]
+fn test_example() -> eyre::Result<()> {
+    Settings::load_example()?;
+
+    Ok(())
 }

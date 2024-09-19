@@ -8,9 +8,9 @@
     <ul>
     {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
-    <ul class="tags">
-    {% for tag in SETTINGS.interesting_tags -%}<li><a href="tagged/{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
-    </ul>
+    {% for tags in SETTINGS.interesting_tag_groups_iter() %}<ul class="tags">
+    {% for tag in tags -%}<li><a href="tagged/{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
+    </ul>{% endfor %}
     <hr>
     <ul>
     {%~ if let Some(feed_href) = feed_href ~%}<li><a href="{{ feed_href }}">atom feed</a> for everything you see here{%~ endif ~%}
@@ -55,9 +55,9 @@
     <div class="content">{{ post.safe_html|safe }}</div>
     {% endif %}
     <footer>{% for tag in post.meta.tags %}
-        {%- if SETTINGS.interesting_tags.contains(tag) -%}<a href="tagged/{{ tag }}.html">{%- endif -%}
+        {%- if SETTINGS.tag_is_interesting(tag) -%}<a href="tagged/{{ tag }}.html">{%- endif -%}
         <span>#{{ tag }}</span>
-        {%- if SETTINGS.interesting_tags.contains(tag) -%}</a>{%- endif -%}
+        {%- if SETTINGS.tag_is_interesting(tag) -%}</a>{%- endif -%}
         &#x2003;
     {% endfor %}</footer>
 </article>
