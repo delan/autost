@@ -287,6 +287,11 @@ fn process_ast(root: Ast) -> RcDom {
                 children,
             } => {
                 let name = QualName::new(None, ns!(html), LocalName::from(tagName.clone()));
+
+                // sort the properties by attribute name, to avoid spurious output diffs.
+                let mut properties = properties.into_iter().collect::<Vec<_>>();
+                properties.sort_by(|(n1, _v1), (n2, _v2)| n1.cmp(n2));
+
                 let attrs = properties
                     .into_iter()
                     .filter_map(|(name, value)| {
