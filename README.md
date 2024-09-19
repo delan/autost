@@ -23,8 +23,8 @@ what if you could have a single-user self-hosted thing with the same posting and
     - [x] deploy only included posts, to avoid enumeration (`interesting_output_filenames_list_path`)
     - [x] generate pages for all posts, posts not yet interesting/excluded, …
     - [x] add tags to chosts without editing the originals
-    - [ ] automatically rename tags whenever encountered (tag synonyms)
-    - [ ] add tags whenever a tag is encountered (tag implications)
+    - [x] automatically rename tags whenever encountered (tag synonyms; `renamed_tags`)
+    - [x] add tags whenever a tag is encountered (tag implications; `implied_tags`)
 3. compose new posts
 4. follow others
     - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)

@@ -50,14 +50,18 @@ fn main() -> eyre::Result<()> {
         let path = Path::new(&path);
 
         let mut post = TemplatedPost::load(path)?;
-        let mut extra_tags = SETTINGS
+        let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
             .into_iter()
             .filter(|tag| !post.meta.tags.contains(tag))
             .map(|tag| tag.to_owned())
             .collect::<Vec<_>>();
-        extra_tags.extend(post.meta.tags);
-        post.meta.tags = extra_tags;
+        let resolved_tags = extra_tags
+            .into_iter()
+            .chain(post.meta.tags.into_iter())
+            .flat_map(|tag| SETTINGS.resolve_tags(tag))
+            .collect::<Vec<_>>();
+        post.meta.tags = resolved_tags;
 
         let filename = post.filename.clone();
         let meta = post.meta.clone();

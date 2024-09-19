@@ -8,6 +8,12 @@ interesting_tags = [["photography"], ["reading", "watching", "listening"]]
 # interesting_archived_threads_list_path = "path/to/interesting.txt"
 # excluded_archived_threads_list_path = "path/to/excluded.txt"
 
+[renamed_tags]
+"Laptop stickers" = "laptop stickers"
+
+[implied_tags]
+"bird photography" = ["photography"]
+
 [[nav]]
 href = "."
 text = "posts"

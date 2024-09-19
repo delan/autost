@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fs::File,
     io::{BufRead, BufReader, Read},
     path::Path,
@@ -24,7 +24,15 @@ pub struct Settings {
     interesting_archived_threads_list: Option<Vec<String>>,
     excluded_archived_threads_list_path: Option<String>,
     excluded_archived_threads_list: Option<Vec<String>>,
+    pub renamed_tags: Option<HashMap<String, String>>,
+    pub implied_tags: Option<HashMap<String, Vec<String>>>,
     pub nav: Vec<NavLink>,
+}
+
+#[derive(Default, Deserialize)]
+pub struct TagDefinition {
+    pub rename: Option<String>,
+    pub implies: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -122,11 +130,81 @@ impl Settings {
             .map(|result| &**result)
             .unwrap_or(&[])
     }
+
+    pub fn resolve_tags(&self, tag: String) -> Vec<String> {
+        let mut seen = BTreeSet::default();
+        let mut result = vec![tag];
+        let mut old_len = 0;
+
+        // loop until we fail to add any more tags.
+        while result.len() > old_len {
+            let old = result;
+            old_len = old.len();
+            result = vec![];
+            for tag in old {
+                let tag = self.renamed_tag(tag);
+                if seen.insert(tag.clone()) {
+                    // prepend implied tags, such that more general tags go first.
+                    result.extend(self.implied_tags_shallow(&tag).to_vec());
+                }
+                result.push(tag);
+            }
+        }
+
+        result
+    }
+
+    fn renamed_tag(&self, tag: String) -> String {
+        if let Some(tags) = &self.renamed_tags {
+            if let Some(result) = tags.get(&tag) {
+                return result.clone();
+            }
+        }
+
+        tag
+    }
+
+    fn implied_tags_shallow(&self, tag: &str) -> &[String] {
+        if let Some(tags) = &self.implied_tags {
+            if let Some(result) = tags.get(tag) {
+                return result;
+            }
+        }
+
+        &[]
+    }
 }
 
 #[test]
 fn test_example() -> eyre::Result<()> {
     Settings::load_example()?;
+
+    Ok(())
+}
+
+#[test]
+fn test_resolve_tags() -> eyre::Result<()> {
+    let mut settings = Settings::load_example()?;
+    settings.renamed_tags = Some(
+        [
+            ("Foo".to_owned(), "foo".to_owned()),
+            ("deep".to_owned(), "deep tag".to_owned()),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    settings.implied_tags = Some(
+        [
+            ("foo".to_owned(), vec!["bar".to_owned(), "baz".to_owned()]),
+            ("bar".to_owned(), vec!["deep".to_owned()]),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    assert_eq!(
+        settings.resolve_tags("Foo".to_owned()),
+        ["deep tag", "bar", "baz", "foo"]
+    );
 
     Ok(())
 }
