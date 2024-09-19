@@ -16,13 +16,30 @@ fn main() -> eyre::Result<()> {
     cli_init()?;
 
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    let mut threads = vec![];
-    let mut interesting_threads = vec![];
-    let mut marked_interesting_threads = vec![];
-    let mut excluded_threads = vec![];
-    let mut skipped_own_threads = vec![];
-    let mut skipped_other_threads = vec![];
-    let mut untagged_interesting_threads = vec![];
+    let mut collections = Collections::new([
+        ("index", Collection::new(Some("index.feed.xml"), "posts")),
+        ("all", Collection::new(None, "all posts")),
+        (
+            "untagged_interesting",
+            Collection::new(None, "untagged interesting posts"),
+        ),
+        (
+            "excluded",
+            Collection::new(None, "archived posts that were marked excluded"),
+        ),
+        (
+            "marked_interesting",
+            Collection::new(None, "archived posts that were marked interesting"),
+        ),
+        (
+            "skipped_own",
+            Collection::new(None, "own skipped archived posts"),
+        ),
+        (
+            "skipped_other",
+            Collection::new(None, "others’ skipped archived posts"),
+        ),
+    ]);
     let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
@@ -75,12 +92,12 @@ fn main() -> eyre::Result<()> {
         for tag in thread.meta.tags.iter() {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
         }
-        threads.push(thread.clone());
+        collections.push("all", thread.clone());
         let mut was_interesting = false;
         if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
-            excluded_threads.push(thread.clone());
+            collections.push("excluded", thread.clone());
         } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
-            marked_interesting_threads.push(thread.clone());
+            collections.push("marked_interesting", thread.clone());
             was_interesting = true;
         } else {
             for tag in thread.meta.tags.iter() {
@@ -91,7 +108,7 @@ fn main() -> eyre::Result<()> {
             }
         }
         if was_interesting {
-            interesting_threads.push(thread.clone());
+            collections.push("index", thread.clone());
             for tag in thread.meta.tags.iter() {
                 if SETTINGS.interesting_tags.contains(tag) {
                     threads_by_interesting_tag
@@ -101,7 +118,7 @@ fn main() -> eyre::Result<()> {
                 }
             }
             if thread.meta.tags.is_empty() {
-                untagged_interesting_threads.push(thread.clone());
+                collections.push("untagged_interesting", thread.clone());
             }
         } else {
             // if the thread had some input from us at publish time, that is, if the last post was
@@ -114,9 +131,9 @@ fn main() -> eyre::Result<()> {
                         .as_ref()
                         .is_some_and(|author| SETTINGS.self_authors.contains(&author.href))
             }) {
-                skipped_own_threads.push(thread.clone());
+                collections.push("skipped_own", thread.clone());
             } else {
-                skipped_other_threads.push(thread.clone());
+                collections.push("skipped_other", thread.clone());
             }
         }
 
@@ -131,13 +148,6 @@ fn main() -> eyre::Result<()> {
         writeln!(File::create(path)?, "{}", template.render()?)?;
     }
 
-    threads.sort_by(Thread::reverse_chronological);
-    interesting_threads.sort_by(Thread::reverse_chronological);
-    marked_interesting_threads.sort_by(Thread::reverse_chronological);
-    excluded_threads.sort_by(Thread::reverse_chronological);
-    skipped_own_threads.sort_by(Thread::reverse_chronological);
-    skipped_other_threads.sort_by(Thread::reverse_chronological);
-    untagged_interesting_threads.sort_by(Thread::reverse_chronological);
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
         threads.sort_by(Thread::reverse_chronological);
     }
@@ -147,7 +157,7 @@ fn main() -> eyre::Result<()> {
 
     // author step: generate atom feeds.
     let template = AtomFeedTemplate {
-        threads: interesting_threads.clone(),
+        threads: collections.threads("index").to_vec(),
         feed_title: SETTINGS.site_title.clone(),
         updated: now.clone(),
     };
@@ -172,10 +182,6 @@ fn main() -> eyre::Result<()> {
             .filter(|(tag, _)| SETTINGS.interesting_tags.contains(tag))
             .collect::<Vec<_>>()
     );
-    info!("interesting threads: {}", interesting_threads.len());
-    info!("own skipped threads: {}", skipped_own_threads.len());
-    info!("others’ skipped threads: {}", skipped_other_threads.len());
-    info!("all threads: {}", threads.len());
 
     let interesting_tags_filenames = SETTINGS.interesting_tags.iter().flat_map(|tag| {
         [
@@ -183,8 +189,10 @@ fn main() -> eyre::Result<()> {
             format!("tagged/{tag}.html"),
         ]
     });
-    let interesting_tags_posts_filenames =
-        interesting_threads.iter().map(|thread| thread.href.clone());
+    let interesting_tags_posts_filenames = collections
+        .threads("index")
+        .iter()
+        .map(|thread| thread.href.clone());
     let interesting_filenames = vec!["index.html".to_owned(), "index.feed.xml".to_owned()]
         .into_iter()
         .chain(interesting_tags_filenames)
@@ -196,61 +204,14 @@ fn main() -> eyre::Result<()> {
         File::create(path)?.write_all(interesting_filenames.as_bytes())?;
     }
 
-    // reader step: generate internal posts pages.
-    let template = ThreadsTemplate {
-        threads,
-        page_title: format!("all posts — {}", SETTINGS.site_title),
-        feed_href: None,
-    };
-    let posts_page_path = output_path.join("all.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = ThreadsTemplate {
-        threads: excluded_threads,
-        page_title: format!("excluded archived posts — {}", SETTINGS.site_title),
-        feed_href: None,
-    };
-    let posts_page_path = output_path.join("excluded.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = ThreadsTemplate {
-        threads: marked_interesting_threads,
-        page_title: format!(
-            "archived posts that were marked interesting — {}",
-            SETTINGS.site_title
-        ),
-        feed_href: None,
-    };
-    let posts_page_path = output_path.join("marked_interesting.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = ThreadsTemplate {
-        threads: skipped_own_threads,
-        page_title: format!("own skipped archived posts — {}", SETTINGS.site_title),
-        feed_href: None,
-    };
-    let posts_page_path = output_path.join("skipped_own.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = ThreadsTemplate {
-        threads: skipped_other_threads,
-        page_title: format!("others’ skipped archived posts — {}", SETTINGS.site_title),
-        feed_href: None,
-    };
-    let posts_page_path = output_path.join("skipped_other.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-    let template = ThreadsTemplate {
-        threads: untagged_interesting_threads,
-        page_title: format!("untagged interesting posts — {}", SETTINGS.site_title),
-        feed_href: None,
-    };
-    let posts_page_path = output_path.join("untagged.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
-
     // reader step: generate posts pages.
-    let template = ThreadsTemplate {
-        threads: interesting_threads,
-        page_title: format!("posts — {}", SETTINGS.site_title),
-        feed_href: Some("index.feed.xml".to_owned()),
-    };
-    let posts_page_path = output_path.join("index.html");
-    writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+    for key in collections.keys() {
+        info!(
+            "writing threads page for collection {key:?} ({} threads)",
+            collections.threads(key).len()
+        );
+        collections.write_threads_page(key, output_path)?;
+    }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
         let template = ThreadsTemplate {
             threads,
@@ -262,4 +223,65 @@ fn main() -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+struct Collections {
+    inner: BTreeMap<&'static str, Collection>,
+}
+
+struct Collection {
+    feed_href: Option<String>,
+    title: String,
+    threads: Vec<Thread>,
+}
+
+impl Collections {
+    fn new(collections: impl IntoIterator<Item = (&'static str, Collection)>) -> Self {
+        Self {
+            inner: collections.into_iter().collect(),
+        }
+    }
+
+    fn keys(&self) -> impl Iterator<Item = &str> {
+        self.inner.keys().map(|key| *key)
+    }
+
+    fn threads(&self, key: &str) -> &[Thread] {
+        &self.inner[key].threads
+    }
+
+    fn push(&mut self, key: &str, thread: Thread) {
+        self.inner
+            .get_mut(key)
+            .expect("BUG: unknown collection!")
+            .threads
+            .push(thread);
+    }
+
+    fn write_threads_page(&self, key: &str, output_path: &Path) -> eyre::Result<()> {
+        self.inner[key].write_threads_page(&output_path.join(format!("{key}.html")))
+    }
+}
+
+impl Collection {
+    fn new(feed_href: Option<&str>, title: &str) -> Self {
+        Self {
+            feed_href: feed_href.map(|href| href.to_owned()),
+            title: title.to_owned(),
+            threads: vec![],
+        }
+    }
+
+    fn write_threads_page(&self, posts_page_path: &Path) -> eyre::Result<()> {
+        let mut threads = self.threads.clone();
+        threads.sort_by(Thread::reverse_chronological);
+        let template = ThreadsTemplate {
+            threads,
+            page_title: format!("{} — {}", self.title, SETTINGS.site_title),
+            feed_href: self.feed_href.clone(),
+        };
+        writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+
+        Ok(())
+    }
 }
