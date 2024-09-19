@@ -56,11 +56,11 @@ fn main() -> eyre::Result<()> {
             .filter(|tag| !post.meta.tags.contains(tag))
             .map(|tag| tag.to_owned())
             .collect::<Vec<_>>();
-        let resolved_tags = extra_tags
+        let combined_tags = extra_tags
             .into_iter()
             .chain(post.meta.tags.into_iter())
-            .flat_map(|tag| SETTINGS.resolve_tags(tag))
-            .collect::<Vec<_>>();
+            .collect();
+        let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
 
         let filename = post.filename.clone();

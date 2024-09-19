@@ -131,9 +131,9 @@ impl Settings {
             .unwrap_or(&[])
     }
 
-    pub fn resolve_tags(&self, tag: String) -> Vec<String> {
+    pub fn resolve_tags(&self, tags: Vec<String>) -> Vec<String> {
         let mut seen = BTreeSet::default();
-        let mut result = vec![tag];
+        let mut result = tags;
         let mut old_len = 0;
 
         // loop until we fail to add any more tags.
@@ -147,6 +147,14 @@ impl Settings {
                     // prepend implied tags, such that more general tags go first.
                     result.extend(self.implied_tags_shallow(&tag).to_vec());
                 }
+                result.push(tag);
+            }
+        }
+
+        let old = result;
+        let mut result = vec![];
+        for tag in old {
+            if !result.contains(&tag) {
                 result.push(tag);
             }
         }
@@ -196,14 +204,19 @@ fn test_resolve_tags() -> eyre::Result<()> {
     settings.implied_tags = Some(
         [
             ("foo".to_owned(), vec!["bar".to_owned(), "baz".to_owned()]),
-            ("bar".to_owned(), vec!["deep".to_owned()]),
+            ("bar".to_owned(), vec!["bar".to_owned(), "deep".to_owned()]),
+            ("baz".to_owned(), vec!["foo".to_owned()]),
         ]
         .into_iter()
         .collect(),
     );
+    // resolving tags means
+    // - implied tags are prepended in order
+    // - implied tags are resolved recursively, avoiding cycles
+    // - duplicate tags are removed by keeping the first occurrence
     assert_eq!(
-        settings.resolve_tags("Foo".to_owned()),
-        ["deep tag", "bar", "baz", "foo"]
+        settings.resolve_tags(vec!["Foo".to_owned()]),
+        ["bar", "deep tag", "foo", "baz"]
     );
 
     Ok(())
