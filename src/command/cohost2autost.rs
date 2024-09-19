@@ -1,6 +1,5 @@
 use std::{
     cell::RefCell,
-    env::args,
     ffi::OsString,
     fs::{create_dir_all, read_dir, DirEntry, File},
     io::{Read, Write},
@@ -9,7 +8,6 @@ use std::{
 
 use askama::Template;
 use autost::{
-    cli_init,
     cohost::{
         attachment_id_to_url, attachment_url_to_id, Ask, AskingProject, Ast, Attachment, Block,
         Post,
@@ -28,17 +26,15 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use reqwest::redirect::Policy;
 use tracing::{debug, info, trace, warn};
 
-fn main() -> eyre::Result<()> {
-    cli_init()?;
-
-    let input_path = args().nth(1).unwrap();
+pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    let input_path = args.next().unwrap();
     let input_path = Path::new(&input_path);
-    let output_path = args().nth(2).unwrap();
+    let output_path = args.next().unwrap();
     let output_path = Path::new(&output_path);
-    let attachment_images_path = args().nth(3).unwrap();
+    let attachment_images_path = args.next().unwrap();
     let attachment_images_path = Path::new(&attachment_images_path).to_owned();
     let attachment_thumbs_path = attachment_images_path.join("thumbs");
-    let specific_post_filenames = args().skip(4).map(OsString::from).collect::<Vec<_>>();
+    let specific_post_filenames = args.map(OsString::from).collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
 
     let results = dir_entries

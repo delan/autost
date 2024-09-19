@@ -35,26 +35,26 @@ what if you could have a single-user self-hosted thing with the same posting and
 ```
 $ mkdir -p path/to/chosts
 $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
-$ RUST_LOG=info cargo run --bin cohost2json -- projectName path/to/chosts
+$ RUST_LOG=info cargo run -- cohost2json projectName path/to/chosts
 ```
 
 ## how to convert chosts to autosts
 
 ```
 $ mkdir -p path/to/autosts site/attachments
-$ RUST_LOG=info cargo run --bin cohost2autost -- path/to/chosts path/to/autosts site/attachments
+$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts path/to/autosts site/attachments
 ```
 
 or to convert specific chosts only:
 
 ```
-$ RUST_LOG=info cargo run --bin cohost2autost -- path/to/chosts path/to/autosts site/attachments 123456.json 234567.json
+$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts path/to/autosts site/attachments 123456.json 234567.json
 ```
 
 ## how to render your autosts to pages
 
 ```
-$ RUST_LOG=info cargo run -- site path/to/autosts/*
+$ RUST_LOG=info cargo run -- render site path/to/autosts/*
 ```
 
 ## how to include or exclude specific chosts
