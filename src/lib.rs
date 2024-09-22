@@ -94,19 +94,19 @@ impl TemplatedPost {
         let mut unsafe_source = String::default();
         file.read_to_string(&mut unsafe_source)?;
 
-        let unsafe_html = if path.ends_with(".md") {
-            // author step: render markdown to html.
-            render_markdown(&unsafe_source)
-        } else {
-            unsafe_source
-        };
-
         let original_name = path.file_name().ok_or_eyre("post has no filename")?;
         let original_name = original_name.to_str().ok_or_eyre("unsupported filename")?;
         let (filename, _) = original_name
             .rsplit_once(".")
             .unwrap_or((original_name, ""));
         let filename = format!("{filename}.html");
+
+        let unsafe_html = if original_name.ends_with(".md") {
+            // author step: render markdown to html.
+            render_markdown(&unsafe_source)
+        } else {
+            unsafe_source
+        };
 
         Self::filter(&unsafe_html, &filename)
     }
