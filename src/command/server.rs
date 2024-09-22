@@ -1,11 +1,17 @@
-use std::{collections::HashMap, fs::File, io::Read, net::IpAddr, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Read,
+    net::IpAddr,
+    path::{Path, PathBuf},
+};
 
 use askama::Template;
 use autost::{render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate};
 use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
-use tracing::error;
+use tracing::{error, warn};
 use warp::{
     filters::{path::Peek, reply::header},
     reject::{custom, Reject, Rejection},
@@ -15,12 +21,10 @@ use warp::{
 
 use autost::SETTINGS;
 
-static OCTET_STREAM: &'static str = "application/octet-stream";
 static HTML: &'static str = "text/html; charset=utf-8";
-static CSS: &'static str = "text/css; charset=utf-8";
 
 pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let home_route = warp::path!()
+    let compose_route = warp::path!("compose")
         .and(warp::filters::method::get())
         .and_then(|| async {
             let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
@@ -80,28 +84,64 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         .and_then(|peek: Peek| async move {
             let mut path = PathBuf::from("site");
             for component in peek.segments() {
+                let component = urlencoding::decode(component)
+                    .wrap_err("failed to decode url path component")
+                    .map_err(BadRequest)?;
                 if component == ".." {
                     return Err(custom(BadRequest(eyre!("path component not allowed: .."))));
                 } else if component == "." {
                     continue;
                 }
-                path.push(component);
+                path.push(&*component);
             }
 
-            let content_type = match path.extension().and_then(|x| x.to_str()) {
-                Some("html") => HTML,
-                Some("css") => CSS,
-                _ => OCTET_STREAM,
-            };
+            enum Error {
+                Internal(eyre::Report),
+                NotFound,
+            }
+            fn read_file_or_index(body: &mut Vec<u8>, path: &Path) -> Result<&'static str, Error> {
+                if let Ok(mut file) = File::open(path) {
+                    let metadata = file.metadata()
+                        .wrap_err("failed to get file metadata")
+                        .map_err(Error::Internal)?;
+                    if metadata.is_dir() {
+                        return read_file_or_index(body, &path.join("index.html"))
+                    } else {
+                        file.read_to_end(body)
+                            .wrap_err("failed to read file")
+                            .map_err(Error::Internal)?;
+                        let extension = path.extension().and_then(|x| x.to_str());
+                        let extension = extension.map(|x| x.to_ascii_lowercase());
+                        let content_type = match extension.as_deref() {
+                            Some("css") => "text/css; charset=utf-8",
+                            Some("gif") => "image/gif",
+                            Some("html") => HTML,
+                            Some("jpg" | "jpeg") => "image/jpeg",
+                            Some("png") => "image/png",
+                            Some("webp") => "image/webp",
+                            Some("woff2") => "font/woff2",
+                            Some(other) => {
+                                warn!("unknown file extension {other}; treating as application/octet-stream");
+                                "application/octet-stream"
+                            },
+                            None => {
+                                warn!("no file extension; treating as application/octet-stream");
+                                "application/octet-stream"
+                            },
+                        };
+                        return Ok(content_type);
+                    }
+                } else {
+                    return Err(Error::NotFound);
+                }
+            }
 
             let mut body = Vec::default();
-            if let Ok(mut file) = File::open(path) {
-                file.read_to_end(&mut body)
-                    .wrap_err("failed to read file")
-                    .map_err(InternalError)?;
-            } else {
-                return Err(custom(NotFound(peek.as_str().to_owned())));
-            }
+            let content_type = match read_file_or_index(&mut body, &path) {
+                Ok(result) => Ok(result),
+                Err(Error::Internal(error)) => Err(custom(InternalError(error))),
+                Err(Error::NotFound) => Err(custom(NotFound(peek.as_str().to_owned()))),
+            }?;
 
             let response = Response::builder()
                 .header("Content-Type", content_type)
@@ -113,7 +153,9 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         });
 
     // successful responses are in their own types. error responses are in plain text.
-    let routes = home_route.or(preview_route).or(default_route);
+    let routes = compose_route.or(preview_route).or(default_route);
+    // TODO: handle SETTINGS.base_url
+    // let routes = warp::path("posts").and(routes);
     let routes = routes.recover(recover);
 
     warp::serve(routes)
