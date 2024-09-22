@@ -56,6 +56,12 @@ impl Settings {
         File::open(path)?.read_to_string(&mut result)?;
         let mut result: Settings = toml::from_str(&result)?;
 
+        if !result.base_url.starts_with("/") {
+            bail!("base_url setting must start with slash!");
+        }
+        if result.base_url.starts_with("//") {
+            bail!("base_url setting must not start with two slashes!");
+        }
         if !result.base_url.ends_with("/") {
             bail!("base_url setting must end with slash!");
         }
@@ -93,6 +99,18 @@ impl Settings {
         }
 
         Ok(result)
+    }
+
+    pub fn base_url_path_components(&self) -> impl Iterator<Item = &str> {
+        debug_assert_eq!(self.base_url.as_bytes()[0], b'/');
+        debug_assert_eq!(self.base_url.as_bytes()[self.base_url.len() - 1], b'/');
+        if self.base_url.len() > 1 {
+            self.base_url[0..(self.base_url.len() - 1)]
+                .split("/")
+                .skip(1)
+        } else {
+            "".split("/").skip(1)
+        }
     }
 
     pub fn tag_is_interesting(&self, tag: &str) -> bool {
@@ -218,6 +236,23 @@ fn test_resolve_tags() -> eyre::Result<()> {
     assert_eq!(
         settings.resolve_tags(vec!["Foo".to_owned()]),
         ["bar", "deep tag", "foo", "baz"]
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_base_url_path_components() -> eyre::Result<()> {
+    let mut settings = Settings::load_example()?;
+    assert_eq!(
+        settings.base_url_path_components().collect::<Vec<_>>(),
+        Vec::<&str>::default()
+    );
+
+    settings.base_url = "/posts/".to_owned();
+    assert_eq!(
+        settings.base_url_path_components().collect::<Vec<_>>(),
+        ["posts"]
     );
 
     Ok(())

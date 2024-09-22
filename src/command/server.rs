@@ -13,7 +13,8 @@ use http::{Response, StatusCode};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
 use tracing::{error, warn};
 use warp::{
-    filters::{path::Peek, reply::header},
+    filters::{any::any, path::Peek, reply::header},
+    path,
     reject::{custom, Reject, Rejection},
     reply::{self, Reply},
     Filter,
@@ -153,9 +154,11 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         });
 
     // successful responses are in their own types. error responses are in plain text.
-    let routes = compose_route.or(preview_route).or(default_route);
-    // TODO: handle SETTINGS.base_url
-    // let routes = warp::path("posts").and(routes);
+    let mut routes = any().boxed();
+    for component in SETTINGS.base_url_path_components() {
+        routes = routes.and(path(component)).boxed();
+    }
+    let routes = routes.and(compose_route.or(preview_route).or(default_route));
     let routes = routes.recover(recover);
 
     warp::serve(routes)
