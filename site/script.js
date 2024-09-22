@@ -19,11 +19,15 @@ if (compose) {
             method: "post",
             body: data,
         });
-        console.log(response);
+        const body = await response.text();
+
+        const result = compose.querySelector(":scope > div.result");
+        result.textContent = body;
     };
     compose.addEventListener("submit", event => {
         event.preventDefault();
         if (event.submitter.value == "publish") {
+            event.submitter.disabled = true;
             publish();
         } else {
             update();
