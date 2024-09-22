@@ -27,6 +27,9 @@ what if you could have a single-user self-hosted thing with the same posting and
     - [x] automatically rename tags whenever encountered (tag synonyms; `renamed_tags`)
     - [x] add tags whenever a tag is encountered (tag implications; `implied_tags`)
 3. compose new posts
+    - [x] compose simple posts
+    - [ ] compose replies
+    - [ ] upload attachments
 4. follow others
     - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
 
@@ -38,23 +41,23 @@ $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 $ RUST_LOG=info cargo run -- cohost2json projectName path/to/chosts
 ```
 
-## how to convert chosts to autosts
+## how to convert chosts to posts
 
 ```
-$ mkdir -p path/to/autosts site/attachments
-$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts path/to/autosts site/attachments
+$ mkdir -p posts site/attachments
+$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments
 ```
 
 or to convert specific chosts only:
 
 ```
-$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts path/to/autosts site/attachments 123456.json 234567.json
+$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments 123456.json 234567.json
 ```
 
-## how to render your autosts to pages
+## how to render your posts to pages
 
 ```
-$ RUST_LOG=info cargo run -- render site path/to/autosts/*
+$ RUST_LOG=info cargo run -- render site posts/*
 ```
 
 ## how to include or exclude specific chosts

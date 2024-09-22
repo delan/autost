@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::Read,
+    io::{Read, Write},
     net::IpAddr,
     path::{Path, PathBuf},
 };
@@ -10,7 +10,7 @@ use askama::Template;
 use autost::{render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate};
 use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode};
-use jane_eyre::eyre::{self, eyre, Context, OptionExt};
+use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
 use tracing::{error, warn};
 use warp::{
     filters::{any::any, path::Peek, reply::header},
@@ -21,6 +21,8 @@ use warp::{
 };
 
 use autost::SETTINGS;
+
+use crate::command::render::render_all;
 
 static HTML: &'static str = "text/html; charset=utf-8";
 
@@ -77,6 +79,41 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 .wrap_err("failed to render template")
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(result)
+        })
+        .with(header("Content-Type", HTML));
+
+    // POST /publish with urlencoded body: source=...
+    let publish_route = warp::path!("publish")
+        .and(warp::filters::method::post())
+        .and(warp::filters::body::form())
+        .and_then(|mut form: HashMap<String, String>| async move {
+            fn create_post() -> eyre::Result<(File, String)> {
+                // cohost post ids are all less than 10000000.
+                let posts = PathBuf::from("posts");
+                for id in 10000000.. {
+                    let filename = format!("{id}.md");
+                    match File::create_new(posts.join(&filename)) {
+                        Ok(result) => return Ok((result, filename)),
+                        Err(error) => match error.kind() {
+                            std::io::ErrorKind::AlreadyExists => continue,
+                            _ => bail!("failed to create post: {error}"),
+                        },
+                    }
+                }
+
+                unreachable!()
+            }
+
+            let unsafe_source = form
+                .remove("source")
+                .ok_or_eyre("form field missing: source")
+                .map_err(BadRequest)?;
+            let (mut file, filename) = create_post().map_err(InternalError)?;
+            file.write_all(unsafe_source.as_bytes())
+                .wrap_err("failed to write post file")
+                .map_err(InternalError)?;
+            render_all(Path::new("site")).map_err(InternalError)?;
+            Ok::<_, Rejection>(filename)
         })
         .with(header("Content-Type", HTML));
 
@@ -158,7 +195,12 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
     for component in SETTINGS.base_url_path_components() {
         routes = routes.and(path(component)).boxed();
     }
-    let routes = routes.and(compose_route.or(preview_route).or(default_route));
+    let routes = routes.and(
+        compose_route
+            .or(preview_route)
+            .or(publish_route)
+            .or(default_route),
+    );
     let routes = routes.recover(recover);
 
     warp::serve(routes)

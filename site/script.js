@@ -13,9 +13,21 @@ if (compose) {
         const preview = compose.querySelector(":scope > div.preview");
         preview.innerHTML = body;
     };
+    const publish = async () => {
+        const data = new URLSearchParams(new FormData(compose));
+        const response = await fetch("publish", {
+            method: "post",
+            body: data,
+        });
+        console.log(response);
+    };
     compose.addEventListener("submit", event => {
         event.preventDefault();
-        update();
+        if (event.submitter.value == "publish") {
+            publish();
+        } else {
+            update();
+        }
     });
     sourceField.addEventListener("input", event => {
         update();

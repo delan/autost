@@ -1,8 +1,8 @@
 use std::{
     collections::BTreeMap,
-    fs::{create_dir_all, File},
+    fs::{create_dir_all, read_dir, File},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use askama::Template;
@@ -10,10 +10,34 @@ use autost::{
     AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
 };
 use chrono::{SecondsFormat, Utc};
-use jane_eyre::eyre::{self};
+use jane_eyre::eyre::{self, OptionExt};
 use tracing::{debug, info, trace};
 
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    let output_path = args.next().unwrap();
+    let output_path = Path::new(&output_path);
+
+    render(output_path, args)
+}
+
+pub fn render_all(output_path: &Path) -> eyre::Result<()> {
+    let posts_path = PathBuf::from("posts");
+    let mut post_paths = vec![];
+
+    for entry in read_dir(posts_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        let path = path.to_str().ok_or_eyre("unsupported path")?;
+        post_paths.push(path.to_owned());
+    }
+
+    render(output_path, post_paths.into_iter())
+}
+
+pub fn render<'posts>(
+    output_path: &Path,
+    post_paths: impl Iterator<Item = String>,
+) -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut collections = Collections::new([
         ("index", Collection::new(Some("index.feed.xml"), "posts")),
@@ -42,13 +66,10 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
-    let output_path = args.next().unwrap();
-    let output_path = Path::new(&output_path);
-
-    for path in args {
+    for path in post_paths {
         let path = Path::new(&path);
 
-        let mut post = TemplatedPost::load(path)?;
+        let mut post = TemplatedPost::load(&path)?;
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
             .into_iter()
