@@ -16,8 +16,13 @@ use tracing::{debug, info, trace};
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let output_path = args.next().unwrap();
     let output_path = Path::new(&output_path);
+    let mut args = args.peekable();
 
-    render(output_path, args)
+    if args.peek().is_some() {
+        render(output_path, args)
+    } else {
+        render_all(output_path)
+    }
 }
 
 pub fn render_all(output_path: &Path) -> eyre::Result<()> {
@@ -26,6 +31,12 @@ pub fn render_all(output_path: &Path) -> eyre::Result<()> {
 
     for entry in read_dir(posts_path)? {
         let entry = entry?;
+        let metadata = entry.metadata()?;
+        // cohost2autost creates directories for chost thread ancestors.
+        if metadata.is_dir() {
+            continue;
+        }
+
         let path = entry.path();
         let path = path.to_str().ok_or_eyre("unsupported path")?;
         post_paths.push(path.to_owned());

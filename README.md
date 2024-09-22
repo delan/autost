@@ -57,7 +57,13 @@ $ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments
 ## how to render your posts to pages
 
 ```
-$ RUST_LOG=info cargo run -- render site posts/*
+$ RUST_LOG=info cargo run -- render site
+```
+
+or to render specific posts only:
+
+```
+$ RUST_LOG=info cargo run -- render site posts/123456.html posts/10000000.md
 ```
 
 ## how to include or exclude specific chosts
