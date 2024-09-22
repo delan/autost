@@ -2,6 +2,7 @@ mod command {
     pub mod cohost2autost;
     pub mod cohost2json;
     pub mod render;
+    pub mod server;
 }
 
 use std::env::args;
@@ -20,6 +21,7 @@ async fn main() -> eyre::Result<()> {
         Some("cohost2autost") => command::cohost2autost::main(args),
         Some("cohost2json") => command::cohost2json::main(args),
         Some("render") => command::render::main(args),
-        _ => bail!("usage: autost <cohost2autost|cohost2json|render>"),
+        Some("server") => command::server::main(args).await,
+        _ => bail!("usage: autost <cohost2autost|cohost2json|render|server>"),
     }
 }

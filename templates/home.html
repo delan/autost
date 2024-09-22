@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<link rel="stylesheet" href="style.css">
+<title>autost</title>
+
+<form class="compose" method="post" action="preview">
+    <textarea class="source" name="source">{{ source }}</textarea>
+    <button class="preview" type="submit">preview</button>
+</form>
+<article class="thread">
+    <article class="post cohost" id="post">
+        <header><div class="meta"></div></header>
+        <div class="content">{{ preview|safe }}</div>
+        <footer></footer>
+    </article>
+</article>
+
+<script src="script.js"></script>

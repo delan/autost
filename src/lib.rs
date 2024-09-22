@@ -94,8 +94,19 @@ impl TemplatedPost {
             unsafe_source
         };
 
+        let original_name = path.file_name().ok_or_eyre("post has no filename")?;
+        let original_name = original_name.to_str().ok_or_eyre("unsupported filename")?;
+        let (filename, _) = original_name
+            .rsplit_once(".")
+            .unwrap_or((original_name, ""));
+        let filename = format!("{filename}.html");
+
+        Self::filter(&unsafe_html, &filename)
+    }
+
+    pub fn filter(unsafe_html: &str, filename: &str) -> eyre::Result<Self> {
         // reader step: extract metadata.
-        let post = extract_metadata(&unsafe_html)?;
+        let post = extract_metadata(unsafe_html)?;
 
         // reader step: filter html.
         let safe_html = ammonia::Builder::default()
@@ -110,17 +121,10 @@ impl TemplatedPost {
             .clean(&post.unsafe_html)
             .to_string();
 
-        let original_name = path.file_name().ok_or_eyre("post has no filename")?;
-        let original_name = original_name.to_str().ok_or_eyre("unsupported filename")?;
-        let (filename, _) = original_name
-            .rsplit_once(".")
-            .unwrap_or((original_name, ""));
-        let filename = format!("{filename}.html");
-
         Ok(TemplatedPost {
-            filename,
+            filename: filename.to_owned(),
             meta: post.meta,
-            original_html: unsafe_html,
+            original_html: unsafe_html.to_owned(),
             safe_html,
         })
     }
