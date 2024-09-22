@@ -1,21 +1,19 @@
-const form = document.querySelector("form");
-if (form) {
-    const sourceField = form.querySelector(":scope > textarea.source");
-    const previewButton = form.querySelector(":scope > button.preview");
+const compose = document.querySelector("form.compose");
+if (compose) {
+    const sourceField = compose.querySelector(":scope > textarea.source");
+    const previewButton = compose.querySelector(":scope > button.preview");
     const update = async () => {
-        const data = new URLSearchParams(new FormData(form));
-        data.set("bare", "");
-        const response = await fetch(form.action, {
+        const data = new URLSearchParams(new FormData(compose));
+        const response = await fetch(compose.action, {
             method: "post",
             body: data,
         });
         const body = await response.text();
 
-        const post = document.querySelector("#post");
-        const content = post.querySelector(":scope > div.content");
-        content.innerHTML = body;
+        const preview = compose.querySelector(":scope > div.preview");
+        preview.innerHTML = body;
     };
-    form.addEventListener("submit", event => {
+    compose.addEventListener("submit", event => {
         event.preventDefault();
         update();
     });

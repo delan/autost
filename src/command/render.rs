@@ -6,7 +6,9 @@ use std::{
 };
 
 use askama::Template;
-use autost::{AtomFeedTemplate, TemplatedPost, Thread, ThreadsTemplate, SETTINGS};
+use autost::{
+    AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
+};
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self};
 use tracing::{debug, info, trace};
@@ -130,7 +132,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
                         .meta
                         .author
                         .as_ref()
-                        .is_some_and(|author| SETTINGS.self_authors.contains(&author.href))
+                        .is_some_and(|author| SETTINGS.other_self_authors.contains(&author.href))
             }) {
                 collections.push("skipped_own", thread.clone());
             } else {
@@ -139,8 +141,12 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         }
 
         // reader step: generate post page.
-        let template = ThreadsTemplate {
+        let template = ThreadsContentTemplate {
             threads: vec![thread.clone()],
+        };
+        let content = template.render()?;
+        let template = ThreadsTemplate {
+            content,
             page_title: format!("{overall_title} — {}", SETTINGS.site_title),
             feed_href: None,
         };
@@ -214,8 +220,10 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         collections.write_threads_page(key, output_path)?;
     }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
+        let template = ThreadsContentTemplate { threads };
+        let content = template.render()?;
         let template = ThreadsTemplate {
-            threads,
+            content,
             page_title: format!("#{tag} — {}", SETTINGS.site_title),
             feed_href: Some(format!("tagged/{tag}.feed.xml")),
         };
@@ -276,8 +284,10 @@ impl Collection {
     fn write_threads_page(&self, posts_page_path: &Path) -> eyre::Result<()> {
         let mut threads = self.threads.clone();
         threads.sort_by(Thread::reverse_chronological);
+        let template = ThreadsContentTemplate { threads };
+        let content = template.render()?;
         let template = ThreadsTemplate {
-            threads,
+            content,
             page_title: format!("{} — {}", self.title, SETTINGS.site_title),
             feed_href: self.feed_href.clone(),
         };

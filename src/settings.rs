@@ -8,14 +8,14 @@ use std::{
 use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
 
-use crate::{TemplatedPost, Thread};
+use crate::{Author, TemplatedPost, Thread};
 
 #[derive(Deserialize)]
 pub struct Settings {
     pub base_url: String,
     pub external_base_url: String,
     pub site_title: String,
-    pub self_authors: Vec<String>,
+    pub other_self_authors: Vec<String>,
     pub interesting_tags: Vec<Vec<String>>,
     archived_thread_tags_path: Option<String>,
     pub archived_thread_tags: Option<HashMap<String, Vec<String>>>,
@@ -24,6 +24,7 @@ pub struct Settings {
     interesting_archived_threads_list: Option<Vec<String>>,
     excluded_archived_threads_list_path: Option<String>,
     excluded_archived_threads_list: Option<Vec<String>>,
+    pub self_author: Option<Author>,
     pub renamed_tags: Option<HashMap<String, String>>,
     pub implied_tags: Option<HashMap<String, Vec<String>>>,
     pub nav: Vec<NavLink>,

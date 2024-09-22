@@ -2,6 +2,7 @@ use std::{cmp::Ordering, fs::File, io::Read, path::Path, sync::LazyLock};
 
 use askama::Template;
 use jane_eyre::eyre::{self, Context, OptionExt};
+use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{meta::extract_metadata, settings::Settings};
@@ -29,7 +30,7 @@ pub struct PostMeta {
     pub is_transparent_share: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Author {
     pub href: String,
     pub name: String,
@@ -46,9 +47,15 @@ pub struct ExtractedPost {
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads.html")]
 pub struct ThreadsTemplate {
-    pub threads: Vec<Thread>,
+    pub content: String,
     pub page_title: String,
     pub feed_href: Option<String>,
+}
+
+#[derive(Clone, Debug, Template)]
+#[template(path = "threads-content.html")]
+pub struct ThreadsContentTemplate {
+    pub threads: Vec<Thread>,
 }
 
 #[derive(Clone, Debug, Template)]

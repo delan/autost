@@ -1,7 +1,8 @@
 use std::{collections::HashMap, fs::File, io::Read, net::IpAddr, path::PathBuf};
 
 use askama::Template;
-use autost::{render_markdown, TemplatedPost};
+use autost::{render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate};
+use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
 use tracing::error;
@@ -12,6 +13,8 @@ use warp::{
     Filter,
 };
 
+use autost::SETTINGS;
+
 static OCTET_STREAM: &'static str = "application/octet-stream";
 static HTML: &'static str = "text/html; charset=utf-8";
 static CSS: &'static str = "text/css; charset=utf-8";
@@ -20,12 +23,31 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let home_route = warp::path!()
         .and(warp::filters::method::get())
         .and_then(|| async {
-            || -> eyre::Result<String> { Ok(HomeTemplate::default().render()?) }()
-                .map_err(|error| custom(InternalError(error)))
+            let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+            let meta = PostMeta {
+                archived: None,
+                references: vec![],
+                title: Some("headline".to_owned()),
+                published: Some(now),
+                author: SETTINGS.self_author.clone(),
+                tags: vec![],
+                is_transparent_share: false,
+            };
+            let meta = meta
+                .render()
+                .wrap_err("failed to render template")
+                .map_err(InternalError)?;
+            let source = format!("{meta}\npost body (accepts markdown!)");
+            let result = HomeTemplate { source };
+            let result = result
+                .render()
+                .wrap_err("failed to render template")
+                .map_err(InternalError)?;
+            Ok::<_, Rejection>(result)
         })
         .with(header("Content-Type", HTML));
 
-    // POST /preview with urlencoded body: source=...[&bare]
+    // POST /preview with urlencoded body: source=...
     let preview_route = warp::path!("preview")
         .and(warp::filters::method::post())
         .and(warp::filters::body::form())
@@ -36,16 +58,19 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 .map_err(BadRequest)?;
             let unsafe_html = render_markdown(&unsafe_source);
             let post = TemplatedPost::filter(&unsafe_html, "").map_err(InternalError)?;
-            if form.contains_key("bare") {
-                return Ok(post.safe_html);
-            }
-            let result = HomeTemplate {
-                source: unsafe_source.clone(),
-                preview: post.safe_html,
-            }
-            .render()
-            .wrap_err("failed to render template")
-            .map_err(InternalError)?;
+            let meta = post.meta.clone();
+            let template = ThreadsContentTemplate {
+                threads: vec![Thread {
+                    href: "".to_owned(),
+                    posts: vec![post],
+                    meta: meta,
+                    overall_title: "TODO".to_owned(),
+                }],
+            };
+            let result = template
+                .render()
+                .wrap_err("failed to render template")
+                .map_err(InternalError)?;
             Ok::<_, Rejection>(result)
         })
         .with(header("Content-Type", HTML));
@@ -115,11 +140,10 @@ impl Reject for BadRequest {}
 struct NotFound(String);
 impl Reject for NotFound {}
 
-#[derive(Default, Template)]
+#[derive(Template)]
 #[template(path = "home.html")]
 struct HomeTemplate {
     source: String,
-    preview: String,
 }
 
 async fn recover(error: Rejection) -> Result<impl Reply, std::convert::Infallible> {

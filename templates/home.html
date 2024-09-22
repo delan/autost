@@ -6,13 +6,7 @@
 <form class="compose" method="post" action="preview">
     <textarea class="source" name="source">{{ source }}</textarea>
     <button class="preview" type="submit">preview</button>
+    <div class="preview"></div>
 </form>
-<article class="thread">
-    <article class="post cohost" id="post">
-        <header><div class="meta"></div></header>
-        <div class="content">{{ preview|safe }}</div>
-        <footer></footer>
-    </article>
-</article>
 
 <script src="script.js"></script>
