@@ -7,12 +7,15 @@ mod command {
 
 use std::env::args;
 
-use autost::cli_init;
+use autost::{cli_init, SETTINGS};
 use jane_eyre::eyre::{self, bail};
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     cli_init()?;
+
+    // fail fast if there are any settings errors.
+    let _ = &*SETTINGS;
 
     let mut args = args();
     let command_name = args.nth(1);
