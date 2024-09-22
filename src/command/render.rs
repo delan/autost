@@ -129,7 +129,9 @@ pub fn render<'posts>(
         }
         collections.push("all", thread.clone());
         let mut was_interesting = false;
-        if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
+        if thread.meta.archived.is_none() && SETTINGS.self_author == thread.meta.author {
+            was_interesting = true;
+        } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
             collections.push("excluded", thread.clone());
         } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
             collections.push("marked_interesting", thread.clone());
