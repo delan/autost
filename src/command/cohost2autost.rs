@@ -31,11 +31,14 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let input_path = Path::new(&input_path);
     let output_path = args.next().unwrap();
     let output_path = Path::new(&output_path);
-    let attachment_images_path = args.next().unwrap();
-    let attachment_images_path = Path::new(&attachment_images_path).to_owned();
-    let attachment_thumbs_path = attachment_images_path.join("thumbs");
+    let attachment_files_path = args.next().unwrap();
+    let attachment_files_path = Path::new(&attachment_files_path).to_owned();
+    let attachment_thumbs_path = attachment_files_path.join("thumbs");
     let specific_post_filenames = args.map(OsString::from).collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
+    create_dir_all(output_path)?;
+    create_dir_all(&attachment_files_path)?;
+    create_dir_all(&attachment_thumbs_path)?;
 
     let results = dir_entries
         .into_par_iter()
@@ -47,7 +50,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 }
             }
             let context = RealConvertChostContext {
-                attachment_files_path: attachment_images_path.clone(),
+                attachment_files_path: attachment_files_path.clone(),
                 attachment_thumbs_path: attachment_thumbs_path.clone(),
             };
             convert_chost(&entry, output_path, &context)

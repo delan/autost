@@ -1,6 +1,6 @@
 use std::{
     env::{self},
-    fs::File,
+    fs::{create_dir_all, File},
     path::Path,
 };
 
@@ -18,6 +18,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let requested_project = args.next().unwrap();
     let output_path = args.next().unwrap();
     let output_path = Path::new(&output_path);
+    create_dir_all(output_path)?;
 
     let client = if let Ok(connect_sid) = env::var("COHOST_COOKIE") {
         info!("COHOST_COOKIE is set; output will include private or logged-in-only chosts!");

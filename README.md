@@ -51,8 +51,7 @@ path_to_autost = "../.."
 
 ```
 $ cd sites/example.com
-$ mkdir -p chosts  # example (can be anywhere)
-$ RUST_LOG=info cargo run -- cohost2json projectName chosts
+$ RUST_LOG=info cargo run -- cohost2json projectName ./chosts
 ```
 
 you may want to dump private or logged-in-only chosts, be they your own or those of people you’ve followed or reblogged. in this case, you will need to set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**, otherwise you won’t see everything!
@@ -65,15 +64,14 @@ $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 
 ```
 $ cd sites/example.com
-$ mkdir -p posts site/attachments
-$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments
+$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts ./posts site/attachments
 ```
 
 or to convert specific chosts only:
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments 123456.json 234567.json
+$ RUST_LOG=info cargo run -- cohost2autost path/to/chosts ./posts site/attachments 123456.json 234567.json
 ```
 
 ## how to render your posts to pages
