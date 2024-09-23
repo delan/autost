@@ -129,6 +129,38 @@ pub struct Span {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct TrpcResponse<T> {
+    pub result: TrpcResult<T>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct TrpcResult<T> {
+    pub data: T,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct ListEditedProjectsResponse {
+    pub projects: Vec<EditedProject>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct EditedProject {
+    pub projectId: usize,
+    pub handle: String,
+    pub displayName: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct LoggedInResponse {
+    pub projectId: usize,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 #[allow(non_snake_case)]
 pub enum Ast {

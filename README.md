@@ -55,7 +55,7 @@ $ mkdir -p chosts  # example (can be anywhere)
 $ RUST_LOG=info cargo run -- cohost2json projectName chosts
 ```
 
-if you want to dump private or logged-in-only chosts, you will need to set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**, otherwise you won’t see everything!
+you may want to dump private or logged-in-only chosts, be they your own or those of people you’ve followed or reblogged. in this case, you will need to set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**, otherwise you won’t see everything!
 
 ```
 $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
