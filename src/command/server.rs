@@ -45,7 +45,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 .wrap_err("failed to render template")
                 .map_err(InternalError)?;
             let source = format!("{meta}\npost body (accepts markdown!)");
-            let result = HomeTemplate { source };
+            let result = ComposeTemplate { source };
             let result = result
                 .render()
                 .wrap_err("failed to render template")
@@ -223,8 +223,8 @@ struct NotFound(String);
 impl Reject for NotFound {}
 
 #[derive(Template)]
-#[template(path = "home.html")]
-struct HomeTemplate {
+#[template(path = "compose.html")]
+struct ComposeTemplate {
     source: String,
 }
 
