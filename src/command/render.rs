@@ -157,13 +157,7 @@ pub fn render<'posts>(
     create_dir_all(&tagged_path)?;
 
     // author step: generate atom feeds.
-    let template = AtomFeedTemplate {
-        threads: collections.threads("index").to_vec(),
-        feed_title: SETTINGS.site_title.clone(),
-        updated: now.clone(),
-    };
-    let atom_feed_path = output_path.join("index.feed.xml");
-    writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
+    collections.write_atom_feed("index", output_path, &now)?;
     for (tag, threads) in threads_by_interesting_tag.clone().into_iter() {
         let template = AtomFeedTemplate {
             threads,
@@ -264,6 +258,10 @@ impl Collections {
     fn write_threads_page(&self, key: &str, output_path: &Path) -> eyre::Result<()> {
         self.inner[key].write_threads_page(&output_path.join(format!("{key}.html")))
     }
+
+    fn write_atom_feed(&self, key: &str, output_path: &Path, now: &str) -> eyre::Result<()> {
+        self.inner[key].write_atom_feed(&output_path.join(format!("{key}.feed.xml")), now)
+    }
 }
 
 impl Collection {
@@ -286,6 +284,19 @@ impl Collection {
             feed_href: self.feed_href.clone(),
         };
         writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+
+        Ok(())
+    }
+
+    fn write_atom_feed(&self, atom_feed_path: &Path, now: &str) -> eyre::Result<()> {
+        let mut threads = self.threads.clone();
+        threads.sort_by(Thread::reverse_chronological);
+        let template = AtomFeedTemplate {
+            threads,
+            feed_title: SETTINGS.site_title.clone(),
+            updated: now.to_owned(),
+        };
+        writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
 
         Ok(())
     }
