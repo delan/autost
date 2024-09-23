@@ -77,6 +77,29 @@ pub fn render<'posts>(
     let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
 
+    let tagged_path = output_path.join("tagged");
+    create_dir_all(output_path)?;
+    create_dir_all(&tagged_path)?;
+
+    fn copy_static(output_path: &Path, filename: &str) -> eyre::Result<()> {
+        let path_to_autost = Path::new(&SETTINGS.path_to_autost);
+        std::fs::copy(
+            path_to_autost.join("static").join(filename),
+            output_path.join(filename),
+        )?;
+        Ok(())
+    }
+    copy_static(output_path, "style.css")?;
+    copy_static(output_path, "script.js")?;
+    copy_static(
+        output_path,
+        "Atkinson-Hyperlegible-Font-License-2020-1104.pdf",
+    )?;
+    copy_static(output_path, "Atkinson-Hyperlegible-Regular-102.woff2")?;
+    copy_static(output_path, "Atkinson-Hyperlegible-Italic-102.woff2")?;
+    copy_static(output_path, "Atkinson-Hyperlegible-Bold-102.woff2")?;
+    copy_static(output_path, "Atkinson-Hyperlegible-BoldItalic-102.woff2")?;
+
     for path in post_paths {
         let path = Path::new(&path);
 
@@ -153,8 +176,6 @@ pub fn render<'posts>(
         threads.sort_by(Thread::reverse_chronological);
     }
     trace!("threads by tag: {threads_by_interesting_tag:#?}");
-    let tagged_path = output_path.join("tagged");
-    create_dir_all(&tagged_path)?;
 
     // author step: generate atom feeds.
     collections.write_atom_feed("index", output_path, &now)?;

@@ -33,10 +33,24 @@ what if you could have a single-user self-hosted thing with the same posting and
 4. follow others
     - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
 
+## make a new site
+
+```
+$ mkdir -p sites/example.com  # example (can be anywhere)
+$ cp autost.toml sites/example.com
+$ cd sites/example.com
+```
+
+be sure to edit the `path_to_autost` setting in autost.toml to point to the directory containing `static`. with the example path above, that would be:
+
+```toml
+path_to_autost = "../.."
+```
+
 ## how to dump your own chosts
 
 ```
-$ mkdir -p path/to/chosts
+$ mkdir -p path/to/chosts  # example (can be anywhere)
 $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 $ RUST_LOG=info cargo run -- cohost2json projectName path/to/chosts
 ```
@@ -44,6 +58,7 @@ $ RUST_LOG=info cargo run -- cohost2json projectName path/to/chosts
 ## how to convert chosts to posts
 
 ```
+$ cd sites/example.com
 $ mkdir -p posts site/attachments
 $ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments
 ```
@@ -51,18 +66,21 @@ $ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments
 or to convert specific chosts only:
 
 ```
+$ cd sites/example.com
 $ RUST_LOG=info cargo run -- cohost2autost path/to/chosts posts site/attachments 123456.json 234567.json
 ```
 
 ## how to render your posts to pages
 
 ```
+$ cd sites/example.com
 $ RUST_LOG=info cargo run -- render site
 ```
 
 or to render specific posts only:
 
 ```
+$ cd sites/example.com
 $ RUST_LOG=info cargo run -- render site posts/123456.html posts/10000000.md
 ```
 
