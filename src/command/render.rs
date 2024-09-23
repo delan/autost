@@ -80,49 +80,9 @@ pub fn render<'posts>(
     for path in post_paths {
         let path = Path::new(&path);
 
-        let mut post = TemplatedPost::load(&path)?;
-        let extra_tags = SETTINGS
-            .extra_archived_thread_tags(&post)
-            .into_iter()
-            .filter(|tag| !post.meta.tags.contains(tag))
-            .map(|tag| tag.to_owned())
-            .collect::<Vec<_>>();
-        let combined_tags = extra_tags
-            .into_iter()
-            .chain(post.meta.tags.into_iter())
-            .collect();
-        let resolved_tags = SETTINGS.resolve_tags(combined_tags);
-        post.meta.tags = resolved_tags;
-
+        let post = TemplatedPost::load(&path)?;
         let filename = post.filename.clone();
-        let meta = post.meta.clone();
-
-        let mut posts = post
-            .meta
-            .references
-            .iter()
-            .flat_map(|filename| path.parent().map(|path| path.join(filename)))
-            .map(|path| TemplatedPost::load(&path))
-            .collect::<Result<Vec<_>, _>>()?;
-        posts.push(post);
-
-        // TODO: skip threads with other authors?
-        // TODO: skip threads with private or logged-in-only authors?
-        // TODO: gate sensitive posts behind an interaction?
-
-        let overall_title = posts
-            .iter()
-            .rev()
-            .find(|post| !post.meta.is_transparent_share)
-            .and_then(|post| post.meta.title.clone())
-            .unwrap_or("".to_owned());
-
-        let thread = Thread {
-            href: filename.clone(),
-            posts,
-            meta,
-            overall_title: overall_title.clone(),
-        };
+        let thread = Thread::try_from(post)?;
 
         for tag in thread.meta.tags.iter() {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;
@@ -181,7 +141,7 @@ pub fn render<'posts>(
         let content = template.render()?;
         let template = ThreadsTemplate {
             content,
-            page_title: format!("{overall_title} — {}", SETTINGS.site_title),
+            page_title: format!("{} — {}", thread.overall_title, SETTINGS.site_title),
             feed_href: None,
         };
         let path = output_path.join(filename);

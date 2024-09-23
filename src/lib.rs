@@ -1,4 +1,10 @@
-use std::{cmp::Ordering, fs::File, io::Read, path::Path, sync::LazyLock};
+use std::{
+    cmp::Ordering,
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 use askama::Template;
 use jane_eyre::eyre::{self, Context, OptionExt};
@@ -85,6 +91,57 @@ pub struct TemplatedPost {
 impl Thread {
     pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()
+    }
+}
+
+impl TryFrom<TemplatedPost> for Thread {
+    type Error = eyre::Report;
+
+    fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
+        let posts_path = PathBuf::from("posts");
+
+        let extra_tags = SETTINGS
+            .extra_archived_thread_tags(&post)
+            .into_iter()
+            .filter(|tag| !post.meta.tags.contains(tag))
+            .map(|tag| tag.to_owned())
+            .collect::<Vec<_>>();
+        let combined_tags = extra_tags
+            .into_iter()
+            .chain(post.meta.tags.into_iter())
+            .collect();
+        let resolved_tags = SETTINGS.resolve_tags(combined_tags);
+        post.meta.tags = resolved_tags;
+
+        let filename = post.filename.clone();
+        let meta = post.meta.clone();
+
+        let mut posts = post
+            .meta
+            .references
+            .iter()
+            .map(|filename| posts_path.join(filename))
+            .map(|path| TemplatedPost::load(&path))
+            .collect::<Result<Vec<_>, _>>()?;
+        posts.push(post);
+
+        // TODO: skip threads with other authors?
+        // TODO: skip threads with private or logged-in-only authors?
+        // TODO: gate sensitive posts behind an interaction?
+
+        let overall_title = posts
+            .iter()
+            .rev()
+            .find(|post| !post.meta.is_transparent_share)
+            .and_then(|post| post.meta.title.clone())
+            .unwrap_or("".to_owned());
+
+        Ok(Thread {
+            href: filename,
+            posts,
+            meta,
+            overall_title,
+        })
     }
 }
 
