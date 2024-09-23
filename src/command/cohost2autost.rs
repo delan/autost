@@ -47,7 +47,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 }
             }
             let context = RealConvertChostContext {
-                attachment_images_path: attachment_images_path.clone(),
+                attachment_files_path: attachment_images_path.clone(),
                 attachment_thumbs_path: attachment_thumbs_path.clone(),
             };
             convert_chost(&entry, output_path, &context)
@@ -75,16 +75,16 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
 }
 
 trait ConvertChostContext {
-    fn cache_attachment_image(&self, id: &str) -> eyre::Result<String>;
+    fn cache_attachment_file(&self, id: &str) -> eyre::Result<String>;
     fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String>;
 }
 struct RealConvertChostContext {
-    attachment_images_path: PathBuf,
+    attachment_files_path: PathBuf,
     attachment_thumbs_path: PathBuf,
 }
 impl ConvertChostContext for RealConvertChostContext {
-    fn cache_attachment_image(&self, id: &str) -> eyre::Result<String> {
-        cache_attachment_image(id, &self.attachment_images_path)
+    fn cache_attachment_file(&self, id: &str) -> eyre::Result<String> {
+        cache_attachment_file(id, &self.attachment_files_path)
     }
     fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
         cache_attachment_thumb(id, &self.attachment_thumbs_path)
@@ -206,10 +206,23 @@ fn convert_single_chost(
                     let template = CohostImgTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
                         thumb_src: context.cache_attachment_thumb(&attachmentId)?,
-                        src: context.cache_attachment_image(&attachmentId)?,
+                        src: context.cache_attachment_file(&attachmentId)?,
                         alt: altText,
                         width,
                         height,
+                    };
+                    output.write_all(template.render()?.as_bytes())?;
+                }
+                Attachment::Audio {
+                    attachmentId,
+                    artist,
+                    title,
+                } => {
+                    let template = CohostAudioTemplate {
+                        data_cohost_src: attachment_id_to_url(&attachmentId),
+                        src: context.cache_attachment_file(&attachmentId)?,
+                        artist,
+                        title,
                     };
                     output.write_all(template.render()?.as_bytes())?;
                 }
@@ -336,6 +349,15 @@ struct CohostImgTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "cohost-audio.html")]
+struct CohostAudioTemplate {
+    data_cohost_src: String,
+    src: String,
+    artist: String,
+    title: String,
+}
+
+#[derive(Template)]
 #[template(path = "ask.html")]
 struct AskTemplate {
     author: Option<AskingProject>,
@@ -376,7 +398,7 @@ fn process_chost_fragment(
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = context.cache_attachment_image(id)?.into();
+                            attr.value = context.cache_attachment_file(id)?.into();
                             attrs.push(Attribute {
                                 name: QualName::new(
                                     None,
@@ -468,14 +490,14 @@ fn cached_attachment_thumb_url(id: &str, thumbs_path: &Path) -> eyre::Result<Str
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_image(id: &str, images_path: &Path) -> eyre::Result<String> {
-    debug!("caching attachment image: {id}");
+fn cache_attachment_file(id: &str, files_path: &Path) -> eyre::Result<String> {
+    debug!("caching attachment file: {id}");
     let url = attachment_id_to_url(id);
-    let path = images_path.join(id);
+    let path = files_path.join(id);
     create_dir_all(&path)?;
     cached_get_attachment(&url, &path, None)?;
 
-    Ok(cached_attachment_image_url(id, images_path)?)
+    Ok(cached_attachment_image_url(id, files_path)?)
 }
 
 #[tracing::instrument(level = "error")]
@@ -554,8 +576,8 @@ fn cached_get_attachment(
 fn test_render_markdown_block() -> eyre::Result<()> {
     struct TestConvertChostContext {}
     impl ConvertChostContext for TestConvertChostContext {
-        fn cache_attachment_image(&self, id: &str) -> eyre::Result<String> {
-            Ok(format!("images/{id}"))
+        fn cache_attachment_file(&self, id: &str) -> eyre::Result<String> {
+            Ok(format!("files/{id}"))
         }
         fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
             Ok(format!("thumbs/{id}"))
@@ -569,13 +591,13 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         format!(r#"<p>text</p>{n}"#)
     );
     assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
-        format!(r#"<p><img src="images/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
+        format!(r#"<p><img src="files/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
     assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>", &context)?,
-        format!(r#"<img src="images/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
+        format!(r#"<img src="files/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
     assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
-        format!(r#"<p><a href="images/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+        format!(r#"<p><a href="files/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
     assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>", &context)?,
-        format!(r#"<p><a href="images/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+        format!(r#"<p><a href="files/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
 
     Ok(())
 }

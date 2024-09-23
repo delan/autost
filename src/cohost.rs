@@ -84,6 +84,13 @@ pub enum Attachment {
         height: usize,
     },
 
+    #[serde(rename = "audio")]
+    Audio {
+        attachmentId: String,
+        artist: String,
+        title: String,
+    },
+
     #[serde(untagged)]
     Unknown {
         #[serde(flatten)]

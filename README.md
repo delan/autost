@@ -12,7 +12,7 @@ what if you could have a single-user self-hosted thing with the same posting and
         - [x] extract cohost-rendered chost content
         - [x] render asks
         - [x] render image attachments
-        - [ ] render audio attachments
+        - [x] render audio attachments
         - [x] render attachment rows (new post editor)
     - [x] generate the main page (`index.html`)
     - [x] generate chost pages (`<postId>.html`)

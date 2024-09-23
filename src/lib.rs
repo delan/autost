@@ -177,9 +177,10 @@ impl TemplatedPost {
             .add_generic_attributes(["style", "id"])
             .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost
             .add_tag_attributes("a", ["target"])
+            .add_tag_attributes("audio", ["controls", "src"])
             .add_tag_attributes("details", ["open"])
             .add_tag_attributes("img", ["loading"])
-            .add_tags(["meta"])
+            .add_tags(["audio", "meta"])
             .add_tag_attributes("meta", ["name", "content"])
             .id_prefix(Some("user-content-")) // cohost compatibility
             .clean(&post.unsafe_html)
