@@ -1,1 +1,1 @@
-<a target="_blank" href="{{ src }}"><img loading="lazy" data-cohost-src="{{ data_cohost_src }}" src="{{ thumb_src }}" alt="{{ alt }}" width="{{ width }}" height="{{ height }}"></a>
+<a target="_blank" href="{{ src }}"><img loading="lazy" data-cohost-src="{{ data_cohost_src }}" src="{{ thumb_src }}"{% if let Some(alt) = alt %} alt="{{ alt }}"{% endif %}{% if let Some(width) = width %} width="{{ width }}"{% endif %}{% if let Some(height) = height %} height="{{ height }}"{% endif %}></a>

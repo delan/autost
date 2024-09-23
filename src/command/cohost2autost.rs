@@ -346,9 +346,9 @@ struct CohostImgTemplate {
     data_cohost_src: String,
     thumb_src: String,
     src: String,
-    alt: String,
-    width: usize,
-    height: usize,
+    alt: Option<String>,
+    width: Option<usize>,
+    height: Option<usize>,
 }
 
 #[derive(Template)]

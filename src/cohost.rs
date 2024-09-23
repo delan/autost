@@ -79,9 +79,9 @@ pub enum Attachment {
     #[serde(rename = "image")]
     Image {
         attachmentId: String,
-        altText: String,
-        width: usize,
-        height: usize,
+        altText: Option<String>,
+        width: Option<usize>,
+        height: Option<usize>,
     },
 
     #[serde(rename = "audio")]
