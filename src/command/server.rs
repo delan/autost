@@ -65,14 +65,9 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 .map_err(BadRequest)?;
             let unsafe_html = render_markdown(&unsafe_source);
             let post = TemplatedPost::filter(&unsafe_html, "").map_err(InternalError)?;
-            let meta = post.meta.clone();
+            let thread = Thread::try_from(post).map_err(InternalError)?;
             let template = ThreadsContentTemplate {
-                threads: vec![Thread {
-                    href: "".to_owned(),
-                    posts: vec![post],
-                    meta: meta,
-                    overall_title: "TODO".to_owned(),
-                }],
+                threads: vec![thread],
             };
             let result = template
                 .render()
