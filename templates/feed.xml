@@ -8,10 +8,12 @@
 <link rel="alternate" href="{{ SETTINGS.external_base_url }}{{ thread.href }}"/>
 {% if let Some(published) = thread.meta.published %}<published>{{ published }}</published>{% endif %}
 <title>{{ thread.overall_title }}</title>
-<content type="html">
-{% for post in thread.posts %}
+<content type="html" xml:base="{{ SETTINGS.external_base_url }}">
+{% for post in thread.posts -%}
+{#- fluent-reader needs html base tag, not xml:base (yang991178/fluent-reader#692) -#}
+&lt;base href="{{ SETTINGS.external_base_url }}"&gt;
 {{ post.original_html }}
-{% endfor %}
+{%- endfor %}
 </content>
 </entry>
 {% endfor %}
