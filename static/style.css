@@ -20,9 +20,15 @@
 }
 * {
     box-sizing: border-box;
+    --not-white: #fff9f2;
+    --not-black: #191919;
+    --longan: #ffd8a8;
+    --line: #bfbab5;
 }
 html {
     font-family: Atkinson Hyperlegible, system-ui, sans-serif;
+    background: var(--not-white);
+    color: var(--not-black);
 }
 body {
     margin: 1em auto;
@@ -44,8 +50,11 @@ ul.tags a {
     display: inline-block;
 }
 article.thread {
-    border: 1px solid black;
+    border: 1px solid var(--line);
     margin: 1em auto;
+    background: white;
+    border-radius: 0.5rem;
+    overflow: hidden;
 }
 body > nav :link,
 body > nav :visited,
@@ -60,13 +69,13 @@ article.post {
     overflow-wrap: break-word;
 }
 article.post:not(:first-child) {
-    border-top: 1px solid black;
+    border-top: 1px solid var(--line);
 }
 article.thread > header,
 article.post > header,
 article.post > footer:not(:empty) {
     padding: 1em;
-    background: #c0c0c0;
+    background: var(--not-white);
 }
 article.thread > header .meta,
 article.post > header .meta {
