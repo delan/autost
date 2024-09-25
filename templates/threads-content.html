@@ -37,8 +37,8 @@
     <div class="content">{{ post.safe_html|safe }}</div>
     {% endif %}
     <footer>{% for tag in post.meta.tags %}
-        {%- if SETTINGS.tag_is_interesting(tag) -%}<a href="tagged/{{ tag }}.html">{%- endif -%}
-        <span>#{{ tag }}</span>
+        {%- if SETTINGS.tag_is_interesting(tag) -%}<a class="tag" href="tagged/{{ tag }}.html">{%- endif -%}
+        <span class="tag">#{{ tag }}</span>
         {%- if SETTINGS.tag_is_interesting(tag) -%}</a>{%- endif -%}
         &#x2003;
     {% endfor %}</footer>
