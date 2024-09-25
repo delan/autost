@@ -114,6 +114,7 @@ article.post > header .gap {
 article.post > header > h1:not(:empty) {
     margin: 0.5rem 0 0;
 }
+body > nav ul.tags,
 article.post > footer .tag {
     color: var(--gray2);
 }
