@@ -4,17 +4,19 @@ use std::{
     io::{Read, Write},
     net::IpAddr,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use askama::Template;
 use autost::{render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate};
 use chrono::{SecondsFormat, Utc};
-use http::{Response, StatusCode};
+use http::{Response, StatusCode, Uri};
 use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
 use tracing::{error, warn};
 use warp::{
     filters::{any::any, path::Peek, reply::header},
     path,
+    redirect::see_other,
     reject::{custom, Reject, Rejection},
     reply::{self, Reply},
     Filter,
@@ -77,39 +79,59 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         })
         .with(header("Content-Type", HTML));
 
-    // POST /publish with urlencoded body: source=...
+    // POST /publish[?js] with urlencoded body: source=...
     let publish_route = warp::path!("publish")
         .and(warp::filters::method::post())
+        .and(warp::filters::query::query())
         .and(warp::filters::body::form())
-        .and_then(|mut form: HashMap<String, String>| async move {
-            fn create_post() -> eyre::Result<(File, String)> {
-                // cohost post ids are all less than 10000000.
-                let posts = PathBuf::from("posts");
-                for id in 10000000.. {
-                    let filename = format!("{id}.md");
-                    match File::create_new(posts.join(&filename)) {
-                        Ok(result) => return Ok((result, filename)),
-                        Err(error) => match error.kind() {
-                            std::io::ErrorKind::AlreadyExists => continue,
-                            _ => bail!("failed to create post: {error}"),
-                        },
+        .and_then(
+            |query: HashMap<String, String>, mut form: HashMap<String, String>| async move {
+                fn create_post() -> eyre::Result<(File, PathBuf)> {
+                    // cohost post ids are all less than 10000000.
+                    let posts = PathBuf::from("posts");
+                    for id in 10000000.. {
+                        let filename = format!("{id}.md");
+                        let path = posts.join(&filename);
+                        match File::create_new(&path) {
+                            Ok(result) => return Ok((result, path)),
+                            Err(error) => match error.kind() {
+                                std::io::ErrorKind::AlreadyExists => continue,
+                                _ => bail!("failed to create post: {error}"),
+                            },
+                        }
                     }
+
+                    unreachable!()
                 }
 
-                unreachable!()
-            }
+                let unsafe_source = form
+                    .remove("source")
+                    .ok_or_eyre("form field missing: source")
+                    .map_err(BadRequest)?;
+                let (mut file, path) = create_post().map_err(InternalError)?;
+                file.write_all(unsafe_source.as_bytes())
+                    .wrap_err("failed to write post file")
+                    .map_err(InternalError)?;
+                render_all(Path::new("site")).map_err(InternalError)?;
 
-            let unsafe_source = form
-                .remove("source")
-                .ok_or_eyre("form field missing: source")
-                .map_err(BadRequest)?;
-            let (mut file, filename) = create_post().map_err(InternalError)?;
-            file.write_all(unsafe_source.as_bytes())
-                .wrap_err("failed to write post file")
-                .map_err(InternalError)?;
-            render_all(Path::new("site")).map_err(InternalError)?;
-            Ok::<_, Rejection>(filename)
-        })
+                let post = TemplatedPost::load(&path).map_err(InternalError)?;
+                let thread = Thread::try_from(post).map_err(InternalError)?;
+                let url = thread.href;
+
+                // fetch api does not expose the redirect ‘location’ to scripts.
+                // <https://github.com/whatwg/fetch/issues/763>
+                let response = if query.contains_key("js") {
+                    Box::new(url) as Box<dyn Reply>
+                } else {
+                    let url = Uri::from_str(&url)
+                        .wrap_err("failed to build Uri")
+                        .map_err(InternalError)?;
+                    Box::new(see_other(url)) as Box<dyn Reply>
+                };
+
+                Ok::<_, Rejection>(response)
+            },
+        )
         .with(header("Content-Type", HTML));
 
     let default_route = warp::filters::method::get()
