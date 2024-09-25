@@ -13,22 +13,40 @@ if (compose) {
         console.debug(response);
         return response;
     };
+    const error = e => {
+        const error = compose.querySelector(":scope > div.error");
+        if (e instanceof Error) {
+            error.textContent = `${e.name}: ${e.message}`;
+        } else {
+            error.textContent = `${e}`;
+        }
+    };
     const preview = async () => {
-        const response = await submitForm(previewButton.formAction);
-        const body = await response.text();
-
-        const preview = compose.querySelector(":scope > div.preview");
-        preview.innerHTML = body;
+        try {
+            const response = await submitForm(previewButton.formAction);
+            const body = await response.text();
+            if (response.ok) {
+                const preview = compose.querySelector(":scope > div.preview");
+                preview.innerHTML = body;
+            } else {
+                throw new Error(body);
+            }
+        } catch (e) {
+            error(e);
+        }
     };
     const publish = async () => {
-        const response = await submitForm(publishButton.formAction + "?js");
-        const body = await response.text();
-
-        if (response.ok) {
-            location = body;
-        } else {
-            const result = compose.querySelector(":scope > div.result");
-            result.textContent = body;
+        try {
+            const response = await submitForm(publishButton.formAction + "?js");
+            const body = await response.text();
+            if (response.ok) {
+                location = body;
+                return;
+            } else {
+                throw new Error(body);
+            }
+        } catch (e) {
+            error(e);
         }
     };
     compose.addEventListener("submit", event => {
