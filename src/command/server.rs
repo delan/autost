@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -10,7 +10,7 @@ use std::{
 use askama::Template;
 use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode, Uri};
-use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
+use jane_eyre::eyre::{self, eyre, Context, OptionExt};
 use tracing::{error, info, warn};
 use warp::{
     filters::{any::any, path::Peek, reply::header},
@@ -90,28 +90,23 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         .and(warp::filters::body::form())
         .and_then(
             |query: HashMap<String, String>, mut form: HashMap<String, String>| async move {
-                fn create_post() -> eyre::Result<(File, PostsPath)> {
-                    // cohost post ids are all less than 10000000.
-                    for id in 10000000.. {
-                        let filename = format!("{id}.md");
-                        let path = PostsPath::ROOT.join(&filename)?;
-                        match File::create_new(&path) {
-                            Ok(result) => return Ok((result, path)),
-                            Err(error) => match error.kind() {
-                                std::io::ErrorKind::AlreadyExists => continue,
-                                _ => bail!("failed to create post: {error}"),
-                            },
-                        }
-                    }
-
-                    unreachable!()
-                }
-
                 let unsafe_source = form
                     .remove("source")
                     .ok_or_eyre("form field missing: source")
                     .map_err(BadRequest)?;
-                let (mut file, path) = create_post().map_err(InternalError)?;
+
+                // cohost post ids are all less than 10000000.
+                let (mut file, path) = (10000000..)
+                    .map(|id| {
+                        let path = PostsPath::markdown_post_path(id);
+                        File::create_new(&path).map(|file| (file, path))
+                    })
+                    .filter(|file| !matches!(file, Err(error) if error.kind() == io::ErrorKind::AlreadyExists))
+                    .next()
+                    .expect("too many posts :(")
+                    .wrap_err("failed to create post")
+                    .map_err(InternalError)?;
+
                 file.write_all(unsafe_source.as_bytes())
                     .wrap_err("failed to write post file")
                     .map_err(InternalError)?;

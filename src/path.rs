@@ -79,6 +79,12 @@ impl PostsPath {
         Self::new(path)
     }
 
+    pub fn markdown_post_path(post_id: usize) -> Self {
+        Self::ROOT
+            .join(&format!("{post_id}.md"))
+            .expect("guaranteed by argument")
+    }
+
     pub fn generated_post_path(post_id: usize) -> Self {
         Self::ROOT
             .join(&format!("{post_id}.html"))
