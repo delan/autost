@@ -85,14 +85,14 @@ $ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts 123456.json 234567.
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- render site
+$ RUST_LOG=info cargo run -r -- render
 ```
 
 or to render specific posts only:
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- render site posts/123456.html posts/10000000.md
+$ RUST_LOG=info cargo run -r -- render posts/123456.html posts/10000000.md
 ```
 
 ## how to include or exclude specific chosts
@@ -143,7 +143,7 @@ if you just want to back up your chosts, make an autost site for each cohost pro
 
 if you want to do anything more involved, you should make a `staging` and `production` version of your autost site, like `sites/staging` and `sites/production`:
 
-- to render your site, `cd sites/staging; RUST_LOG=info cargo run -r -- render site`
+- to render your site, `cd sites/staging; RUST_LOG=info cargo run -r -- render`
 - to see what changed, `colordiff -ru sites/production sites/staging`
 - if you’re happy with the changes, `rsync -a sites/staging sites/production`
 - and finally to deploy, `cd sites/production` and see “how to deploy”

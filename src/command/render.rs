@@ -13,9 +13,8 @@ use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, OptionExt};
 use tracing::{debug, info, trace};
 
-pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let output_path = args.next().unwrap();
-    let output_path = Path::new(&output_path);
+pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    let output_path = Path::new("site");
     let mut args = args.peekable();
 
     if args.peek().is_some() {
