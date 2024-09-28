@@ -267,26 +267,32 @@ struct ComposeTemplate {
 async fn recover(error: Rejection) -> Result<impl Reply, std::convert::Infallible> {
     Ok(if let Some(error) = error.find::<BadRequest>() {
         error!(
-            "BadRequest: responding with http 400 bad request: {}",
-            error.0
-        );
-        reply::with_status(format!("bad request: {}", error.0), StatusCode::BAD_REQUEST)
-    } else if let Some(error) = error.find::<NotFound>() {
-        error!("NotFound: responding with http 404 not found: {}", error.0);
-        reply::with_status(format!("not found: {}", error.0), StatusCode::NOT_FOUND)
-    } else if let Some(error) = error.find::<InternalError>() {
-        error!(
-            "InternalError: responding with http 500 internal server error: {}",
-            error.0
+            ?error,
+            "BadRequest: responding with http 400 bad request: {}", error.0,
         );
         reply::with_status(
-            format!("internal error: {}", error.0),
+            format!("bad request: {:?}", error.0),
+            StatusCode::BAD_REQUEST,
+        )
+    } else if let Some(error) = error.find::<NotFound>() {
+        error!(
+            ?error,
+            "NotFound: responding with http 404 not found: {}", error.0,
+        );
+        reply::with_status(format!("not found: {:?}", error.0), StatusCode::NOT_FOUND)
+    } else if let Some(error) = error.find::<InternalError>() {
+        error!(
+            ?error,
+            "InternalError: responding with http 500 internal server error: {}", error.0,
+        );
+        reply::with_status(
+            format!("internal error: {:?}", error.0),
             StatusCode::INTERNAL_SERVER_ERROR,
         )
     } else {
         error!(
-            "unknown error: responding with http 500 internal server error: {:?}",
-            error
+            ?error,
+            "unknown error: responding with http 500 internal server error",
         );
         reply::with_status(
             format!("unknown error: {error:?}"),
