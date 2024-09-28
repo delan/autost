@@ -4,6 +4,7 @@ use markup5ever_rcdom::NodeData;
 
 use crate::{
     dom::{attr_value, parse, serialize},
+    path::PostsPath,
     Author, ExtractedPost, PostMeta,
 };
 
@@ -57,7 +58,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                             }
                             Some("references") => {
                                 if let Some(href) = href {
-                                    meta.references.push(href);
+                                    meta.references.push(PostsPath::from_references_url(&href)?);
                                 }
                             }
                             Some("author") => {
@@ -101,7 +102,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
     fn post(
         unsafe_html: &str,
         archived: Option<&str>,
-        references: &[&str],
+        references: &[PostsPath],
         title: Option<&str>,
         published: Option<&str>,
         author: Option<Author>,
@@ -112,7 +113,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
             unsafe_html: unsafe_html.to_owned(),
             meta: PostMeta {
                 archived: archived.map(|a| a.to_owned()),
-                references: references.iter().map(|&url| url.to_owned()).collect(),
+                references: references.iter().map(|url| url.to_owned()).collect(),
                 title: title.map(|t| t.to_owned()),
                 published: published.map(|t| t.to_owned()),
                 author,

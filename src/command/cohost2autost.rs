@@ -3,7 +3,7 @@ use std::{
     ffi::OsString,
     fs::{create_dir_all, read_dir, DirEntry, File},
     io::{Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use askama::Template;
@@ -17,6 +17,7 @@ use autost::{
         debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut,
         make_attribute_name, parse, serialize, tendril_to_str, Traverse,
     },
+    path::{PostsPath, SitePath},
     render_markdown, Author, PostMeta,
 };
 use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
@@ -29,14 +30,11 @@ use tracing::{debug, info, trace, warn};
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let input_path = args.next().unwrap();
     let input_path = Path::new(&input_path);
-    let output_path = Path::new("posts");
-    let attachment_files_path = Path::new("site/attachments").to_owned();
-    let attachment_thumbs_path = attachment_files_path.join("thumbs");
     let specific_post_filenames = args.map(OsString::from).collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
-    create_dir_all(output_path)?;
-    create_dir_all(&attachment_files_path)?;
-    create_dir_all(&attachment_thumbs_path)?;
+    create_dir_all(&*PostsPath::ROOT)?;
+    create_dir_all(&*SitePath::ATTACHMENTS)?;
+    create_dir_all(&*SitePath::THUMBS)?;
 
     let results = dir_entries
         .into_par_iter()
@@ -47,11 +45,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
                     return Ok(());
                 }
             }
-            let context = RealConvertChostContext {
-                attachment_files_path: attachment_files_path.clone(),
-                attachment_thumbs_path: attachment_thumbs_path.clone(),
-            };
-            convert_chost(&entry, output_path, &context)
+            convert_chost(&entry, &RealConvertChostContext)
                 .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
             Ok(())
         })
@@ -79,25 +73,20 @@ trait ConvertChostContext {
     fn cache_attachment_file(&self, id: &str) -> eyre::Result<String>;
     fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String>;
 }
-struct RealConvertChostContext {
-    attachment_files_path: PathBuf,
-    attachment_thumbs_path: PathBuf,
-}
+struct RealConvertChostContext;
 impl ConvertChostContext for RealConvertChostContext {
     fn cache_attachment_file(&self, id: &str) -> eyre::Result<String> {
-        cache_attachment_file(id, &self.attachment_files_path)
+        // TODO: inline this
+        cache_attachment_file(id)
     }
     fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
-        cache_attachment_thumb(id, &self.attachment_thumbs_path)
+        // TODO: inline this
+        cache_attachment_thumb(id)
     }
 }
 
-#[tracing::instrument(level = "error", skip(output_path, context))]
-fn convert_chost(
-    entry: &DirEntry,
-    output_path: &Path,
-    context: &dyn ConvertChostContext,
-) -> eyre::Result<()> {
+#[tracing::instrument(level = "error", skip(context))]
+fn convert_chost(entry: &DirEntry, context: &dyn ConvertChostContext) -> eyre::Result<()> {
     let input_path = entry.path();
 
     trace!("parsing");
@@ -109,32 +98,28 @@ fn convert_chost(
     let shared_posts = post.shareTree;
     let shared_post_filenames = shared_posts
         .iter()
-        .map(|post| format!("{}/{}.html", post_id, post.postId))
-        .collect::<Vec<_>>();
-    let shared_post_paths = shared_post_filenames
-        .iter()
-        .map(|shared_post_filename| output_path.join(shared_post_filename))
+        .map(|post| PostsPath::references_post_path(post_id, post.postId))
         .collect::<Vec<_>>();
     post.shareTree = vec![];
 
     if !shared_posts.is_empty() {
-        create_dir_all(output_path.join(post_id.to_string()))?;
+        create_dir_all(PostsPath::references_dir(post_id))?;
     }
 
-    for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_paths) {
-        convert_single_chost(shared_post, vec![], output_path.as_path(), context)?;
+    for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_filenames.iter()) {
+        convert_single_chost(shared_post, vec![], &output_path, context)?;
     }
 
-    let output_path = output_path.join(format!("{post_id}.html"));
-    convert_single_chost(post, shared_post_filenames, output_path.as_path(), context)?;
+    let output_path = PostsPath::generated_post_path(post_id);
+    convert_single_chost(post, shared_post_filenames, &output_path, context)?;
 
     Ok(())
 }
 
 fn convert_single_chost(
     post: Post,
-    shared_post_filenames: Vec<String>,
-    output_path: &Path,
+    shared_post_filenames: Vec<PostsPath>,
+    output_path: &PostsPath,
     context: &dyn ConvertChostContext,
 ) -> eyre::Result<()> {
     info!("writing: {output_path:?}");
@@ -462,8 +447,8 @@ fn process_chost_fragment(
     Ok(serialize(dom)?)
 }
 
-fn cached_attachment_image_url(id: &str, images_path: &Path) -> eyre::Result<String> {
-    let path = images_path.join(id.to_string());
+fn cached_attachment_image_url(id: &str) -> eyre::Result<String> {
+    let path = SitePath::ATTACHMENTS.join(id)?;
     let mut entries = read_dir(&path)?;
     let Some(entry) = entries.next() else {
         bail!("directory is empty: {path:?}");
@@ -476,8 +461,8 @@ fn cached_attachment_image_url(id: &str, images_path: &Path) -> eyre::Result<Str
     Ok(format!("attachments/{id}/{original_filename}"))
 }
 
-fn cached_attachment_thumb_url(id: &str, thumbs_path: &Path) -> eyre::Result<String> {
-    let path = thumbs_path.join(id.to_string());
+fn cached_attachment_thumb_url(id: &str) -> eyre::Result<String> {
+    let path = SitePath::THUMBS.join(id)?;
     let mut entries = read_dir(&path)?;
     let Some(entry) = entries.next() else {
         bail!("directory is empty: {path:?}");
@@ -491,42 +476,45 @@ fn cached_attachment_thumb_url(id: &str, thumbs_path: &Path) -> eyre::Result<Str
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_file(id: &str, files_path: &Path) -> eyre::Result<String> {
+fn cache_attachment_file(id: &str) -> eyre::Result<String> {
     debug!("caching attachment file: {id}");
     let url = attachment_id_to_url(id);
-    let path = files_path.join(id);
+    let path = SitePath::ATTACHMENTS.join(id)?;
     create_dir_all(&path)?;
     cached_get_attachment(&url, &path, None)?;
 
-    Ok(cached_attachment_image_url(id, files_path)?)
+    // TODO: inline this?
+    Ok(cached_attachment_image_url(id)?)
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_thumb(id: &str, thumbs_path: &Path) -> eyre::Result<String> {
+fn cache_attachment_thumb(id: &str) -> eyre::Result<String> {
     fn thumb(url: &str) -> String {
         format!("{url}?width=675")
     }
 
     debug!("caching attachment thumb: {id}");
     let url = attachment_id_to_url(id);
-    let path = thumbs_path.join(id);
+    let path = SitePath::THUMBS.join(id)?;
     create_dir_all(&path)?;
     cached_get_attachment(&url, &path, Some(thumb))?;
 
-    Ok(cached_attachment_thumb_url(id, thumbs_path)?)
+    // TODO: inline this?
+    Ok(cached_attachment_thumb_url(id)?)
 }
 
 fn cached_get_attachment(
     url: &str,
-    path: &Path,
+    path: &SitePath,
     transform_redirect_target: Option<fn(&str) -> String>,
-) -> eyre::Result<PathBuf> {
+) -> eyre::Result<SitePath> {
     // if the attachment id directory exists...
     if let Ok(mut entries) = read_dir(path) {
         // and the directory contains a file...
         if let Some(entry) = entries.next() {
             // and we can open the file...
-            let path = entry?.path();
+            // TODO: move this logic into path module
+            let path = path.join_dir_entry(&entry?)?;
             if let Ok(mut file) = File::open(&path) {
                 trace!("cache hit: {url}");
                 // check if we can read the file.
@@ -566,7 +554,7 @@ fn cached_get_attachment(
         url.to_owned()
     };
 
-    let path = path.join(original_filename.as_ref());
+    let path = path.join(original_filename.as_ref())?;
     let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
     File::create(&path)?.write_all(&result)?;
 

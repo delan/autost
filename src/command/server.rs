@@ -8,7 +8,10 @@ use std::{
 };
 
 use askama::Template;
-use autost::{render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate};
+use autost::{
+    path::{PostsPath, SitePath},
+    render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate,
+};
 use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode, Uri};
 use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
@@ -66,7 +69,8 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 .ok_or_eyre("form field missing: source")
                 .map_err(BadRequest)?;
             let unsafe_html = render_markdown(&unsafe_source);
-            let post = TemplatedPost::filter(&unsafe_html, "").map_err(InternalError)?;
+            let post = TemplatedPost::filter(&unsafe_html, Some(SitePath::DUMMY_POST.clone()))
+                .map_err(InternalError)?;
             let thread = Thread::try_from(post).map_err(InternalError)?;
             let template = ThreadsContentTemplate {
                 threads: vec![thread],
@@ -86,12 +90,11 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         .and(warp::filters::body::form())
         .and_then(
             |query: HashMap<String, String>, mut form: HashMap<String, String>| async move {
-                fn create_post() -> eyre::Result<(File, PathBuf)> {
+                fn create_post() -> eyre::Result<(File, PostsPath)> {
                     // cohost post ids are all less than 10000000.
-                    let posts = PathBuf::from("posts");
                     for id in 10000000.. {
                         let filename = format!("{id}.md");
-                        let path = posts.join(&filename);
+                        let path = PostsPath::ROOT.join(&filename)?;
                         match File::create_new(&path) {
                             Ok(result) => return Ok((result, path)),
                             Err(error) => match error.kind() {
@@ -112,11 +115,11 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 file.write_all(unsafe_source.as_bytes())
                     .wrap_err("failed to write post file")
                     .map_err(InternalError)?;
-                render_all(Path::new("site")).map_err(InternalError)?;
+                render_all().map_err(InternalError)?;
 
                 let post = TemplatedPost::load(&path).map_err(InternalError)?;
                 let thread = Thread::try_from(post).map_err(InternalError)?;
-                let url = thread.href;
+                let url = thread.href.internal_url();
 
                 // fetch api does not expose the redirect ‘location’ to scripts.
                 // <https://github.com/whatwg/fetch/issues/763>

@@ -2,33 +2,35 @@ use std::{
     collections::BTreeMap,
     fs::{create_dir_all, read_dir, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use askama::Template;
 use autost::{
+    path::{PostsPath, SitePath},
     AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
 };
 use chrono::{SecondsFormat, Utc};
-use jane_eyre::eyre::{self, OptionExt};
+use jane_eyre::eyre::{self, bail};
 use tracing::{debug, info, trace};
 
 pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let output_path = Path::new("site");
     let mut args = args.peekable();
 
     if args.peek().is_some() {
-        render(output_path, args)
+        let args = args
+            .map(|path| PostsPath::from_site_root_relative_path(&path))
+            .collect::<eyre::Result<Vec<_>>>()?;
+        render(args)
     } else {
-        render_all(output_path)
+        render_all()
     }
 }
 
-pub fn render_all(output_path: &Path) -> eyre::Result<()> {
-    let posts_path = PathBuf::from("posts");
+pub fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
-    for entry in read_dir(posts_path)? {
+    for entry in read_dir(&*PostsPath::ROOT)? {
         let entry = entry?;
         let metadata = entry.metadata()?;
         // cohost2autost creates directories for chost thread ancestors.
@@ -36,21 +38,20 @@ pub fn render_all(output_path: &Path) -> eyre::Result<()> {
             continue;
         }
 
-        let path = entry.path();
-        let path = path.to_str().ok_or_eyre("unsupported path")?;
-        post_paths.push(path.to_owned());
+        let path = PostsPath::ROOT.join_dir_entry(&entry)?;
+        post_paths.push(path);
     }
 
-    render(output_path, post_paths.into_iter())
+    render(post_paths)
 }
 
-pub fn render<'posts>(
-    output_path: &Path,
-    post_paths: impl Iterator<Item = String>,
-) -> eyre::Result<()> {
+pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut collections = Collections::new([
-        ("index", Collection::new(Some("index.feed.xml"), "posts")),
+        (
+            "index",
+            Collection::new(Some(SitePath::ROOT.join("index.feed.xml")?), "posts"),
+        ),
         ("all", Collection::new(None, "all posts")),
         (
             "untagged_interesting",
@@ -75,35 +76,38 @@ pub fn render<'posts>(
     ]);
     let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
+    let mut interesting_output_paths = vec![];
 
-    let tagged_path = output_path.join("tagged");
-    create_dir_all(output_path)?;
-    create_dir_all(&tagged_path)?;
+    create_dir_all(&*SitePath::ROOT)?;
+    create_dir_all(&*SitePath::TAGGED)?;
 
-    fn copy_static(output_path: &Path, filename: &str) -> eyre::Result<()> {
+    fn copy_static(output_path: &SitePath, filename: &str) -> eyre::Result<()> {
         let path_to_autost = Path::new(&SETTINGS.path_to_autost);
         std::fs::copy(
             path_to_autost.join("static").join(filename),
-            output_path.join(filename),
+            output_path.join(filename)?,
         )?;
         Ok(())
     }
-    copy_static(output_path, "style.css")?;
-    copy_static(output_path, "script.js")?;
+    copy_static(&*SitePath::ROOT, "style.css")?;
+    copy_static(&*SitePath::ROOT, "script.js")?;
     copy_static(
-        output_path,
+        &*SitePath::ROOT,
         "Atkinson-Hyperlegible-Font-License-2020-1104.pdf",
     )?;
-    copy_static(output_path, "Atkinson-Hyperlegible-Regular-102.woff2")?;
-    copy_static(output_path, "Atkinson-Hyperlegible-Italic-102.woff2")?;
-    copy_static(output_path, "Atkinson-Hyperlegible-Bold-102.woff2")?;
-    copy_static(output_path, "Atkinson-Hyperlegible-BoldItalic-102.woff2")?;
+    copy_static(&*SitePath::ROOT, "Atkinson-Hyperlegible-Regular-102.woff2")?;
+    copy_static(&*SitePath::ROOT, "Atkinson-Hyperlegible-Italic-102.woff2")?;
+    copy_static(&*SitePath::ROOT, "Atkinson-Hyperlegible-Bold-102.woff2")?;
+    copy_static(
+        &*SitePath::ROOT,
+        "Atkinson-Hyperlegible-BoldItalic-102.woff2",
+    )?;
 
     for path in post_paths {
-        let path = Path::new(&path);
-
         let post = TemplatedPost::load(&path)?;
-        let filename = post.filename.clone();
+        let Some(rendered_path) = post.rendered_path.clone() else {
+            bail!("post has no rendered path");
+        };
         let thread = Thread::try_from(post)?;
 
         for tag in thread.meta.tags.iter() {
@@ -127,6 +131,7 @@ pub fn render<'posts>(
             }
         }
         if was_interesting {
+            interesting_output_paths.push(rendered_path.clone());
             collections.push("index", thread.clone());
             for tag in thread.meta.tags.iter() {
                 if SETTINGS.tag_is_interesting(tag) {
@@ -166,9 +171,8 @@ pub fn render<'posts>(
             page_title: format!("{} — {}", thread.overall_title, SETTINGS.site_title),
             feed_href: None,
         };
-        let path = output_path.join(filename);
-        debug!("writing post page: {path:?}");
-        writeln!(File::create(path)?, "{}", template.render()?)?;
+        debug!("writing post page: {rendered_path:?}");
+        writeln!(File::create(rendered_path)?, "{}", template.render()?)?;
     }
 
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
@@ -177,15 +181,17 @@ pub fn render<'posts>(
     trace!("threads by tag: {threads_by_interesting_tag:#?}");
 
     // author step: generate atom feeds.
-    collections.write_atom_feed("index", output_path, &now)?;
+    let atom_feed_path = collections.write_atom_feed("index", &SitePath::ROOT, &now)?;
+    interesting_output_paths.push(atom_feed_path);
     for (tag, threads) in threads_by_interesting_tag.clone().into_iter() {
         let template = AtomFeedTemplate {
             threads,
             feed_title: format!("{} — {tag}", SETTINGS.site_title),
             updated: now.clone(),
         };
-        let atom_feed_path = tagged_path.join(format!("{tag}.feed.xml"));
-        writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
+        let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
+        writeln!(File::create(&atom_feed_path)?, "{}", template.render()?)?;
+        interesting_output_paths.push(atom_feed_path);
     }
 
     let mut tags = tags.into_iter().collect::<Vec<_>>();
@@ -198,34 +204,17 @@ pub fn render<'posts>(
             .collect::<Vec<_>>()
     );
 
-    let interesting_tags_filenames = SETTINGS.interesting_tags_iter().flat_map(|tag| {
-        [
-            format!("tagged/{tag}.feed.xml"),
-            format!("tagged/{tag}.html"),
-        ]
-    });
-    let interesting_tags_posts_filenames = collections
-        .threads("index")
-        .iter()
-        .map(|thread| thread.href.clone());
-    let interesting_filenames = vec!["index.html".to_owned(), "index.feed.xml".to_owned()]
-        .into_iter()
-        .chain(interesting_tags_filenames)
-        .chain(interesting_tags_posts_filenames)
-        .map(|filename| format!("{}\n", filename))
-        .collect::<Vec<_>>()
-        .join("");
-    if let Some(path) = &SETTINGS.interesting_output_filenames_list_path {
-        File::create(path)?.write_all(interesting_filenames.as_bytes())?;
-    }
-
     // reader step: generate posts pages.
     for key in collections.keys() {
         info!(
             "writing threads page for collection {key:?} ({} threads)",
             collections.threads(key).len()
         );
-        collections.write_threads_page(key, output_path)?;
+        // TODO: write internal collections to another dir?
+        let threads_page_path = collections.write_threads_page(key, &SitePath::ROOT)?;
+        if collections.is_interesting(key) {
+            interesting_output_paths.push(threads_page_path);
+        }
     }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
         let template = ThreadsContentTemplate { threads };
@@ -233,10 +222,22 @@ pub fn render<'posts>(
         let template = ThreadsTemplate {
             content,
             page_title: format!("#{tag} — {}", SETTINGS.site_title),
-            feed_href: Some(format!("tagged/{tag}.feed.xml")),
+            // TODO: move this logic into path module and check for slashes
+            feed_href: Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
         };
-        let posts_page_path = tagged_path.join(format!("{tag}.html"));
-        writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+        // TODO: move this logic into path module
+        let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
+        writeln!(File::create(&threads_page_path)?, "{}", template.render()?)?;
+        interesting_output_paths.push(threads_page_path);
+    }
+
+    let interesting_output_paths = interesting_output_paths
+        .into_iter()
+        .map(|path| format!("{}\n", path.rsync_deploy_line()))
+        .collect::<Vec<_>>()
+        .join("");
+    if let Some(path) = &SETTINGS.interesting_output_filenames_list_path {
+        File::create(path)?.write_all(interesting_output_paths.as_bytes())?;
     }
 
     Ok(())
@@ -247,7 +248,7 @@ struct Collections {
 }
 
 struct Collection {
-    feed_href: Option<String>,
+    feed_href: Option<SitePath>,
     title: String,
     threads: Vec<Thread>,
 }
@@ -275,25 +276,45 @@ impl Collections {
             .push(thread);
     }
 
-    fn write_threads_page(&self, key: &str, output_path: &Path) -> eyre::Result<()> {
-        self.inner[key].write_threads_page(&output_path.join(format!("{key}.html")))
+    fn is_interesting(&self, key: &str) -> bool {
+        self.inner[key].is_interesting()
     }
 
-    fn write_atom_feed(&self, key: &str, output_path: &Path, now: &str) -> eyre::Result<()> {
-        self.inner[key].write_atom_feed(&output_path.join(format!("{key}.feed.xml")), now)
+    fn write_threads_page(&self, key: &str, output_dir: &SitePath) -> eyre::Result<SitePath> {
+        let path = output_dir.join(&format!("{key}.html"))?;
+        self.inner[key].write_threads_page(&path)?;
+
+        Ok(path)
+    }
+
+    fn write_atom_feed(
+        &self,
+        key: &str,
+        output_dir: &SitePath,
+        now: &str,
+    ) -> eyre::Result<SitePath> {
+        let path = output_dir.join(&format!("{key}.feed.xml"))?;
+        self.inner[key].write_atom_feed(&path, now)?;
+
+        Ok(path)
     }
 }
 
 impl Collection {
-    fn new(feed_href: Option<&str>, title: &str) -> Self {
+    fn new(feed_href: Option<SitePath>, title: &str) -> Self {
         Self {
-            feed_href: feed_href.map(|href| href.to_owned()),
+            feed_href,
             title: title.to_owned(),
             threads: vec![],
         }
     }
 
-    fn write_threads_page(&self, posts_page_path: &Path) -> eyre::Result<()> {
+    fn is_interesting(&self) -> bool {
+        // this definition may change in the future.
+        self.feed_href.is_some()
+    }
+
+    fn write_threads_page(&self, posts_page_path: &SitePath) -> eyre::Result<()> {
         let mut threads = self.threads.clone();
         threads.sort_by(Thread::reverse_chronological);
         let template = ThreadsContentTemplate { threads };
@@ -308,7 +329,7 @@ impl Collection {
         Ok(())
     }
 
-    fn write_atom_feed(&self, atom_feed_path: &Path, now: &str) -> eyre::Result<()> {
+    fn write_atom_feed(&self, atom_feed_path: &SitePath, now: &str) -> eyre::Result<()> {
         let mut threads = self.threads.clone();
         threads.sort_by(Thread::reverse_chronological);
         let template = AtomFeedTemplate {

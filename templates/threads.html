@@ -1,6 +1,6 @@
 <!doctype html><meta charset="utf-8">
 <base href="{{ SETTINGS.base_url }}">{# you can change your base url without rerunning cohost2autost #}
-{%~ if let Some(feed_href) = feed_href ~%}<link rel="alternate" type="application/atom+xml" href="{{ feed_href }}">{%~ endif ~%}
+{%~ if let Some(feed_href) = feed_href ~%}<link rel="alternate" type="application/atom+xml" href="{{ feed_href.internal_url() }}">{%~ endif ~%}
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
 <title>{{ page_title }}</title>
@@ -13,7 +13,7 @@
     </ul>{% endfor %}
     <hr>
     <ul>
-    {%~ if let Some(feed_href) = feed_href ~%}<li><a href="{{ feed_href }}">atom feed</a> for everything you see here{%~ endif ~%}
+    {%~ if let Some(feed_href) = feed_href ~%}<li><a href="{{ feed_href.internal_url() }}">atom feed</a> for everything you see here{%~ endif ~%}
     </ul>
 </nav>
 {{ content|safe }}

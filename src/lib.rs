@@ -1,21 +1,20 @@
-use std::{
-    cmp::Ordering,
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-    sync::LazyLock,
-};
+use std::{cmp::Ordering, fs::File, io::Read, sync::LazyLock};
 
 use askama::Template;
-use jane_eyre::eyre::{self, Context, OptionExt};
+use jane_eyre::eyre::{self, bail, Context};
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-use crate::{meta::extract_metadata, settings::Settings};
+use crate::{
+    meta::extract_metadata,
+    path::{PostsPath, SitePath},
+    settings::Settings,
+};
 
 pub mod cohost;
 pub mod dom;
 pub mod meta;
+pub mod path;
 pub mod settings;
 
 pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
@@ -28,7 +27,7 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
     pub archived: Option<String>,
-    pub references: Vec<String>,
+    pub references: Vec<PostsPath>,
     pub title: Option<String>,
     pub published: Option<String>,
     pub author: Option<Author>,
@@ -55,7 +54,7 @@ pub struct ExtractedPost {
 pub struct ThreadsTemplate {
     pub content: String,
     pub page_title: String,
-    pub feed_href: Option<String>,
+    pub feed_href: Option<SitePath>,
 }
 
 #[derive(Clone, Debug, Template)]
@@ -74,7 +73,7 @@ pub struct AtomFeedTemplate {
 
 #[derive(Clone, Debug)]
 pub struct Thread {
-    pub href: String,
+    pub href: SitePath,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
     pub overall_title: String,
@@ -82,7 +81,7 @@ pub struct Thread {
 
 #[derive(Clone, Debug)]
 pub struct TemplatedPost {
-    pub filename: String,
+    pub rendered_path: Option<SitePath>,
     pub meta: PostMeta,
     pub original_html: String,
     pub safe_html: String,
@@ -98,7 +97,9 @@ impl TryFrom<TemplatedPost> for Thread {
     type Error = eyre::Report;
 
     fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
-        let posts_path = PathBuf::from("posts");
+        let Some(rendered_path) = post.rendered_path.clone() else {
+            bail!("post has no rendered path");
+        };
 
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
@@ -112,16 +113,13 @@ impl TryFrom<TemplatedPost> for Thread {
             .collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
-
-        let filename = post.filename.clone();
         let meta = post.meta.clone();
 
         let mut posts = post
             .meta
             .references
             .iter()
-            .map(|filename| posts_path.join(filename))
-            .map(|path| TemplatedPost::load(&path))
+            .map(|path| TemplatedPost::load(path))
             .collect::<Result<Vec<_>, _>>()?;
         posts.push(post);
 
@@ -137,7 +135,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .unwrap_or("".to_owned());
 
         Ok(Thread {
-            href: filename,
+            href: rendered_path,
             posts,
             meta,
             overall_title,
@@ -146,29 +144,22 @@ impl TryFrom<TemplatedPost> for Thread {
 }
 
 impl TemplatedPost {
-    pub fn load(path: &Path) -> eyre::Result<Self> {
-        let mut file = File::open(&path)?;
+    pub fn load(path: &PostsPath) -> eyre::Result<Self> {
+        let mut file = File::open(path)?;
         let mut unsafe_source = String::default();
         file.read_to_string(&mut unsafe_source)?;
 
-        let original_name = path.file_name().ok_or_eyre("post has no filename")?;
-        let original_name = original_name.to_str().ok_or_eyre("unsupported filename")?;
-        let (filename, _) = original_name
-            .rsplit_once(".")
-            .unwrap_or((original_name, ""));
-        let filename = format!("{filename}.html");
-
-        let unsafe_html = if original_name.ends_with(".md") {
+        let unsafe_html = if path.is_markdown_post() {
             // author step: render markdown to html.
             render_markdown(&unsafe_source)
         } else {
             unsafe_source
         };
 
-        Self::filter(&unsafe_html, &filename)
+        Self::filter(&unsafe_html, path.rendered_path()?)
     }
 
-    pub fn filter(unsafe_html: &str, filename: &str) -> eyre::Result<Self> {
+    pub fn filter(unsafe_html: &str, rendered_path: Option<SitePath>) -> eyre::Result<Self> {
         // reader step: extract metadata.
         let post = extract_metadata(unsafe_html)?;
 
@@ -187,7 +178,7 @@ impl TemplatedPost {
             .to_string();
 
         Ok(TemplatedPost {
-            filename: filename.to_owned(),
+            rendered_path,
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
             safe_html,

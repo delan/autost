@@ -1,5 +1,5 @@
 {%~ if let Some(archived) = archived ~%}<link rel="archived" href="{{ archived }}">{#- https://microformats.org/wiki/existing-rel-values#HTML5_link_type_extensions -#}{%~ endif ~%}
-{%~ for url in references ~%}<link rel="references" href="{{ url }}">{{~ "\n" ~}}{%~ endfor -%}
+{%~ for url in references ~%}<link rel="references" href="{{ url.references_url() }}">{{~ "\n" ~}}{%~ endfor -%}
 {%~ if let Some(title) = title ~%}<meta name="title" content="{{ title }}">{%~ endif ~%}
 {%~ if let Some(published) = published ~%}<meta name="published" content="{{ published }}">{%~ endif ~%}
 {%~ if let Some(author) = author -%}
