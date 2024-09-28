@@ -58,7 +58,7 @@ cohost “projects” are the things with handles like `@staff` that you can hav
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- cohost2json projectName ./chosts
+$ RUST_LOG=info cargo run -r -- cohost2json projectName path/to/chosts
 ```
 
 you may want to dump private or logged-in-only chosts, be they your own or those of people you’ve followed or reblogged. in this case, you will need to set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**, otherwise you won’t see everything!
@@ -71,14 +71,14 @@ $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts ./posts site/attachments
+$ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts
 ```
 
 or to convert specific chosts only:
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts ./posts site/attachments 123456.json 234567.json
+$ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts 123456.json 234567.json
 ```
 
 ## how to render your posts to pages

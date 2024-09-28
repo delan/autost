@@ -29,10 +29,8 @@ use tracing::{debug, info, trace, warn};
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let input_path = args.next().unwrap();
     let input_path = Path::new(&input_path);
-    let output_path = args.next().unwrap();
-    let output_path = Path::new(&output_path);
-    let attachment_files_path = args.next().unwrap();
-    let attachment_files_path = Path::new(&attachment_files_path).to_owned();
+    let output_path = Path::new("posts");
+    let attachment_files_path = Path::new("site/attachments").to_owned();
     let attachment_thumbs_path = attachment_files_path.join("thumbs");
     let specific_post_filenames = args.map(OsString::from).collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
