@@ -11,7 +11,7 @@ use askama::Template;
 use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode, Uri};
 use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use warp::{
     filters::{any::any, path::Peek, reply::header},
     path,
@@ -236,6 +236,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
 
     let routes = routes.recover(recover);
 
+    info!("starting server on http://[::1]:8420");
     warp::serve(routes)
         .run(("::1".parse::<IpAddr>()?, 8420))
         .await;
