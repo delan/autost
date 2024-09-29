@@ -67,3 +67,20 @@ if (compose) {
         preview();
     });
 }
+
+checkAutostServer();
+
+async function checkAutostServer() {
+    // if /compose exists, we are using the autost server.
+    const composeUrl = `${document.baseURI}compose`;
+    const composeResponse = await fetch(composeUrl);
+    if (composeResponse.ok) {
+        const navUl = document.querySelector("nav > ul");
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = composeUrl;
+        a.textContent = "compose";
+        li.append(a);
+        navUl.append(li);
+    }
+}
