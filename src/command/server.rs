@@ -8,10 +8,6 @@ use std::{
 };
 
 use askama::Template;
-use autost::{
-    path::{PostsPath, SitePath},
-    render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate,
-};
 use chrono::{SecondsFormat, Utc};
 use http::{Response, StatusCode, Uri};
 use jane_eyre::eyre::{self, bail, eyre, Context, OptionExt};
@@ -25,7 +21,11 @@ use warp::{
     Filter,
 };
 
-use autost::SETTINGS;
+use crate::SETTINGS;
+use crate::{
+    path::{PostsPath, SitePath},
+    render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate,
+};
 
 use crate::command::render::render_all;
 

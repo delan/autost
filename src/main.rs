@@ -1,13 +1,6 @@
-mod command {
-    pub mod cohost2autost;
-    pub mod cohost2json;
-    pub mod render;
-    pub mod server;
-}
-
 use std::env::args;
 
-use autost::{cli_init, SETTINGS};
+use autost::{cli_init, command, SETTINGS};
 use jane_eyre::eyre::{self, bail};
 
 #[tokio::main]

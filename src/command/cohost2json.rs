@@ -4,15 +4,16 @@ use std::{
     path::Path,
 };
 
-use autost::cohost::{
-    ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse,
-};
 use jane_eyre::eyre::{self, bail, OptionExt};
 use reqwest::{
     blocking::Client,
     header::{self, HeaderMap, HeaderValue},
 };
 use tracing::info;
+
+use crate::cohost::{
+    ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse,
+};
 
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let requested_project = args.next().unwrap();

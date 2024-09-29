@@ -11,6 +11,13 @@ use crate::{
     settings::Settings,
 };
 
+pub mod command {
+    pub mod cohost2autost;
+    pub mod cohost2json;
+    pub mod render;
+    pub mod server;
+}
+
 pub mod cohost;
 pub mod dom;
 pub mod meta;
@@ -18,9 +25,13 @@ pub mod path;
 pub mod settings;
 
 pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
-    Settings::load_default()
-        .context("failed to load settings")
-        .unwrap()
+    #[cfg(test)]
+    let result = Settings::load_example();
+
+    #[cfg(not(test))]
+    let result = Settings::load_default();
+
+    result.context("failed to load settings").unwrap()
 });
 
 #[derive(Clone, Debug, Default, PartialEq, Template)]

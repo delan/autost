@@ -7,7 +7,14 @@ use std::{
 };
 
 use askama::Template;
-use autost::{
+use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
+use jane_eyre::eyre::{self, bail, eyre, Context};
+use markup5ever_rcdom::{Node, NodeData, RcDom};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use reqwest::redirect::Policy;
+use tracing::{debug, info, trace, warn};
+
+use crate::{
     cohost::{
         attachment_id_to_url, attachment_url_to_id, Ask, AskingProject, Ast, Attachment, Block,
         Post,
@@ -20,12 +27,6 @@ use autost::{
     path::{PostsPath, SitePath},
     render_markdown, Author, PostMeta,
 };
-use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
-use jane_eyre::eyre::{self, bail, eyre, Context};
-use markup5ever_rcdom::{Node, NodeData, RcDom};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use reqwest::redirect::Policy;
-use tracing::{debug, info, trace, warn};
 
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let input_path = args.next().unwrap();
@@ -70,16 +71,16 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
 }
 
 trait ConvertChostContext {
-    fn cache_attachment_file(&self, id: &str) -> eyre::Result<String>;
-    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String>;
+    fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath>;
+    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath>;
 }
 struct RealConvertChostContext;
 impl ConvertChostContext for RealConvertChostContext {
-    fn cache_attachment_file(&self, id: &str) -> eyre::Result<String> {
+    fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
         // TODO: inline this
         cache_attachment_file(id)
     }
-    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
+    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath> {
         // TODO: inline this
         cache_attachment_thumb(id)
     }
@@ -327,8 +328,8 @@ fn process_ast(root: Ast) -> RcDom {
 #[template(path = "cohost-img.html")]
 struct CohostImgTemplate {
     data_cohost_src: String,
-    thumb_src: String,
-    src: String,
+    thumb_src: SitePath,
+    src: SitePath,
     alt: Option<String>,
     width: Option<usize>,
     height: Option<usize>,
@@ -338,7 +339,7 @@ struct CohostImgTemplate {
 #[template(path = "cohost-audio.html")]
 struct CohostAudioTemplate {
     data_cohost_src: String,
-    src: String,
+    src: SitePath,
     artist: String,
     title: String,
 }
@@ -384,7 +385,7 @@ fn process_chost_fragment(
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = context.cache_attachment_file(id)?.into();
+                            attr.value = context.cache_attachment_file(id)?.internal_url().into();
                             attrs.push(Attribute {
                                 name: QualName::new(
                                     None,
@@ -447,36 +448,28 @@ fn process_chost_fragment(
     Ok(serialize(dom)?)
 }
 
-fn cached_attachment_image_url(id: &str) -> eyre::Result<String> {
+fn cached_attachment_image_url(id: &str) -> eyre::Result<SitePath> {
     let path = SitePath::ATTACHMENTS.join(id)?;
     let mut entries = read_dir(&path)?;
     let Some(entry) = entries.next() else {
         bail!("directory is empty: {path:?}");
     };
-    let original_filename = entry?.file_name();
-    let Some(original_filename) = original_filename.to_str() else {
-        bail!("unsupported filename: {original_filename:?}");
-    };
 
-    Ok(format!("attachments/{id}/{original_filename}"))
+    Ok(path.join_dir_entry(&entry?)?)
 }
 
-fn cached_attachment_thumb_url(id: &str) -> eyre::Result<String> {
+fn cached_attachment_thumb_url(id: &str) -> eyre::Result<SitePath> {
     let path = SitePath::THUMBS.join(id)?;
     let mut entries = read_dir(&path)?;
     let Some(entry) = entries.next() else {
         bail!("directory is empty: {path:?}");
     };
-    let original_filename = entry?.file_name();
-    let Some(original_filename) = original_filename.to_str() else {
-        bail!("unsupported filename: {original_filename:?}");
-    };
 
-    Ok(format!("attachments/thumbs/{id}/{original_filename}"))
+    Ok(path.join_dir_entry(&entry?)?)
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_file(id: &str) -> eyre::Result<String> {
+fn cache_attachment_file(id: &str) -> eyre::Result<SitePath> {
     debug!("caching attachment file: {id}");
     let url = attachment_id_to_url(id);
     let path = SitePath::ATTACHMENTS.join(id)?;
@@ -488,7 +481,7 @@ fn cache_attachment_file(id: &str) -> eyre::Result<String> {
 }
 
 #[tracing::instrument(level = "error")]
-fn cache_attachment_thumb(id: &str) -> eyre::Result<String> {
+fn cache_attachment_thumb(id: &str) -> eyre::Result<SitePath> {
     fn thumb(url: &str) -> String {
         format!("{url}?width=675")
     }
@@ -565,11 +558,11 @@ fn cached_get_attachment(
 fn test_render_markdown_block() -> eyre::Result<()> {
     struct TestConvertChostContext {}
     impl ConvertChostContext for TestConvertChostContext {
-        fn cache_attachment_file(&self, id: &str) -> eyre::Result<String> {
-            Ok(format!("files/{id}"))
+        fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
+            Ok(SitePath::ATTACHMENTS.join(&format!("{id}"))?)
         }
-        fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<String> {
-            Ok(format!("thumbs/{id}"))
+        fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath> {
+            Ok(SitePath::THUMBS.join(&format!("{id}"))?)
         }
     }
 
@@ -580,13 +573,13 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         format!(r#"<p>text</p>{n}"#)
     );
     assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
-        format!(r#"<p><img src="files/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
+        format!(r#"<p><img src="/attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
     assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>", &context)?,
-        format!(r#"<img src="files/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
+        format!(r#"<img src="/attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
     assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
-        format!(r#"<p><a href="files/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+        format!(r#"<p><a href="/attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
     assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>", &context)?,
-        format!(r#"<p><a href="files/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+        format!(r#"<p><a href="/attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
 
     Ok(())
 }

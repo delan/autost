@@ -6,13 +6,14 @@ use std::{
 };
 
 use askama::Template;
-use autost::{
-    path::{PostsPath, SitePath},
-    AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
-};
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail};
 use tracing::{debug, info, trace};
+
+use crate::{
+    path::{PostsPath, SitePath},
+    AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
+};
 
 pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let mut args = args.peekable();
