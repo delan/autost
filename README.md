@@ -1,9 +1,9 @@
 autost
 ======
 
-**warning: this is currently a prototype. do not expect robustness or even usefulness.**
+**questions and contributions welcome :3**
 
-what if you could have a single-user self-hosted thing with the same posting and reading ux as cohost? what if you could then follow people and get a chronological timeline of their posts? what if you could share their posts too?
+want to **archive your chosts on your website** but have too many for the [cohost web component](https://cohost.org/astral/post/7796845-div-style-position)? want something like [cohost-dl](https://cohost.org/blep/post/7639936-cohost-dl) except **you can keep posting**? what if your blog engine had the same posting *and reading* experience as cohost? what if you could follow people with rss/atom feeds and see their posts on a chronological timeline? what if you could share their posts too?
 
 1. archive your chosts
     - [x] download chosts from the api (`cohost2json`)
@@ -37,6 +37,7 @@ what if you could have a single-user self-hosted thing with the same posting and
     - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
     - [ ] subscribe to feeds
     - [ ] single reverse chronological timeline
+    - [ ] share and reply to posts
 
 ## make a new site
 
