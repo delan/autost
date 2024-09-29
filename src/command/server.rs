@@ -175,6 +175,8 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                             Some("gif") => "image/gif",
                             Some("html") => HTML,
                             Some("jpg" | "jpeg") => "image/jpeg",
+                            Some("js") => "text/javascript; charset=utf-8",
+                            Some("mp3") => "audio/mpeg",
                             Some("png") => "image/png",
                             Some("svg") => "image/svg+xml",
                             Some("webp") => "image/webp",
