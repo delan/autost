@@ -201,7 +201,11 @@ pub fn cli_init() -> eyre::Result<()> {
     jane_eyre::install()?;
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
-        .with(EnvFilter::from_default_env())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive("autost=info".parse()?)
+                .from_env_lossy(),
+        )
         .init();
 
     Ok(())
