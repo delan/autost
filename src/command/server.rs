@@ -15,7 +15,7 @@ use tracing::{error, warn};
 use warp::{
     filters::{any::any, path::Peek, reply::header},
     path,
-    redirect::see_other,
+    redirect::{see_other, temporary},
     reject::{custom, Reject, Rejection},
     reply::{self, Reply},
     Filter,
@@ -212,16 +212,28 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
         });
 
     // successful responses are in their own types. error responses are in plain text.
-    let mut routes = any().boxed();
+    let mut site_routes = any().boxed();
     for component in SETTINGS.base_url_path_components() {
-        routes = routes.and(path(component)).boxed();
+        site_routes = site_routes.and(path(component)).boxed();
     }
-    let routes = routes.and(
+    let site_routes = site_routes.and(
         compose_route
             .or(preview_route)
             .or(publish_route)
             .or(default_route),
     );
+
+    // if the base_url setting is not /, redirect / to base_url.
+    let root_route = warp::path!()
+        .and(warp::filters::method::get())
+        .and_then(|| async {
+            let url = Uri::from_str(&SitePath::ROOT.internal_url())
+                .wrap_err("failed to build Uri")
+                .map_err(InternalError)?;
+            Ok::<_, Rejection>(temporary(url))
+        });
+    let routes = site_routes.or(root_route);
+
     let routes = routes.recover(recover);
 
     warp::serve(routes)
