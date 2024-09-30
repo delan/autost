@@ -8,7 +8,7 @@ use std::{
 use askama::Template;
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail};
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 
 use crate::{
     migrations::run_migrations,
@@ -182,7 +182,6 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
         threads.sort_by(Thread::reverse_chronological);
     }
-    trace!("threads by tag: {threads_by_interesting_tag:#?}");
 
     // author step: generate atom feeds.
     let atom_feed_path = collections.write_atom_feed("index", &SitePath::ROOT, &now)?;
