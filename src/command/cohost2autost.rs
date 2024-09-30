@@ -77,12 +77,28 @@ trait ConvertChostContext {
 struct RealConvertChostContext;
 impl ConvertChostContext for RealConvertChostContext {
     fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
-        // TODO: inline this
-        cache_attachment_file(id)
+        debug!("caching attachment file: {id}");
+        let url = attachment_id_to_url(id);
+        let dir = &*SitePath::ATTACHMENTS;
+        let path = dir.join(id)?;
+        create_dir_all(&path)?;
+        cached_get_attachment(&url, &path, None)?;
+
+        cached_attachment_url(id, dir)
     }
     fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath> {
-        // TODO: inline this
-        cache_attachment_thumb(id)
+        fn thumb(url: &str) -> String {
+            format!("{url}?width=675")
+        }
+
+        debug!("caching attachment thumb: {id}");
+        let url = attachment_id_to_url(id);
+        let dir = &*SitePath::THUMBS;
+        let path = dir.join(id)?;
+        create_dir_all(&path)?;
+        cached_get_attachment(&url, &path, Some(thumb))?;
+
+        cached_attachment_url(id, dir)
     }
 }
 
@@ -456,34 +472,6 @@ fn cached_attachment_url(id: &str, dir: &SitePath) -> eyre::Result<SitePath> {
     };
 
     Ok(path.join_dir_entry(&entry?)?)
-}
-
-#[tracing::instrument(level = "error")]
-fn cache_attachment_file(id: &str) -> eyre::Result<SitePath> {
-    debug!("caching attachment file: {id}");
-    let url = attachment_id_to_url(id);
-    let dir = &*SitePath::ATTACHMENTS;
-    let path = dir.join(id)?;
-    create_dir_all(&path)?;
-    cached_get_attachment(&url, &path, None)?;
-
-    cached_attachment_url(id, dir)
-}
-
-#[tracing::instrument(level = "error")]
-fn cache_attachment_thumb(id: &str) -> eyre::Result<SitePath> {
-    fn thumb(url: &str) -> String {
-        format!("{url}?width=675")
-    }
-
-    debug!("caching attachment thumb: {id}");
-    let url = attachment_id_to_url(id);
-    let dir = &*SitePath::THUMBS;
-    let path = dir.join(id)?;
-    create_dir_all(&path)?;
-    cached_get_attachment(&url, &path, Some(thumb))?;
-
-    cached_attachment_url(id, dir)
 }
 
 fn cached_get_attachment(
