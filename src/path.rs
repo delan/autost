@@ -10,6 +10,7 @@ use crate::SETTINGS;
 
 pub type PostsPath = RelativePath<PostsKind>;
 pub type SitePath = RelativePath<SiteKind>;
+pub type AttachmentsPath = RelativePath<AttachmentsKind>;
 
 #[derive(Clone, Debug, PartialEq)]
 #[allow(private_bounds)]
@@ -30,7 +31,13 @@ pub enum PostsKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SiteKind {}
+pub enum SiteKind {
+    Attachments,
+    Other,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AttachmentsKind {}
 
 impl PathKind for PostsKind {
     const ROOT: &'static str = "posts";
@@ -54,6 +61,19 @@ impl PathKind for PostsKind {
 
 impl PathKind for SiteKind {
     const ROOT: &'static str = "site";
+
+    fn new(path: &Path) -> eyre::Result<Self> {
+        let mut components = path.components().skip(1);
+        if components.next().and_then(|c| c.as_os_str().to_str()) == Some("attachments") {
+            return Ok(Self::Attachments);
+        }
+
+        Ok(Self::Other)
+    }
+}
+
+impl PathKind for AttachmentsKind {
+    const ROOT: &'static str = "attachments";
 
     fn new(_path: &Path) -> eyre::Result<Self> {
         Ok(Self {})
@@ -160,6 +180,24 @@ impl SitePath {
     pub fn rsync_deploy_line(&self) -> String {
         self.relative_path()
     }
+
+    pub fn attachments_path(&self) -> eyre::Result<Option<AttachmentsPath>> {
+        match self.kind {
+            SiteKind::Attachments => {
+                let components = self.components().collect::<Vec<_>>();
+                let path = components.join(std::path::MAIN_SEPARATOR_STR);
+                Ok(Some(AttachmentsPath::new(path.into())?))
+            }
+            SiteKind::Other => Ok(None),
+        }
+    }
+}
+
+impl AttachmentsPath {
+    pub const ROOT: LazyLock<Self> =
+        LazyLock::new(|| Self::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument"));
+    pub const THUMBS: LazyLock<Self> =
+        LazyLock::new(|| Self::ROOT.join("thumbs").expect("guaranteed by argument"));
 }
 
 #[allow(private_bounds)]
@@ -203,6 +241,16 @@ impl<Kind: PathKind> RelativePath<Kind> {
         };
 
         self.join(filename)
+    }
+
+    pub fn parent(&self) -> Option<Self> {
+        if let Some(parent) = self.inner.parent() {
+            let parent = parent.to_owned();
+            let parent = Self::new(parent).expect("guaranteed by RelativePath::new");
+            return Some(parent);
+        }
+
+        None
     }
 
     pub fn filename(&self) -> &str {

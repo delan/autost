@@ -21,6 +21,7 @@ pub mod command {
 pub mod cohost;
 pub mod dom;
 pub mod meta;
+pub mod migrations;
 pub mod path;
 pub mod settings;
 

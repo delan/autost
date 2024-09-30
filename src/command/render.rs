@@ -11,6 +11,7 @@ use jane_eyre::eyre::{self, bail};
 use tracing::{debug, info, trace};
 
 use crate::{
+    migrations::run_migrations,
     path::{PostsPath, SitePath},
     AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
 };
@@ -47,6 +48,8 @@ pub fn render_all() -> eyre::Result<()> {
 }
 
 pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
+    run_migrations()?;
+
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut collections = Collections::new([
         (

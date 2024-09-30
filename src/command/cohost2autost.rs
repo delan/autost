@@ -24,11 +24,14 @@ use crate::{
         debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut,
         make_attribute_name, parse, serialize, tendril_to_str, Traverse,
     },
+    migrations::run_migrations,
     path::{PostsPath, SitePath},
     render_markdown, Author, PostMeta,
 };
 
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    run_migrations()?;
+
     let input_path = args.next().unwrap();
     let input_path = Path::new(&input_path);
     let specific_post_filenames = args.map(OsString::from).collect::<Vec<_>>();
