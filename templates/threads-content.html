@@ -1,5 +1,5 @@
 {% for thread in threads %}
-<article class="thread">
+<article class="thread"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}"{% endif %}>
 {% if !thread.meta.references.is_empty() %}
 <header>
     <div class="meta">
@@ -36,13 +36,13 @@
     {% if !post.meta.is_transparent_share %}
     <div class="content">{{ post.safe_html|safe }}</div>
     {% endif %}
-    <footer>{% for tag in post.meta.tags %}
+    <footer><div class="tags">{% for tag in post.meta.tags %}
         {#- TODO: build tag page href properly in path module -#}
         {%- if SETTINGS.tag_is_interesting(tag) -%}<a class="tag" href="tagged/{{ tag }}.html">{%- endif -%}
         <span class="tag">#{{ tag }}</span>
         {%- if SETTINGS.tag_is_interesting(tag) -%}</a>{%- endif -%}
         &#x2003;
-    {% endfor %}</footer>
+    {% endfor %}</div><div class="actions"></div></footer>
 </article>
 {% endfor %}
 </article>

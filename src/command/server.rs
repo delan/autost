@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::{self, Read, Write},
     net::IpAddr,
@@ -36,11 +36,24 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
 
     let compose_route = warp::path!("compose")
         .and(warp::filters::method::get())
-        .and_then(|| async {
+        .and(warp::filters::query::query())
+        .and_then(|mut query: BTreeMap<String, String>| async move {
             let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+            let references = if let Some(reply_to) = query.remove("reply_to") {
+                let reply_to = PostsPath::ROOT.join(&reply_to).map_err(BadRequest)?;
+                let post = TemplatedPost::load(&reply_to).map_err(InternalError)?;
+                let thread = Thread::try_from(post).map_err(InternalError)?;
+                thread
+                    .posts
+                    .into_iter()
+                    .flat_map(|post| post.path)
+                    .collect()
+            } else {
+                vec![]
+            };
             let meta = PostMeta {
                 archived: None,
-                references: vec![],
+                references,
                 title: Some("headline".to_owned()),
                 published: Some(now),
                 author: SETTINGS.self_author.clone(),

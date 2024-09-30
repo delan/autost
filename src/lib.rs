@@ -107,6 +107,12 @@ impl Thread {
         p.meta.published.cmp(&q.meta.published).reverse()
     }
 
+    pub fn url_for_original_path(&self) -> eyre::Result<Option<String>> {
+        let result = self.path.as_ref().map(|path| path.references_url());
+
+        Ok(result)
+    }
+
     pub fn url_for_html_permalink(&self) -> eyre::Result<Option<String>> {
         let result = self
             .path

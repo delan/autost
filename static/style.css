@@ -115,6 +115,11 @@ article.post > header .gap {
 article.post > header > h1:not(:empty) {
     margin: 0.5rem 0 0;
 }
+article.post > footer {
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: space-between;
+}
 body > nav ul.tags,
 article.post > footer .tag {
     color: var(--gray2);
@@ -189,6 +194,10 @@ article.post.cohost > .content :where(img):not(:where([class~="not-prose"], [cla
     margin-bottom: 2em;
 }
 /* server features */
+article.post > footer > .actions:not(:empty) {
+    margin-left: 1em;
+    align-self: flex-end;
+}
 :link.server,
 :visited.server {
     background: var(--mango);
