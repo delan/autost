@@ -71,8 +71,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 .ok_or_eyre("form field missing: source")
                 .map_err(BadRequest)?;
             let unsafe_html = render_markdown(&unsafe_source);
-            let post = TemplatedPost::filter(&unsafe_html, Some(SitePath::DUMMY_POST.clone()))
-                .map_err(InternalError)?;
+            let post = TemplatedPost::filter(&unsafe_html, None).map_err(InternalError)?;
             let thread = Thread::try_from(post).map_err(InternalError)?;
             let template = ThreadsContentTemplate {
                 threads: vec![thread],
@@ -115,8 +114,12 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 render_all().map_err(InternalError)?;
 
                 let post = TemplatedPost::load(&path).map_err(InternalError)?;
-                let thread = Thread::try_from(post).map_err(InternalError)?;
-                let url = thread.href.internal_url();
+                let _thread = Thread::try_from(post).map_err(InternalError)?;
+                let url = path.rendered_path()
+                    .map_err(InternalError)?
+                    .ok_or_eyre("path has no rendered path")
+                    .map_err(InternalError)?
+                    .internal_url();
 
                 // fetch api does not expose the redirect ‘location’ to scripts.
                 // <https://github.com/whatwg/fetch/issues/763>

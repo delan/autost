@@ -110,7 +110,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     for path in post_paths {
         let post = TemplatedPost::load(&path)?;
-        let Some(rendered_path) = post.rendered_path.clone() else {
+        let Some(rendered_path) = path.rendered_path()? else {
             bail!("post has no rendered path");
         };
         let thread = Thread::try_from(post)?;

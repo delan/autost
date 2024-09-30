@@ -4,8 +4,8 @@
 <title>{{ feed_title }}</title>
 {% for thread in threads %}
 <entry>
-<id>{{ thread.href.atom_feed_entry_id() }}</id>
-<link rel="alternate" href="{{ thread.href.external_url() }}"/>
+{% if let Some(id) = thread.atom_feed_entry_id()? %}<id>{{ id }}</id>{% endif %}
+<link rel="alternate" href="{% if let Some(url) = thread.url_for_atom_permalink()? %}{{ url }}{% endif %}"/>
 {% if let Some(published) = thread.meta.published %}<published>{{ published }}</published>{% endif %}
 <title>{{ thread.overall_title }}</title>
 <content type="html" xml:base="{{ SETTINGS.external_base_url }}">

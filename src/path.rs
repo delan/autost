@@ -162,8 +162,6 @@ impl SitePath {
             .join("thumbs")
             .expect("guaranteed by argument")
     });
-    pub const DUMMY_POST: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("0.html").expect("guaranteed by argument"));
 
     /// creates a path from an attachment url in a rendered post, which is relative to
     /// the posts directory, but percent-encoded as a url.

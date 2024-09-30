@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLock};
 
 use askama::Template;
-use jane_eyre::eyre::{self, bail, Context};
+use jane_eyre::eyre::{self, Context};
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -86,7 +86,7 @@ pub struct AtomFeedTemplate {
 
 #[derive(Clone, Debug)]
 pub struct Thread {
-    pub href: SitePath,
+    pub path: Option<PostsPath>,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
     pub overall_title: String,
@@ -95,7 +95,7 @@ pub struct Thread {
 
 #[derive(Clone, Debug)]
 pub struct TemplatedPost {
-    pub rendered_path: Option<SitePath>,
+    pub path: Option<PostsPath>,
     pub meta: PostMeta,
     pub original_html: String,
     pub safe_html: String,
@@ -107,6 +107,42 @@ impl Thread {
         p.meta.published.cmp(&q.meta.published).reverse()
     }
 
+    pub fn url_for_html_permalink(&self) -> eyre::Result<Option<String>> {
+        let result = self
+            .path
+            .as_ref()
+            .map(|path| path.rendered_path())
+            .transpose()?
+            .flatten()
+            .map(|path| path.internal_url());
+
+        Ok(result)
+    }
+
+    pub fn url_for_atom_permalink(&self) -> eyre::Result<Option<String>> {
+        let result = self
+            .path
+            .as_ref()
+            .map(|path| path.rendered_path())
+            .transpose()?
+            .flatten()
+            .map(|path| path.external_url());
+
+        Ok(result)
+    }
+
+    pub fn atom_feed_entry_id(&self) -> eyre::Result<Option<String>> {
+        let result = self
+            .path
+            .as_ref()
+            .map(|path| path.rendered_path())
+            .transpose()?
+            .flatten()
+            .map(|path| path.atom_feed_entry_id());
+
+        Ok(result)
+    }
+
     pub fn needs_attachments(&self) -> impl Iterator<Item = &SitePath> {
         self.needs_attachments.iter()
     }
@@ -116,10 +152,7 @@ impl TryFrom<TemplatedPost> for Thread {
     type Error = eyre::Report;
 
     fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
-        let Some(rendered_path) = post.rendered_path.clone() else {
-            bail!("post has no rendered path");
-        };
-
+        let path = post.path.clone();
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
             .into_iter()
@@ -160,7 +193,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .collect();
 
         Ok(Thread {
-            href: rendered_path,
+            path,
             posts,
             meta,
             overall_title,
@@ -182,10 +215,10 @@ impl TemplatedPost {
             unsafe_source
         };
 
-        Self::filter(&unsafe_html, path.rendered_path()?)
+        Self::filter(&unsafe_html, Some(path.to_owned()))
     }
 
-    pub fn filter(unsafe_html: &str, rendered_path: Option<SitePath>) -> eyre::Result<Self> {
+    pub fn filter(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
         // reader step: extract metadata.
         let post = extract_metadata(unsafe_html)?;
 
@@ -204,7 +237,7 @@ impl TemplatedPost {
             .to_string();
 
         Ok(TemplatedPost {
-            rendered_path,
+            path,
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
             safe_html,
