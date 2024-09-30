@@ -165,6 +165,11 @@ impl SitePath {
     pub const DUMMY_POST: LazyLock<Self> =
         LazyLock::new(|| Self::ROOT.join("0.html").expect("guaranteed by argument"));
 
+    /// use this only in contexts where there is a `<base>` or `xml:base`.
+    pub fn base_relative_url(&self) -> String {
+        self.relative_url()
+    }
+
     pub fn internal_url(&self) -> String {
         format!("{}{}", SETTINGS.base_url, self.relative_url())
     }

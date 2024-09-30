@@ -421,7 +421,10 @@ fn process_chost_fragment(
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = context.cache_attachment_file(id)?.internal_url().into();
+                            attr.value = context
+                                .cache_attachment_file(id)?
+                                .base_relative_url()
+                                .into();
                             attrs.push(Attribute {
                                 name: QualName::new(
                                     None,
@@ -572,13 +575,13 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         format!(r#"<p>text</p>{n}"#)
     );
     assert_eq!(render_markdown_block("![text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
-        format!(r#"<p><img src="/attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
+        format!(r#"<p><img src="attachments/44444444-4444-4444-4444-444444444444" alt="text" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy"></p>{n}"#));
     assert_eq!(render_markdown_block("<img src=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>", &context)?,
-        format!(r#"<img src="/attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
+        format!(r#"<img src="attachments/44444444-4444-4444-4444-444444444444" data-cohost-src="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444" loading="lazy">{n}"#));
     assert_eq!(render_markdown_block("[text](https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444)", &context)?,
-        format!(r#"<p><a href="/attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+        format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
     assert_eq!(render_markdown_block("<a href=https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444>text</a>", &context)?,
-        format!(r#"<p><a href="/attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
+        format!(r#"<p><a href="attachments/44444444-4444-4444-4444-444444444444" data-cohost-href="https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444">text</a></p>{n}"#));
 
     Ok(())
 }
