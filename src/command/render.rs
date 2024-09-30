@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{create_dir_all, read_dir, File},
     io::Write,
     path::Path,
@@ -80,7 +80,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     ]);
     let mut threads_by_interesting_tag = BTreeMap::default();
     let mut tags = BTreeMap::default();
-    let mut interesting_output_paths = vec![];
+    let mut interesting_output_paths = BTreeSet::default();
 
     create_dir_all(&*SitePath::ROOT)?;
     create_dir_all(&*SitePath::TAGGED)?;
@@ -135,7 +135,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             }
         }
         if was_interesting {
-            interesting_output_paths.push(rendered_path.clone());
+            interesting_output_paths.insert(rendered_path.clone());
             collections.push("index", thread.clone());
             for tag in thread.meta.tags.iter() {
                 if SETTINGS.tag_is_interesting(tag) {
@@ -186,7 +186,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     // author step: generate atom feeds.
     let atom_feed_path = collections.write_atom_feed("index", &SitePath::ROOT, &now)?;
-    interesting_output_paths.push(atom_feed_path);
+    interesting_output_paths.insert(atom_feed_path);
     for (tag, threads) in threads_by_interesting_tag.clone().into_iter() {
         let template = AtomFeedTemplate {
             threads,
@@ -195,7 +195,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         };
         let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
         writeln!(File::create(&atom_feed_path)?, "{}", template.render()?)?;
-        interesting_output_paths.push(atom_feed_path);
+        interesting_output_paths.insert(atom_feed_path);
     }
 
     let mut tags = tags.into_iter().collect::<Vec<_>>();
@@ -217,7 +217,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         // TODO: write internal collections to another dir?
         let threads_page_path = collections.write_threads_page(key, &SitePath::ROOT)?;
         if collections.is_interesting(key) {
-            interesting_output_paths.push(threads_page_path);
+            interesting_output_paths.insert(threads_page_path);
         }
     }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
@@ -232,7 +232,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         // TODO: move this logic into path module
         let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
         writeln!(File::create(&threads_page_path)?, "{}", template.render()?)?;
-        interesting_output_paths.push(threads_page_path);
+        interesting_output_paths.insert(threads_page_path);
     }
 
     let interesting_output_paths = interesting_output_paths

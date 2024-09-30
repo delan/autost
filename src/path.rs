@@ -13,7 +13,7 @@ pub type PostsPath = RelativePath<PostsKind>;
 pub type SitePath = RelativePath<SiteKind>;
 pub type AttachmentsPath = RelativePath<AttachmentsKind>;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[allow(private_bounds)]
 pub struct RelativePath<Kind: PathKind> {
     inner: PathBuf,
@@ -25,19 +25,19 @@ trait PathKind: Sized {
     fn new(path: &Path) -> eyre::Result<Self>;
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum PostsKind {
     Post { is_markdown: bool },
     Other,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum SiteKind {
     Attachments,
     Other,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct AttachmentsKind {}
 
 impl PathKind for PostsKind {
