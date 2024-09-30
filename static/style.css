@@ -23,6 +23,7 @@
     --not-white: #fff9f2;
     --not-black: #191919;
     --longan: #ffd8a8;
+    --mango: #ffab5c;
     --line: #bfbab5;
     --shadow: 0px 4px 5px #00000024, 0px 1px 10px #0000001f, 0px 2px 4px #0003;
     --gray1: #827f7c;
@@ -186,6 +187,12 @@ article.post.cohost > .content audio {
 article.post.cohost > .content :where(img):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
     margin-top: 2em;
     margin-bottom: 2em;
+}
+/* server features */
+:link.server,
+:visited.server {
+    background: var(--mango);
+    padding: 0.5em;
 }
 /* post composer */
 form.compose > textarea.source {
