@@ -1,12 +1,9 @@
-use std::{
-    fs::{create_dir_all, hard_link, read_dir},
-    io::ErrorKind,
-};
+use std::fs::{create_dir_all, read_dir};
 
-use jane_eyre::eyre::{self, bail, Context};
+use jane_eyre::eyre::{self, bail};
 use tracing::{info, trace};
 
-use crate::path::SitePath;
+use crate::path::{hard_link_if_not_exists, SitePath};
 
 #[tracing::instrument]
 pub fn run_migrations() -> eyre::Result<()> {
@@ -24,11 +21,7 @@ pub fn run_migrations() -> eyre::Result<()> {
                 bail!("path has no parent: {site_path:?}");
             };
             create_dir_all(parent)?;
-            if let Err(error) = hard_link(site_path, attachments_path) {
-                if error.kind() != ErrorKind::AlreadyExists {
-                    Err(error).wrap_err("failed to create hard link")?;
-                }
-            }
+            hard_link_if_not_exists(site_path, attachments_path)?;
         }
         if let Some(dir) = dirs.pop() {
             for entry in read_dir(&dir)? {

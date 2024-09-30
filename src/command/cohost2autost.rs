@@ -25,7 +25,7 @@ use crate::{
         make_attribute_name, parse, serialize, tendril_to_str, Traverse,
     },
     migrations::run_migrations,
-    path::{PostsPath, SitePath},
+    path::{hard_link_if_not_exists, AttachmentsPath, PostsPath, SitePath},
     render_markdown, Author, PostMeta,
 };
 
@@ -82,12 +82,20 @@ impl ConvertChostContext for RealConvertChostContext {
     #[tracing::instrument(skip(self))]
     fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
         let url = attachment_id_to_url(id);
-        let dir = &*SitePath::ATTACHMENTS;
+        let dir = &*AttachmentsPath::ROOT;
         let path = dir.join(id)?;
         create_dir_all(&path)?;
         cached_get_attachment(&url, &path, None)?;
 
-        cached_attachment_url(id, dir)
+        let attachments_path = cached_attachment_url(id, dir)?;
+        let site_path = attachments_path.site_path()?;
+        let Some(parent) = site_path.parent() else {
+            bail!("path has no parent: {site_path:?}");
+        };
+        create_dir_all(parent)?;
+        hard_link_if_not_exists(attachments_path, &site_path)?;
+
+        Ok(site_path)
     }
 
     #[tracing::instrument(skip(self))]
@@ -97,12 +105,20 @@ impl ConvertChostContext for RealConvertChostContext {
         }
 
         let url = attachment_id_to_url(id);
-        let dir = &*SitePath::THUMBS;
+        let dir = &*AttachmentsPath::THUMBS;
         let path = dir.join(id)?;
         create_dir_all(&path)?;
         cached_get_attachment(&url, &path, Some(thumb))?;
 
-        cached_attachment_url(id, dir)
+        let attachments_path = cached_attachment_url(id, dir)?;
+        let site_path = attachments_path.site_path()?;
+        let Some(parent) = site_path.parent() else {
+            bail!("path has no parent: {site_path:?}");
+        };
+        create_dir_all(parent)?;
+        hard_link_if_not_exists(attachments_path, &site_path)?;
+
+        Ok(site_path)
     }
 }
 
@@ -468,7 +484,7 @@ fn process_chost_fragment(
     Ok(serialize(dom)?)
 }
 
-fn cached_attachment_url(id: &str, dir: &SitePath) -> eyre::Result<SitePath> {
+fn cached_attachment_url(id: &str, dir: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
     let path = dir.join(id)?;
     let mut entries = read_dir(&path)?;
     let Some(entry) = entries.next() else {
@@ -480,9 +496,9 @@ fn cached_attachment_url(id: &str, dir: &SitePath) -> eyre::Result<SitePath> {
 
 fn cached_get_attachment(
     url: &str,
-    path: &SitePath,
+    path: &AttachmentsPath,
     transform_redirect_target: Option<fn(&str) -> String>,
-) -> eyre::Result<SitePath> {
+) -> eyre::Result<AttachmentsPath> {
     // if the attachment id directory exists...
     if let Ok(mut entries) = read_dir(path) {
         // and the directory contains a file...

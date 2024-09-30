@@ -1,10 +1,11 @@
 use std::{
-    fs::DirEntry,
+    fs::{hard_link, DirEntry},
+    io::ErrorKind,
     path::{Component, Path, PathBuf},
     sync::LazyLock,
 };
 
-use jane_eyre::eyre::{self, bail};
+use jane_eyre::eyre::{self, bail, Context};
 
 use crate::SETTINGS;
 
@@ -198,6 +199,15 @@ impl AttachmentsPath {
         LazyLock::new(|| Self::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument"));
     pub const THUMBS: LazyLock<Self> =
         LazyLock::new(|| Self::ROOT.join("thumbs").expect("guaranteed by argument"));
+
+    pub fn site_path(&self) -> eyre::Result<SitePath> {
+        let mut result = SitePath::ATTACHMENTS.to_owned();
+        for component in self.components() {
+            result = result.join(component)?;
+        }
+
+        Ok(result)
+    }
 }
 
 #[allow(private_bounds)]
@@ -289,4 +299,17 @@ impl<Kind: PathKind> RelativePath<Kind> {
 
         components.join(std::path::MAIN_SEPARATOR_STR)
     }
+}
+
+pub fn hard_link_if_not_exists(
+    existing: impl AsRef<Path>,
+    new: impl AsRef<Path>,
+) -> eyre::Result<()> {
+    if let Err(error) = hard_link(existing, new) {
+        if error.kind() != ErrorKind::AlreadyExists {
+            Err(error).wrap_err("failed to create hard link")?;
+        }
+    }
+
+    Ok(())
 }
