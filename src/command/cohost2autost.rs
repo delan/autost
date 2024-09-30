@@ -448,18 +448,8 @@ fn process_chost_fragment(
     Ok(serialize(dom)?)
 }
 
-fn cached_attachment_image_url(id: &str) -> eyre::Result<SitePath> {
-    let path = SitePath::ATTACHMENTS.join(id)?;
-    let mut entries = read_dir(&path)?;
-    let Some(entry) = entries.next() else {
-        bail!("directory is empty: {path:?}");
-    };
-
-    Ok(path.join_dir_entry(&entry?)?)
-}
-
-fn cached_attachment_thumb_url(id: &str) -> eyre::Result<SitePath> {
-    let path = SitePath::THUMBS.join(id)?;
+fn cached_attachment_url(id: &str, dir: &SitePath) -> eyre::Result<SitePath> {
+    let path = dir.join(id)?;
     let mut entries = read_dir(&path)?;
     let Some(entry) = entries.next() else {
         bail!("directory is empty: {path:?}");
@@ -472,12 +462,12 @@ fn cached_attachment_thumb_url(id: &str) -> eyre::Result<SitePath> {
 fn cache_attachment_file(id: &str) -> eyre::Result<SitePath> {
     debug!("caching attachment file: {id}");
     let url = attachment_id_to_url(id);
-    let path = SitePath::ATTACHMENTS.join(id)?;
+    let dir = &*SitePath::ATTACHMENTS;
+    let path = dir.join(id)?;
     create_dir_all(&path)?;
     cached_get_attachment(&url, &path, None)?;
 
-    // TODO: inline this?
-    Ok(cached_attachment_image_url(id)?)
+    cached_attachment_url(id, dir)
 }
 
 #[tracing::instrument(level = "error")]
@@ -488,12 +478,12 @@ fn cache_attachment_thumb(id: &str) -> eyre::Result<SitePath> {
 
     debug!("caching attachment thumb: {id}");
     let url = attachment_id_to_url(id);
-    let path = SitePath::THUMBS.join(id)?;
+    let dir = &*SitePath::THUMBS;
+    let path = dir.join(id)?;
     create_dir_all(&path)?;
     cached_get_attachment(&url, &path, Some(thumb))?;
 
-    // TODO: inline this?
-    Ok(cached_attachment_thumb_url(id)?)
+    cached_attachment_url(id, dir)
 }
 
 fn cached_get_attachment(
