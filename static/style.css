@@ -127,6 +127,12 @@ article.post > footer .tag {
 article.post > .content {
     margin: 1em;
 }
+@media screen and (max-width: 30em) {
+    article.thread {
+        margin-left: -1em;
+        margin-right: -1em;
+    }
+}
 /* cohost compatibility */
 @keyframes spin {
     100% {
