@@ -32,6 +32,8 @@ use crate::command::render::render_all;
 static HTML: &'static str = "text/html; charset=utf-8";
 
 pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    render_all()?;
+
     let compose_route = warp::path!("compose")
         .and(warp::filters::method::get())
         .and_then(|| async {
