@@ -13,7 +13,7 @@ pub fn run_migrations() -> eyre::Result<()> {
     let mut files: Vec<SitePath> = vec![];
     while !dirs.is_empty() || !files.is_empty() {
         for site_path in files.drain(..) {
-            trace!("site path: {:?}", site_path);
+            trace!(?site_path);
             let Some(attachments_path) = site_path.attachments_path()? else {
                 bail!("path is not an attachment path: {site_path:?}");
             };

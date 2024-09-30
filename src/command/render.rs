@@ -11,6 +11,7 @@ use jane_eyre::eyre::{self, bail};
 use tracing::{debug, info};
 
 use crate::{
+    meta::hard_link_attachments_into_site,
     migrations::run_migrations,
     path::{PostsPath, SitePath},
     AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
@@ -113,6 +114,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             bail!("post has no rendered path");
         };
         let thread = Thread::try_from(post)?;
+        hard_link_attachments_into_site(thread.needs_attachments())?;
 
         for tag in thread.meta.tags.iter() {
             *tags.entry(tag.clone()).or_insert(0usize) += 1;

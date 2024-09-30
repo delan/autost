@@ -25,7 +25,7 @@ use crate::{
         make_attribute_name, parse, serialize, tendril_to_str, Traverse,
     },
     migrations::run_migrations,
-    path::{hard_link_if_not_exists, AttachmentsPath, PostsPath, SitePath},
+    path::{AttachmentsPath, PostsPath, SitePath},
     render_markdown, Author, PostMeta,
 };
 
@@ -86,16 +86,9 @@ impl ConvertChostContext for RealConvertChostContext {
         let path = dir.join(id)?;
         create_dir_all(&path)?;
         cached_get_attachment(&url, &path, None)?;
-
         let attachments_path = cached_attachment_url(id, dir)?;
-        let site_path = attachments_path.site_path()?;
-        let Some(parent) = site_path.parent() else {
-            bail!("path has no parent: {site_path:?}");
-        };
-        create_dir_all(parent)?;
-        hard_link_if_not_exists(attachments_path, &site_path)?;
 
-        Ok(site_path)
+        attachments_path.site_path()
     }
 
     #[tracing::instrument(skip(self))]
@@ -109,16 +102,9 @@ impl ConvertChostContext for RealConvertChostContext {
         let path = dir.join(id)?;
         create_dir_all(&path)?;
         cached_get_attachment(&url, &path, Some(thumb))?;
-
         let attachments_path = cached_attachment_url(id, dir)?;
-        let site_path = attachments_path.site_path()?;
-        let Some(parent) = site_path.parent() else {
-            bail!("path has no parent: {site_path:?}");
-        };
-        create_dir_all(parent)?;
-        hard_link_if_not_exists(attachments_path, &site_path)?;
 
-        Ok(site_path)
+        attachments_path.site_path()
     }
 }
 

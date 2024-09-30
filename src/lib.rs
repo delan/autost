@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fs::File, io::Read, sync::LazyLock};
+use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLock};
 
 use askama::Template;
 use jane_eyre::eyre::{self, bail, Context};
@@ -59,6 +59,7 @@ pub struct Author {
 pub struct ExtractedPost {
     pub unsafe_html: String,
     pub meta: PostMeta,
+    pub needs_attachments: BTreeSet<SitePath>,
 }
 
 #[derive(Clone, Debug, Template)]
@@ -89,6 +90,7 @@ pub struct Thread {
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
     pub overall_title: String,
+    pub needs_attachments: BTreeSet<SitePath>,
 }
 
 #[derive(Clone, Debug)]
@@ -97,11 +99,16 @@ pub struct TemplatedPost {
     pub meta: PostMeta,
     pub original_html: String,
     pub safe_html: String,
+    pub needs_attachments: BTreeSet<SitePath>,
 }
 
 impl Thread {
     pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()
+    }
+
+    pub fn needs_attachments(&self) -> impl Iterator<Item = &SitePath> {
+        self.needs_attachments.iter()
     }
 }
 
@@ -146,11 +153,18 @@ impl TryFrom<TemplatedPost> for Thread {
             .and_then(|post| post.meta.title.clone())
             .unwrap_or("".to_owned());
 
+        let needs_attachments = posts
+            .iter()
+            .flat_map(|post| post.needs_attachments.iter())
+            .map(|attachment_path| attachment_path.to_owned())
+            .collect();
+
         Ok(Thread {
             href: rendered_path,
             posts,
             meta,
             overall_title,
+            needs_attachments,
         })
     }
 }
@@ -194,6 +208,7 @@ impl TemplatedPost {
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
             safe_html,
+            needs_attachments: post.needs_attachments,
         })
     }
 }

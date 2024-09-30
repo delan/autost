@@ -165,6 +165,18 @@ impl SitePath {
     pub const DUMMY_POST: LazyLock<Self> =
         LazyLock::new(|| Self::ROOT.join("0.html").expect("guaranteed by argument"));
 
+    /// creates a path from an attachment url in a rendered post, which is relative to
+    /// the posts directory, but percent-encoded as a url.
+    pub fn from_rendered_attachment_url(url: &str) -> eyre::Result<Self> {
+        let url = urlencoding::decode(url)?;
+        let path = Path::new(SiteKind::ROOT).join(&*url);
+        if !path.starts_with(&*SitePath::ATTACHMENTS) {
+            bail!("url is not an attachment path: {url}");
+        }
+
+        Self::new(path)
+    }
+
     /// use this only in contexts where there is a `<base>` or `xml:base`.
     pub fn base_relative_url(&self) -> String {
         self.relative_url()

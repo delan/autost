@@ -1,10 +1,13 @@
+use std::{collections::BTreeSet, fs::create_dir_all};
+
 use html5ever::{local_name, namespace_url, ns, QualName};
-use jane_eyre::eyre;
+use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::NodeData;
+use tracing::trace;
 
 use crate::{
-    dom::{attr_value, parse, serialize},
-    path::PostsPath,
+    dom::{attr_value, parse, serialize, tendril_to_str},
+    path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
 
@@ -12,6 +15,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let dom = parse(&mut unsafe_html.as_bytes())?;
 
     let mut meta = PostMeta::default();
+    let mut needs_attachments = BTreeSet::default();
     let mut author_href = None;
     let mut author_name = None;
     let mut author_display_name = None;
@@ -68,6 +72,15 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                             _ => {}
                         }
                         continue;
+                    } else {
+                        for attr in attrs.borrow().iter() {
+                            if let Ok(url) =
+                                SitePath::from_rendered_attachment_url(tendril_to_str(&attr.value)?)
+                            {
+                                trace!("found attachment url in rendered post: {url:?}");
+                                needs_attachments.insert(url);
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -94,7 +107,27 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     Ok(ExtractedPost {
         unsafe_html: serialize(dom)?,
         meta,
+        needs_attachments,
     })
+}
+
+#[tracing::instrument(skip(site_paths))]
+pub fn hard_link_attachments_into_site<'paths>(
+    site_paths: impl IntoIterator<Item = &'paths SitePath>,
+) -> eyre::Result<()> {
+    for site_path in site_paths {
+        trace!(?site_path);
+        let attachments_path = site_path
+            .attachments_path()?
+            .ok_or_eyre("path is not an attachment path")?;
+        let Some(parent) = site_path.parent() else {
+            bail!("path has no parent: {site_path:?}");
+        };
+        create_dir_all(parent)?;
+        hard_link_if_not_exists(attachments_path, &site_path)?;
+    }
+
+    Ok(())
 }
 
 #[test]
@@ -108,6 +141,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
         author: Option<Author>,
         tags: &[&str],
         is_transparent_share: bool,
+        needs_attachments: &[SitePath],
     ) -> ExtractedPost {
         ExtractedPost {
             unsafe_html: unsafe_html.to_owned(),
@@ -120,11 +154,12 @@ fn test_extract_metadata() -> eyre::Result<()> {
                 tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
                 is_transparent_share,
             },
+            needs_attachments: needs_attachments.iter().map(|url| url.to_owned()).collect(),
         }
     }
     assert_eq!(
         extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
-        post("bar", None, &[], Some("foo"), None, None, &[], false),
+        post("bar", None, &[], Some("foo"), None, None, &[], false, &[]),
     );
 
     Ok(())
