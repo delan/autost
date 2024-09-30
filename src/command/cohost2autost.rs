@@ -76,8 +76,8 @@ trait ConvertChostContext {
 }
 struct RealConvertChostContext;
 impl ConvertChostContext for RealConvertChostContext {
+    #[tracing::instrument(skip(self))]
     fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
-        debug!("caching attachment file: {id}");
         let url = attachment_id_to_url(id);
         let dir = &*SitePath::ATTACHMENTS;
         let path = dir.join(id)?;
@@ -86,12 +86,13 @@ impl ConvertChostContext for RealConvertChostContext {
 
         cached_attachment_url(id, dir)
     }
+
+    #[tracing::instrument(skip(self))]
     fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath> {
         fn thumb(url: &str) -> String {
             format!("{url}?width=675")
         }
 
-        debug!("caching attachment thumb: {id}");
         let url = attachment_id_to_url(id);
         let dir = &*SitePath::THUMBS;
         let path = dir.join(id)?;
@@ -497,6 +498,7 @@ fn cached_get_attachment(
     }
 
     trace!("cache miss: {url}");
+    debug!("downloading attachment");
 
     let client = reqwest::blocking::Client::builder()
         .redirect(Policy::none())
