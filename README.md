@@ -39,6 +39,12 @@ want to **archive your chosts on your website** but have too many for the [cohos
     - [ ] single reverse chronological timeline
     - [ ] share and reply to posts
 
+## getting started
+
+**go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!**
+
+it’s a single program you run in your terminal (`autost`).
+
 ## make a new site
 
 ```
