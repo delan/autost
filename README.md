@@ -5,40 +5,6 @@ autost
 
 want to **archive your chosts on your website** but have too many for the [cohost web component](https://cohost.org/astral/post/7796845-div-style-position)? want something like [cohost-dl](https://cohost.org/blep/post/7639936-cohost-dl) except **you can keep posting**? what if your blog engine had the same posting *and reading* experience as cohost? what if you could follow people with rss/atom feeds and see their posts on a chronological timeline? what if you could share their posts too?
 
-1. archive your chosts
-    - [x] download chosts from the api (`cohost2json`)
-    - [x] import chosts from the api (`cohost2autost`)
-    - [ ] import chosts from [cohost-dl](https://cohost.org/blep/post/7639936-cohost-dl)
-    - [ ] import chosts from your cohost data export
-    - [x] extract and render chost content
-        - [x] download and rewrite cohost cdn links
-        - [x] extract cohost-rendered chost content
-        - [x] render asks
-        - [x] render image attachments
-        - [x] render audio attachments
-        - [x] render attachment rows (new post editor)
-    - [x] generate the main page (`index.html`)
-    - [x] generate chost pages (`<postId>.html`)
-    - [x] generate tag pages (`tagged/<tag>.html`)
-2. curate your chosts
-    - [x] select tags to include on the main page (`interesting_tags`)
-    - [x] select posts to include on the main page (`interesting_archived_threads_list_path`)
-    - [x] select posts to exclude from the main page (`excluded_archived_threads_list_path`)
-    - [x] deploy only included posts, to avoid enumeration (`interesting_output_filenames_list_path`)
-    - [x] generate pages for all posts, posts not yet interesting/excluded, …
-    - [x] add tags to chosts without editing the originals (`archived_thread_tags_path`)
-    - [x] automatically rename tags whenever encountered (tag synonyms; `renamed_tags`)
-    - [x] add tags whenever a tag is encountered (tag implications; `implied_tags`)
-3. **compose new posts (we are here!)**
-    - [x] compose simple posts
-    - [x] compose replies
-    - [ ] upload attachments
-4. follow others
-    - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
-    - [ ] subscribe to feeds
-    - [ ] single reverse chronological timeline
-    - [ ] share and reply to posts
-
 ## getting started
 
 **go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!**
@@ -168,3 +134,39 @@ if you want to tinker with autost, [install rust](https://rustup.rs), then downl
 $ git clone https://github.com/delan/autost.git
 $ cd autost
 ```
+
+## roadmap
+
+1. archive your chosts
+    - [x] download chosts from the api (`cohost2json`)
+    - [x] import chosts from the api (`cohost2autost`)
+    - [ ] import chosts from [cohost-dl](https://cohost.org/blep/post/7639936-cohost-dl)
+    - [ ] import chosts from your cohost data export
+    - [x] extract and render chost content
+        - [x] download and rewrite cohost cdn links
+        - [x] extract cohost-rendered chost content
+        - [x] render asks
+        - [x] render image attachments
+        - [x] render audio attachments
+        - [x] render attachment rows (new post editor)
+    - [x] generate the main page (`index.html`)
+    - [x] generate chost pages (`<postId>.html`)
+    - [x] generate tag pages (`tagged/<tag>.html`)
+2. curate your chosts
+    - [x] select tags to include on the main page (`interesting_tags`)
+    - [x] select posts to include on the main page (`interesting_archived_threads_list_path`)
+    - [x] select posts to exclude from the main page (`excluded_archived_threads_list_path`)
+    - [x] deploy only included posts, to avoid enumeration (`interesting_output_filenames_list_path`)
+    - [x] generate pages for all posts, posts not yet interesting/excluded, …
+    - [x] add tags to chosts without editing the originals (`archived_thread_tags_path`)
+    - [x] automatically rename tags whenever encountered (tag synonyms; `renamed_tags`)
+    - [x] add tags whenever a tag is encountered (tag implications; `implied_tags`)
+3. **compose new posts (we are here!)**
+    - [x] compose simple posts
+    - [x] compose replies
+    - [ ] upload attachments
+4. follow others
+    - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
+    - [ ] subscribe to feeds
+    - [ ] single reverse chronological timeline
+    - [ ] share and reply to posts
