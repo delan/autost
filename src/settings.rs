@@ -2,17 +2,17 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs::File,
     io::{BufRead, BufReader, Read},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
+use tracing::warn;
 
 use crate::{Author, TemplatedPost, Thread};
 
 #[derive(Deserialize)]
 pub struct Settings {
-    pub path_to_autost: Option<String>,
     pub base_url: String,
     pub external_base_url: String,
     pub site_title: String,
@@ -29,6 +29,10 @@ pub struct Settings {
     pub renamed_tags: Option<HashMap<String, String>>,
     pub implied_tags: Option<HashMap<String, Vec<String>>>,
     pub nav: Vec<NavLink>,
+
+    #[deprecated(since = "0.3.0", note = "use path_to_static")]
+    path_to_autost: Option<String>,
+    path_to_static: Option<String>,
 }
 
 #[derive(Default, Deserialize)]
@@ -97,6 +101,13 @@ impl Settings {
                 .lines()
                 .collect::<Result<Vec<_>, _>>()?;
             result.excluded_archived_threads_list = Some(list);
+        }
+        #[allow(deprecated)]
+        if result.path_to_autost.is_some() {
+            warn!("path_to_autost setting is deprecated; use path_to_static instead");
+            if result.path_to_static.is_some() {
+                bail!("path_to_autost and path_to_static settings are mutually exclusive");
+            }
         }
 
         Ok(result)
@@ -200,6 +211,17 @@ impl Settings {
         }
 
         &[]
+    }
+
+    pub fn path_to_static(&self) -> Option<PathBuf> {
+        #[allow(deprecated)]
+        if let Some(path_to_autost) = self.path_to_autost.as_deref() {
+            return Some(Path::new(path_to_autost).join("static"));
+        }
+        if let Some(path_to_static) = self.path_to_static.as_deref() {
+            return Some(path_to_static.into());
+        }
+        None
     }
 }
 

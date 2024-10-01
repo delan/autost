@@ -2,7 +2,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{create_dir_all, read_dir, File},
     io::Write,
-    path::Path,
 };
 
 use askama::Template;
@@ -88,12 +87,8 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     fn copy_static(output_path: &SitePath, file: &StaticFile) -> eyre::Result<()> {
         let StaticFile(filename, content) = file;
-        if let Some(path_to_autost) = &SETTINGS.path_to_autost {
-            let path_to_autost = Path::new(path_to_autost);
-            std::fs::copy(
-                path_to_autost.join("static").join(filename),
-                output_path.join(filename)?,
-            )?;
+        if let Some(static_path) = SETTINGS.path_to_static() {
+            std::fs::copy(static_path.join(filename), output_path.join(filename)?)?;
         } else {
             File::create(output_path.join(filename)?)?.write_all(content)?;
         }

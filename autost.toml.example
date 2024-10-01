@@ -9,7 +9,7 @@ interesting_tags = [["photography"], ["reading", "watching", "listening"]]
 # excluded_archived_threads_list_path = "path/to/excluded.txt"
 
 # if you want to tinker with the css/js without rebuilding autost:
-# path_to_autost = "."
+# path_to_static = "/home/me/autost/static2"
 
 [self_author]
 href = "https://example.com"
