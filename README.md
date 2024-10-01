@@ -7,9 +7,9 @@ want to **archive your chosts on your website** but have too many for the [cohos
 
 ## getting started
 
-**go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!**
+autost is a single program you run in your terminal (`autost`).
 
-it’s a single program you run in your terminal (`autost`).
+**go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!** go to [CHANGELOG.md](CHANGELOG.md) to find out what changed in each new release.
 
 ## make a new site
 
