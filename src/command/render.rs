@@ -86,27 +86,47 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     create_dir_all(&*SitePath::ROOT)?;
     create_dir_all(&*SitePath::TAGGED)?;
 
-    fn copy_static(output_path: &SitePath, filename: &str) -> eyre::Result<()> {
-        let path_to_autost = Path::new(&SETTINGS.path_to_autost);
-        std::fs::copy(
-            path_to_autost.join("static").join(filename),
-            output_path.join(filename)?,
-        )?;
+    fn copy_static(output_path: &SitePath, file: &StaticFile) -> eyre::Result<()> {
+        let StaticFile(filename, content) = file;
+        if let Some(path_to_autost) = &SETTINGS.path_to_autost {
+            let path_to_autost = Path::new(path_to_autost);
+            std::fs::copy(
+                path_to_autost.join("static").join(filename),
+                output_path.join(filename)?,
+            )?;
+        } else {
+            File::create(output_path.join(filename)?)?.write_all(content)?;
+        }
         Ok(())
     }
-    copy_static(&*SitePath::ROOT, "style.css")?;
-    copy_static(&*SitePath::ROOT, "script.js")?;
-    copy_static(
-        &*SitePath::ROOT,
-        "Atkinson-Hyperlegible-Font-License-2020-1104.pdf",
-    )?;
-    copy_static(&*SitePath::ROOT, "Atkinson-Hyperlegible-Regular-102.woff2")?;
-    copy_static(&*SitePath::ROOT, "Atkinson-Hyperlegible-Italic-102.woff2")?;
-    copy_static(&*SitePath::ROOT, "Atkinson-Hyperlegible-Bold-102.woff2")?;
-    copy_static(
-        &*SitePath::ROOT,
-        "Atkinson-Hyperlegible-BoldItalic-102.woff2",
-    )?;
+    struct StaticFile(&'static str, &'static [u8]);
+    let static_files = [
+        StaticFile("style.css", include_bytes!("../../static/style.css")),
+        StaticFile("script.js", include_bytes!("../../static/script.js")),
+        StaticFile(
+            "Atkinson-Hyperlegible-Font-License-2020-1104.pdf",
+            include_bytes!("../../static/Atkinson-Hyperlegible-Font-License-2020-1104.pdf"),
+        ),
+        StaticFile(
+            "Atkinson-Hyperlegible-Regular-102.woff2",
+            include_bytes!("../../static/Atkinson-Hyperlegible-Regular-102.woff2"),
+        ),
+        StaticFile(
+            "Atkinson-Hyperlegible-Italic-102.woff2",
+            include_bytes!("../../static/Atkinson-Hyperlegible-Italic-102.woff2"),
+        ),
+        StaticFile(
+            "Atkinson-Hyperlegible-Bold-102.woff2",
+            include_bytes!("../../static/Atkinson-Hyperlegible-Bold-102.woff2"),
+        ),
+        StaticFile(
+            "Atkinson-Hyperlegible-BoldItalic-102.woff2",
+            include_bytes!("../../static/Atkinson-Hyperlegible-BoldItalic-102.woff2"),
+        ),
+    ];
+    for file in static_files.iter() {
+        copy_static(&*SitePath::ROOT, file)?;
+    }
 
     for path in post_paths {
         let post = TemplatedPost::load(&path)?;

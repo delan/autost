@@ -1,4 +1,3 @@
-path_to_autost = "."
 base_url = "/"
 external_base_url = "https://example.com/"
 site_title = "ao!!"
@@ -8,6 +7,9 @@ interesting_tags = [["photography"], ["reading", "watching", "listening"]]
 # interesting_output_filenames_list_path = "path/to/output_interesting.txt"
 # interesting_archived_threads_list_path = "path/to/interesting.txt"
 # excluded_archived_threads_list_path = "path/to/excluded.txt"
+
+# if you want to tinker with the css/js without rebuilding autost:
+# path_to_autost = "."
 
 [self_author]
 href = "https://example.com"

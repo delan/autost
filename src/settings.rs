@@ -12,7 +12,7 @@ use crate::{Author, TemplatedPost, Thread};
 
 #[derive(Deserialize)]
 pub struct Settings {
-    pub path_to_autost: String,
+    pub path_to_autost: Option<String>,
     pub base_url: String,
     pub external_base_url: String,
     pub site_title: String,
