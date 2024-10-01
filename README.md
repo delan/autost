@@ -31,7 +31,7 @@ want to **archive your chosts on your website** but have too many for the [cohos
     - [x] add tags whenever a tag is encountered (tag implications; `implied_tags`)
 3. **compose new posts (we are here!)**
     - [x] compose simple posts
-    - [ ] compose replies
+    - [x] compose replies
     - [ ] upload attachments
 4. follow others
     - [x] generate atom feeds (`index.feed.xml`, `tagged/<tag>.feed.xml`)
@@ -59,7 +59,7 @@ cohost “projects” are the things with handles like `@staff` that you can hav
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- cohost2json projectName path/to/chosts
+$ autost cohost2json projectName path/to/chosts
 ```
 
 you may want to dump private or logged-in-only chosts, be they your own or those of people you’ve followed or reblogged. in this case, you will need to set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**, otherwise you won’t see everything!
@@ -72,28 +72,28 @@ $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts
+$ autost cohost2autost path/to/chosts
 ```
 
 or to convert specific chosts only:
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- cohost2autost path/to/chosts 123456.json 234567.json
+$ autost cohost2autost path/to/chosts 123456.json 234567.json
 ```
 
 ## how to render your posts to pages
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- render
+$ autost render
 ```
 
 or to render specific posts only:
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r -- render posts/123456.html posts/10000000.md
+$ autost render posts/123456.html posts/10000000.md
 ```
 
 ## how to include or exclude specific chosts
@@ -116,7 +116,7 @@ https://cohost.org/project/post/123456-slug tag,another tag
 
 ```
 $ cd sites/example.com
-$ RUST_LOG=info cargo run -r server
+$ autost server
 ```
 
 ## how to deploy
@@ -144,9 +144,29 @@ if you just want to back up your chosts, make an autost site for each cohost pro
 
 if you want to do anything more involved, you should make a `staging` and `production` version of your autost site, like `sites/staging` and `sites/production`:
 
-- to render your site, `cd sites/staging; RUST_LOG=info cargo run -r -- render`
+- to render your site, `cd sites/staging; autost render`
 - to see what changed, `colordiff -ru sites/production sites/staging`
 - if you’re happy with the changes, `rsync -a sites/staging sites/production`
 - and finally to deploy, `cd sites/production` and see “how to deploy”
 
 that way, you can catch unintentional changes or autost bugs, and you have a backup of your site in case anything goes wrong.
+
+## troubleshooting
+
+if something goes wrong, you can set RUST_LOG or RUST_BACKTRACE to get more details:
+
+```
+$ export RUST_LOG=autost=debug
+$ export RUST_LOG=autost=trace
+$ export RUST_BACKTRACE=1
+```
+
+## building autost yourself
+
+if you want to tinker with autost, [install rust](https://rustup.rs), then download and build the source (see below). replace `autost` in the commands above with `cargo run -r --`.
+
+```
+$ git clone https://github.com/delan/autost.git
+$ cd autost
+$ cargo run -r -- server
+```
