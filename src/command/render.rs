@@ -96,6 +96,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     }
     struct StaticFile(&'static str, &'static [u8]);
     let static_files = [
+        StaticFile("deploy.sh", include_bytes!("../../static/deploy.sh")),
         StaticFile("style.css", include_bytes!("../../static/style.css")),
         StaticFile("script.js", include_bytes!("../../static/script.js")),
         StaticFile(
@@ -121,6 +122,15 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     ];
     for file in static_files.iter() {
         copy_static(&*SitePath::ROOT, file)?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let deploy_path = SitePath::ROOT.join("deploy.sh")?;
+        let mut permissions = std::fs::metadata(&deploy_path)?.permissions();
+        let mode = permissions.mode();
+        permissions.set_mode(mode | 0o111);
+        std::fs::set_permissions(deploy_path, permissions)?;
     }
 
     for path in post_paths {

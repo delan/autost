@@ -129,12 +129,12 @@ $ cd sites/example.com
 $ rsync -av site/ host:/var/www/example.com
 ```
 
-if you want to only upload the chosts you have curated, you can use deploy.sh (where path/to/interesting.txt is your `interesting_output_filenames_list_path`):
+if you want to only upload the chosts you have curated, you can use site/deploy.sh (where path/to/interesting.txt is your `interesting_output_filenames_list_path`):
 
 ```
 $ cd sites/example.com
-$ ../../deploy.sh host:/var/www/example.com path/to/interesting.txt -n  # dry run
-$ ../../deploy.sh host:/var/www/example.com path/to/interesting.txt     # wet run
+$ site/deploy.sh host:/var/www/example.com path/to/interesting.txt -n  # dry run
+$ site/deploy.sh host:/var/www/example.com path/to/interesting.txt     # wet run
 ```
 
 ## suggested workflow
