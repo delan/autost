@@ -39,6 +39,9 @@ default-features = false
 # default features, minus default-tls, plus rustls-tls + blocking + json
 features = ["rustls-tls", "blocking", "json", "charset", "http2", "macos-system-configuration"]
 
+[profile.release]
+debug = "line-tables-only"
+
 # The profile that 'cargo dist' will build with
 [profile.dist]
 inherits = "release"
