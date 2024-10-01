@@ -199,17 +199,24 @@ article.post.cohost > .content :where(img):not(:where([class~="not-prose"], [cla
     margin-top: 2em;
     margin-bottom: 2em;
 }
+
 /* server features */
+
 article.post > footer > .actions:not(:empty) {
     margin-left: 1em;
     align-self: flex-end;
 }
-:link.server,
-:visited.server {
+.server {
     background: var(--mango);
     padding: 0.5em;
 }
+
 /* post composer */
+
+/* when “show shared posts in full?” is closed, show only the header of shared posts in the preview. */
+form.compose > details.expand:not([open]) + .preview > article.thread > article.post:not(:last-child) > :not(header) {
+    display: none;
+}
 form.compose > textarea.source {
     width: 100%;
     height: 30vh;
