@@ -48,15 +48,8 @@ it’s a single program you run in your terminal (`autost`).
 ## make a new site
 
 ```
-$ mkdir -p sites/example.com  # example (can be anywhere)
-$ cp autost.toml sites/example.com
+$ autost new sites/example.com  # example (can be anywhere)
 $ cd sites/example.com
-```
-
-be sure to edit the `path_to_autost` setting in autost.toml to point to the directory containing `static`. with the example path above, that would be:
-
-```toml
-path_to_autost = "../.."
 ```
 
 ## how to dump your own chosts
