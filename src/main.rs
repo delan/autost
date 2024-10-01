@@ -7,11 +7,15 @@ use jane_eyre::eyre::{self, bail};
 async fn main() -> eyre::Result<()> {
     cli_init()?;
 
-    // fail fast if there are any settings errors.
-    let _ = &*SETTINGS;
-
     let mut args = args();
     let command_name = args.nth(1);
+
+    if command_name.as_deref().map_or(false, |name| {
+        ["cohost2autost", "render", "server"].contains(&name)
+    }) {
+        // fail fast if there are any settings errors.
+        let _ = &*SETTINGS;
+    }
 
     match command_name.as_deref() {
         Some("cohost2autost") => command::cohost2autost::main(args),
