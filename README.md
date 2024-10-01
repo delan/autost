@@ -162,10 +162,9 @@ $ export RUST_BACKTRACE=1
 
 ## building autost yourself
 
-if you want to tinker with autost, [install rust](https://rustup.rs), then download and build the source (see below). replace `autost` in the commands above with `cargo run -r --`.
+if you want to tinker with autost, [install rust](https://rustup.rs), then download and build the source (see below). to run autost, replace `autost` in the commands above with `cargo run -r --`.
 
 ```
 $ git clone https://github.com/delan/autost.git
 $ cd autost
-$ cargo run -r -- server
 ```
