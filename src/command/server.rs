@@ -109,6 +109,11 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                     .ok_or_eyre("form field missing: source")
                     .map_err(BadRequest)?;
 
+                // try rendering the post before writing it, to catch any errors.
+                let unsafe_html = render_markdown(&unsafe_source);
+                let post = TemplatedPost::filter(&unsafe_html, None).map_err(InternalError)?;
+                let _thread = Thread::try_from(post).map_err(InternalError)?;
+
                 // cohost post ids are all less than 10000000.
                 let (mut file, path) = (10000000..)
                     .map(|id| {
