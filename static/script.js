@@ -14,12 +14,13 @@ if (compose) {
         return response;
     };
     const error = e => {
-        const error = compose.querySelector(":scope > div.error");
+        const error = compose.querySelector(":scope > pre.error");
         if (e instanceof Error) {
             error.textContent = `${e.name}: ${e.message}`;
         } else {
             error.textContent = `${e}`;
         }
+        renderTerminalError(error);
     };
     const preview = async () => {
         try {
@@ -93,4 +94,41 @@ async function checkAutostServer() {
         a.className = "server";
         actions.prepend(a);
     }
+}
+
+function renderTerminalError(pre) {
+    // <https://en.wikipedia.org/w/index.php?title=ANSI_escape_code&oldid=1248130213#CSI_(Control_Sequence_Introducer)_sequences>
+    const csiRuns = pre.textContent.match(/\x1B\[[\x30-\x3F]*[\x20-\x2F]*[\x40-\x7E]|[^\x1B]+|[^]/g);
+    const result = [];
+    let fgColor = 0;
+    for (const run of csiRuns) {
+        const match = run.match(/\x1B\[([\x30-\x3F]*)[\x20-\x2F]*([\x40-\x7E])/);
+        if (match) {
+            const [, params, mode] = match;
+            /* sgr: select graphic rendition */
+            if (mode == "m") {
+                for (const param of params.split(";")) {
+                    const num = parseInt(param || "0", 10);
+                    if (`${num}`.length != param.length) {
+                        continue;
+                    }
+                    if (num == 0 || num >= 30 && num <= 37 || num >= 90 && num <= 97) {
+                        fgColor = num;
+                    }
+                }
+            }
+        } else {
+            if (fgColor != 0) {
+                const span = document.createElement("span");
+                span.style.color = `var(--sgr-${fgColor})`;
+                span.append(run);
+                result.push(span);
+            } else {
+                const text = document.createTextNode(run);
+                result.push(text);
+            }
+        }
+    }
+    pre.innerHTML = "";
+    pre.append(...result);
 }

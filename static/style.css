@@ -29,6 +29,27 @@
     --gray1: #827f7c;
     --gray2: #686664;
     --gray3: #4a4847;
+
+    /* monokai terminal theme */
+    /* <https://gist.github.com/brayevalerien/cb94ac685ebc186f359deae113b6710c> */
+    --monokai-fg: /* Editor Foreground */ #f8f8f2;
+    --monokai-bg: /* Editor Background */ #272822;
+    --sgr-30: /* Terminal ANSI Black */ #333333;
+    --sgr-31: /* Terminal ANSI Red */ #c4265e;
+    --sgr-32: /* Terminal ANSI Green */ #86b42b;
+    --sgr-33: /* Terminal ANSI Yellow */ #b3b42b;
+    --sgr-34: /* Terminal ANSI Blue */ #6a7ec8;
+    --sgr-35: /* Terminal ANSI Magenta */ #8c6bc8;
+    --sgr-36: /* Terminal ANSI Cyan */ #56adbc;
+    --sgr-37: /* Terminal ANSI White */ #e3e3dd;
+    --sgr-90: /* Terminal ANSI Bright Black */ #666666;
+    --sgr-91: /* Terminal ANSI Bright Red */ #f92672;
+    --sgr-92: /* Terminal ANSI Bright Green */ #a6e22e;
+    --sgr-93: /* Terminal ANSI Bright Yellow */ #e2e22e;
+    --sgr-94: /* Terminal ANSI Bright Blue */ #819aff;
+    --sgr-95: /* Terminal ANSI Bright Magenta */ #ae81ff;
+    --sgr-96: /* Terminal ANSI Bright Cyan */ #66d9ef;
+    --sgr-97: /* Terminal ANSI Bright White */ #f8f8f2;
 }
 html {
     font-family: Atkinson Hyperlegible, system-ui, sans-serif;
@@ -220,4 +241,9 @@ form.compose > details.expand:not([open]) + .preview > article.thread > article.
 form.compose > textarea.source {
     width: 100%;
     height: 30vh;
+}
+form.compose > .error:not(:empty) {
+    color: var(--monokai-fg);
+    background: var(--monokai-bg);
+    padding: 1em;
 }
