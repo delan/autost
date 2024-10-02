@@ -238,6 +238,11 @@ form.compose > textarea.source {
     width: 100%;
     height: 30vh;
 }
+form.compose > details.expand {
+    cursor: pointer;
+    user-select: none;
+    width: max-content;
+}
 /* when “show shared posts in full?” is closed, show only the header of shared posts in the preview. */
 form.compose > details.expand:not([open]) ~ .preview > article.thread > article.post:not(:last-child) > :not(header) {
     display: none;
