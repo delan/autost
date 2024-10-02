@@ -234,13 +234,13 @@ article.post > footer > .actions:not(:empty) {
 
 /* post composer */
 
-/* when “show shared posts in full?” is closed, show only the header of shared posts in the preview. */
-form.compose > details.expand:not([open]) + .preview > article.thread > article.post:not(:last-child) > :not(header) {
-    display: none;
-}
 form.compose > textarea.source {
     width: 100%;
     height: 30vh;
+}
+/* when “show shared posts in full?” is closed, show only the header of shared posts in the preview. */
+form.compose > details.expand:not([open]) ~ .preview > article.thread > article.post:not(:last-child) > :not(header) {
+    display: none;
 }
 form.compose > .error:not(:empty) {
     color: var(--monokai-fg);

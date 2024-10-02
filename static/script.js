@@ -29,6 +29,8 @@ if (compose) {
             if (response.ok) {
                 const preview = compose.querySelector(":scope > div.preview");
                 preview.innerHTML = body;
+                const error = compose.querySelector(":scope > pre.error");
+                error.innerHTML = "";
             } else {
                 throw new Error(body);
             }
