@@ -90,6 +90,8 @@ impl<Kind: PathKind> AsRef<Path> for RelativePath<Kind> {
 impl PostsPath {
     pub const ROOT: LazyLock<Self> =
         LazyLock::new(|| Self::new(PostsKind::ROOT.into()).expect("guaranteed by argument"));
+    pub const IMPORTED: LazyLock<Self> =
+        LazyLock::new(|| Self::ROOT.join("imported").expect("guaranteed by argument"));
 
     /// creates a path from `<link rel=references href>`, which is relative to
     /// the posts directory, but percent-encoded as a url.
@@ -124,8 +126,22 @@ impl PostsPath {
             .expect("guaranteed by argument")
     }
 
+    pub fn imported_post_path(post_id: usize) -> Self {
+        Self::IMPORTED
+            .join(&format!("{post_id}.html"))
+            .expect("guaranteed by argument")
+    }
+
     pub fn references_url(&self) -> String {
         self.relative_url()
+    }
+
+    pub fn compose_reply_url(&self) -> String {
+        // references_url is already urlencoded
+        format!(
+            "http://[::1]:8420/posts/compose?reply_to={}",
+            self.references_url()
+        )
     }
 
     pub fn rendered_path(&self) -> eyre::Result<Option<SitePath>> {

@@ -16,6 +16,7 @@ use jane_eyre::eyre::{self, bail};
 use markup5ever_rcdom::{Handle, NodeData, RcDom, SerializableHandle};
 use serde_json::Value;
 use tracing::{error, warn};
+use xml5ever::driver::XmlParseOpts;
 
 static ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
 static NOT_KNOWN_GOOD_ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> =
@@ -63,11 +64,24 @@ static RENAME_IDL_TO_CONTENT_ATTRIBUTE: LazyLock<
     result
 });
 
-pub struct Traverse(Vec<Handle>);
+pub struct Traverse {
+    queue: Vec<Handle>,
+    elements_only: bool,
+}
 
 impl Traverse {
     pub fn new(node: Handle) -> Self {
-        Self(vec![node])
+        Self {
+            queue: vec![node],
+            elements_only: false,
+        }
+    }
+
+    pub fn elements(node: Handle) -> Self {
+        Self {
+            queue: vec![node],
+            elements_only: true,
+        }
     }
 }
 
@@ -75,21 +89,30 @@ impl Iterator for Traverse {
     type Item = Handle;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.0.is_empty() {
-            return None;
+        while !self.queue.is_empty() {
+            let node = self.queue.remove(0);
+            for kid in node.children.borrow().iter() {
+                self.queue.push(kid.clone());
+            }
+            if !self.elements_only || matches!(node.data, NodeData::Element { .. }) {
+                return Some(node);
+            }
         }
 
-        let node = self.0.remove(0);
-        for kid in node.children.borrow().iter() {
-            self.0.push(kid.clone());
-        }
-
-        Some(node)
+        None
     }
 }
 
 pub fn make_html_tag_name(name: &str) -> QualName {
     QualName::new(None, ns!(html), LocalName::from(name))
+}
+
+pub fn make_atom_tag_name(name: &str) -> QualName {
+    QualName::new(
+        None,
+        Namespace::from("http://www.w3.org/2005/Atom"),
+        LocalName::from(name),
+    )
 }
 
 pub fn make_attribute_name(name: &str) -> QualName {
@@ -116,6 +139,22 @@ pub fn parse(mut input: &[u8]) -> eyre::Result<RcDom> {
     Ok(dom)
 }
 
+pub fn parse_html_document(mut input: &[u8]) -> eyre::Result<RcDom> {
+    let dom = html5ever::parse_document(RcDom::default(), ParseOpts::default())
+        .from_utf8()
+        .read_from(&mut input)?;
+
+    Ok(dom)
+}
+
+pub fn parse_xml(mut input: &[u8]) -> eyre::Result<RcDom> {
+    let dom = xml5ever::driver::parse_document(RcDom::default(), XmlParseOpts::default())
+        .from_utf8()
+        .read_from(&mut input)?;
+
+    Ok(dom)
+}
+
 pub fn serialize(dom: RcDom) -> eyre::Result<String> {
     // html5ever::parse_fragment builds a tree with the input wrapped in an <html> element.
     // this is consistent with how the web platform dom requires exactly one root element.
@@ -130,10 +169,14 @@ pub fn serialize(dom: RcDom) -> eyre::Result<String> {
     if !matches!(&children[0].data, NodeData::Element { name, .. } if name == &html) {
         bail!("expected root element to be <html>");
     }
-    let html_root: SerializableHandle = children[0].clone().into();
 
+    serialize_node(children[0].clone())
+}
+
+pub fn serialize_node(node: Handle) -> eyre::Result<String> {
     let mut result = Vec::default();
-    html5ever::serialize(&mut result, &html_root, Default::default())?;
+    let node: SerializableHandle = node.clone().into();
+    html5ever::serialize(&mut result, &node, Default::default())?;
     let result = String::from_utf8(result)?;
 
     Ok(result)
@@ -313,6 +356,17 @@ fn test_convert_idl_to_content_attribute() {
             value: "foo bar".into(),
         }),
     );
+}
+
+pub fn text_content(node: Handle) -> eyre::Result<String> {
+    let mut result = vec![];
+    for node in Traverse::new(node) {
+        if let NodeData::Text { contents } = &node.data {
+            result.push(tendril_to_str(&contents.borrow())?.to_owned());
+        }
+    }
+
+    Ok(result.join(""))
 }
 
 pub fn debug_attributes_seen() -> Vec<(String, String)> {

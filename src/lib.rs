@@ -14,6 +14,7 @@ use crate::{
 pub mod command {
     pub mod cohost2autost;
     pub mod cohost2json;
+    pub mod import;
     pub mod new;
     pub mod render;
     pub mod server;

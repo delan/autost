@@ -185,8 +185,10 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber 0.3.18",
+ "url",
  "urlencoding",
  "warp",
+ "xml5ever",
 ]
 
 [[package]]
