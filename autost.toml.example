@@ -15,7 +15,7 @@ interesting_tags = [["photography"], ["reading", "watching", "listening"]]
 href = "https://example.com"
 name = "eggbug"
 display_name = "eggbug"
-display_handle = "@eggbug"
+display_handle = "example.com"
 
 [renamed_tags]
 "Laptop stickers" = "laptop stickers"
