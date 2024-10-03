@@ -79,6 +79,14 @@ pub struct ThreadsContentTemplate {
 }
 
 #[derive(Clone, Debug, Template)]
+#[template(path = "thread-or-post-header.html")]
+pub struct ThreadOrPostHeaderTemplate {
+    pub thread: Thread,
+    pub post_meta: PostMeta,
+    pub is_thread_header: bool,
+}
+
+#[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
 pub struct AtomFeedTemplate {
     pub threads: Vec<Thread>,
@@ -102,6 +110,16 @@ pub struct TemplatedPost {
     pub original_html: String,
     pub safe_html: String,
     pub needs_attachments: BTreeSet<SitePath>,
+}
+
+impl ThreadOrPostHeaderTemplate {
+    pub fn new(thread: &Thread, post_meta: &PostMeta, is_thread_header: bool) -> Self {
+        Self {
+            thread: thread.to_owned(),
+            post_meta: post_meta.to_owned(),
+            is_thread_header,
+        }
+    }
 }
 
 impl Thread {

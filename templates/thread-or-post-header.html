@@ -1,0 +1,17 @@
+<header>
+    <div class="meta">
+        {% if let Some(author) = post_meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> (<a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a>)</span>{% endif %}
+        <span class="gap">{% if post_meta.author.is_some() && post_meta.published.is_some() %}—{% endif %}</span>
+        <span>
+        {% if let Some(archived) = post_meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
+        {% if is_thread_header || thread.meta.references.is_empty() %}<a class="time" href="{% if let Some(url) = thread.url_for_html_permalink()? %}{{ url }}{% endif %}">{% endif %}
+        {% if let Some(published) = post_meta.published %}<time datetime="{{ published }}">{{ published }}</time>{% endif %}
+        {% if is_thread_header || thread.meta.references.is_empty() %}</a>{% endif %}
+        </span>
+    </div>
+    {% if !is_thread_header %}<h1>
+        {% if thread.meta.references.is_empty() %}<a href="{% if let Some(url) = thread.url_for_html_permalink()? %}{{ url }}{% endif %}">{% endif %}
+        {% if let Some(title) = post_meta.title %}{{ title }}{% endif %}
+        {% if thread.meta.references.is_empty() %}</a>{% endif %}
+    </h1>{% endif %}
+</header>
