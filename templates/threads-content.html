@@ -1,18 +1,18 @@
 {% for thread in threads %}
-<article class="thread"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}"{% endif %}>
+<article class="thread h-entry"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}"{% endif %}>
 {% if !thread.meta.references.is_empty() %}
 {{ ThreadOrPostHeaderTemplate::new(thread,thread.meta,true)|safe }}
 {% endif %}
-{% for post in thread.posts %}
-<article class="post cohost">
-{{ ThreadOrPostHeaderTemplate::new(thread,post.meta,false)|safe }}
-    {% if !post.meta.is_transparent_share %}
-    <div class="content">{{ post.safe_html|safe }}</div>
+{% for post in thread.posts_in_thread() %}
+<article class="post cohost{% if !post.is_main_post %} h-entry{% endif %}">
+{{ ThreadOrPostHeaderTemplate::new(thread,post.inner.meta,false)|safe }}
+    {% if !post.inner.meta.is_transparent_share %}
+    <div class="content e-content">{{ post.inner.safe_html|safe }}</div>
     {% endif %}
-    <footer><div class="tags">{% for tag in post.meta.tags %}
+    <footer><div class="tags">{% for tag in post.inner.meta.tags %}
         {#- TODO: build tag page href properly in path module -#}
         {%- if SETTINGS.tag_is_interesting(tag) -%}<a class="tag" href="tagged/{{ tag }}.html">{%- endif -%}
-        <span class="tag">#{{ tag }}</span>
+        <span class="tag">#<span class="p-category">{{ tag }}</span></span>
         {%- if SETTINGS.tag_is_interesting(tag) -%}</a>{%- endif -%}
         &#x2003;
     {% endfor %}</div><div class="actions"></div></footer>

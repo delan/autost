@@ -172,6 +172,33 @@ impl Thread {
     pub fn needs_attachments(&self) -> impl Iterator<Item = &SitePath> {
         self.needs_attachments.iter()
     }
+
+    pub fn posts_in_thread(&self) -> impl Iterator<Item = PostInThread> + '_ {
+        let len = self.posts.len();
+
+        self.posts
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(move |(i, post)| {
+                if i == len - 1 {
+                    PostInThread {
+                        inner: post,
+                        is_main_post: true,
+                    }
+                } else {
+                    PostInThread {
+                        inner: post,
+                        is_main_post: false,
+                    }
+                }
+            })
+    }
+}
+
+pub struct PostInThread {
+    inner: TemplatedPost,
+    is_main_post: bool,
 }
 
 impl TryFrom<TemplatedPost> for Thread {
