@@ -122,7 +122,7 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
                 if post.meta.archived == Some(u_url.to_string()) {
                     info!("found existing post: {path:?}");
                     // TODO: optionally update existing post?
-                    info!("reply: {}", path.compose_reply_url());
+                    info!("click here to reply: {}", path.compose_reply_url());
                     return Ok(());
                 }
             }
@@ -138,7 +138,7 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
 
-    info!("reply: {}", path.compose_reply_url());
+    info!("click here to reply: {}", path.compose_reply_url());
 
     Ok(())
 }
