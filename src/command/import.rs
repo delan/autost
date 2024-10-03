@@ -1,6 +1,7 @@
 use std::{
     fs::{create_dir_all, File},
     io::{self, Write},
+    rc::Rc,
 };
 
 use askama::Template;
@@ -49,7 +50,8 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let dt_published = mf2_dt(h_entry.clone(), "dt-published")?;
     let p_name = mf2_p(h_entry.clone(), "p-name")?;
     let p_author = mf2_find(h_entry.clone(), "p-author").ok_or_eyre(".h-entry has no .p-author")?;
-    trace!(?u_url, ?dt_published, ?p_name, ?p_author);
+    let p_category = mf2_find_all(h_entry.clone(), "p-category");
+    trace!(?u_url, ?dt_published, ?p_name, ?p_author, ?p_category);
 
     let u_url = u_url.ok_or_eyre(".h-entry has no .u-url")?;
     let author = if has_class(p_author.clone(), "h-card")? {
@@ -62,8 +64,8 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
             display_handle: "".to_owned(),
         }
     } else {
-        let p_author =
-            mf2_p(p_author, "p-author")?.ok_or_eyre("failed to parse .p-author as p-property")?;
+        let p_author = mf2_p(p_author.clone(), "p-author")?
+            .ok_or_eyre("failed to parse .p-author as p-property")?;
         Author {
             href: u_url.to_string(),
             name: p_author.clone(),
@@ -73,13 +75,35 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     };
     trace!(?author);
 
+    let mut tags = vec![];
+    'category: for p_category in p_category {
+        // skip any .p-category that may be in a nested .h-entry (nex-3.com extension).
+        // <https://nex-3.com/blog/reblogging-posts-with-h-entry/>
+        let mut node = p_category.clone();
+        // access the parent, per <markup5ever_rcdom-0.3.0/lib.rs:170>.
+        while let Some(weak) = node.parent.take() {
+            let parent = weak.upgrade().expect("dangling weak pointer");
+            node.parent.set(Some(weak));
+            if has_class(parent.clone(), "h-entry")? {
+                if !Rc::ptr_eq(&parent, &h_entry) {
+                    continue 'category;
+                }
+            }
+            node = parent;
+        }
+
+        let p_category = mf2_p(p_category.clone(), "p-category")?
+            .ok_or_eyre("failed to parse .p-category as p-property")?;
+        tags.push(p_category);
+    }
+
     let meta = PostMeta {
         archived: Some(u_url.to_string()),
         references: vec![], // TODO: define a cohost-like h-entry extension for this?
         title: p_name,
         published: dt_published,
         author: Some(author),
-        tags: vec![], // TODO
+        tags,
         is_transparent_share: false,
     };
     debug!(?meta);
@@ -176,6 +200,13 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
 fn mf2_find(node: Handle, class: &str) -> Option<Handle> {
     // TODO: handle errors from has_class()
     Traverse::elements(node.clone()).find(|node| has_class(node.clone(), class).unwrap_or(false))
+}
+
+fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {
+    // TODO: handle errors from has_class()
+    Traverse::elements(node.clone())
+        .filter(|node| has_class(node.clone(), class).unwrap_or(false))
+        .collect()
 }
 
 fn has_class(node: Handle, class: &str) -> eyre::Result<bool> {
