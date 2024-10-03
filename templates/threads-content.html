@@ -3,7 +3,7 @@
 {% if !thread.meta.references.is_empty() %}
 <header>
     <div class="meta">
-        {% if let Some(author) = thread.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> <a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a></span>{% endif %}
+        {% if let Some(author) = thread.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> (<a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a>)</span>{% endif %}
         <span class="gap">{% if thread.meta.author.is_some() && thread.meta.published.is_some() %}—{% endif %}</span>
         <span>
         {% if let Some(archived) = thread.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
@@ -18,7 +18,7 @@
 <article class="post cohost">
     <header>
         <div class="meta">
-            {% if let Some(author) = post.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> <a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a></span>{% endif %}
+            {% if let Some(author) = post.meta.author %}<span itemprop="author"><a href="{{ author.href }}">{{ author.display_name }}</a> (<a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a>)</span>{% endif %}
             <span class="gap">{% if post.meta.author.is_some() && post.meta.published.is_some() %}—{% endif %}</span>
             <span>
             {% if let Some(archived) = post.meta.archived %}<a class="archived" href="{{ archived }}">[archived]</a>{% endif %}
