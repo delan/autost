@@ -57,11 +57,12 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let author = if has_class(p_author.clone(), "h-card")? {
         let card_url = mf2_u(p_author.clone(), "u-url", &base_href)?;
         let card_name = mf2_p(p_author.clone(), "p-name")?.ok_or_eyre(".h-card has no .p-name")?;
+        let url = card_url.unwrap_or(u_url.clone());
         Author {
-            href: card_url.unwrap_or(u_url.clone()).to_string(),
+            href: url.to_string(),
             name: card_name.clone(),
             display_name: card_name.clone(),
-            display_handle: "".to_owned(),
+            display_handle: url.authority().to_owned(),
         }
     } else {
         let p_author = mf2_p(p_author.clone(), "p-author")?
@@ -70,7 +71,7 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
             href: u_url.to_string(),
             name: p_author.clone(),
             display_name: p_author.clone(),
-            display_handle: "".to_owned(),
+            display_handle: u_url.authority().to_owned(),
         }
     };
     trace!(?author);
