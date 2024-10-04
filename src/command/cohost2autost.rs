@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    collections::VecDeque,
     ffi::OsString,
     fs::{create_dir_all, read_dir, DirEntry, File},
     io::Write,
@@ -149,16 +150,17 @@ fn convert_single_chost(
         })
         .collect::<Result<Vec<_>, _>>()?;
     spans.sort_by_key(|(_ast, start, end)| (*start, *end));
+    let mut spans = VecDeque::from(spans);
 
     for (i, block) in post.blocks.into_iter().enumerate() {
         // posts in the cohost api provide an `astMap` that contains the perfect rendering of
         // markdown blocks. since our own markdown rendering is far from perfect, we use their
         // rendering instead of our own when available.
-        while spans.first().map_or(false, |(_ast, _start, end)| i >= *end) {
-            spans.remove(0);
+        while spans.front().map_or(false, |(_ast, _start, end)| i >= *end) {
+            spans.pop_front();
         }
-        if let Some((ast, start, end)) = match spans.first() {
-            Some((_, _, end)) if i == *end - 1 => Some(spans.remove(0)),
+        if let Some((ast, start, end)) = match spans.front() {
+            Some((_, _, end)) if i == *end - 1 => spans.pop_front(),
             Some((_, start, end)) if (*start..*end).contains(&i) => continue,
             _ => None,
         } {
@@ -250,11 +252,9 @@ fn convert_single_chost(
 
 fn process_ast(root: Ast) -> RcDom {
     let (dom, html_root) = create_fragment();
-    let mut ast_queue = vec![(root, html_root.clone())];
+    let mut ast_queue = VecDeque::from([(root, html_root.clone())]);
 
-    while !ast_queue.is_empty() {
-        let (node, parent) = ast_queue.remove(0);
-
+    while let Some((node, parent)) = ast_queue.pop_front() {
         match node {
             Ast::Root { children } => {
                 ast_queue.extend(

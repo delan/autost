@@ -1,7 +1,7 @@
 use std::{
     borrow::Borrow,
     cell::{Ref, RefMut},
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     str,
     sync::{LazyLock, Mutex},
 };
@@ -68,20 +68,20 @@ static RENAME_IDL_TO_CONTENT_ATTRIBUTE: LazyLock<
 });
 
 pub struct Traverse {
-    queue: Vec<Handle>,
+    queue: VecDeque<Handle>,
     elements_only: bool,
 }
 impl Traverse {
     pub fn nodes(node: Handle) -> Self {
         Self {
-            queue: vec![node],
+            queue: VecDeque::from([node]),
             elements_only: false,
         }
     }
 
     pub fn elements(node: Handle) -> Self {
         Self {
-            queue: vec![node],
+            queue: VecDeque::from([node]),
             elements_only: true,
         }
     }
@@ -90,10 +90,9 @@ impl Iterator for Traverse {
     type Item = Handle;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while !self.queue.is_empty() {
-            let node = self.queue.remove(0);
+        while let Some(node) = self.queue.pop_front() {
             for kid in node.children.borrow().iter() {
-                self.queue.push(kid.clone());
+                self.queue.push_back(kid.clone());
             }
             if !self.elements_only || matches!(node.data, NodeData::Element { .. }) {
                 return Some(node);
@@ -104,24 +103,27 @@ impl Iterator for Traverse {
     }
 }
 
-pub struct Transform(Vec<Handle>);
+pub struct Transform(VecDeque<Handle>);
 impl Transform {
     pub fn new(node: Handle) -> Self {
-        Self(vec![node])
+        Self(VecDeque::from([node]))
     }
 
     pub fn next(
         &mut self,
         f: impl FnOnce(&[Handle], &mut Vec<Handle>) -> eyre::Result<()>,
     ) -> eyre::Result<bool> {
-        let node = self.0.remove(0);
-        let mut new_kids = vec![];
-        f(&node.children.borrow(), &mut new_kids)?;
-        for kid in new_kids.iter() {
-            self.0.push(kid.clone());
+        if let Some(node) = self.0.pop_front() {
+            let mut new_kids = vec![];
+            f(&node.children.borrow(), &mut new_kids)?;
+            for kid in new_kids.iter() {
+                self.0.push_back(kid.clone());
+            }
+            node.children.replace(new_kids);
+            Ok(!self.0.is_empty())
+        } else {
+            Ok(false)
         }
-        node.children.replace(new_kids);
-        Ok(!self.0.is_empty())
     }
 }
 
