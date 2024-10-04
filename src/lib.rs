@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub mod command {
+    pub mod attach;
     pub mod cohost2autost;
     pub mod cohost2json;
     pub mod import;

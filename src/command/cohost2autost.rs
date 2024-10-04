@@ -433,6 +433,9 @@ fn test_render_markdown_block() -> eyre::Result<()> {
     use crate::path::AttachmentsPath;
     struct TestAttachmentsContext {}
     impl AttachmentsContext for TestAttachmentsContext {
+        fn store(&self, _input_path: &Path) -> eyre::Result<AttachmentsPath> {
+            unreachable!()
+        }
         fn cache_imported(&self, _url: &str, _post_id: usize) -> eyre::Result<AttachmentsPath> {
             unreachable!();
         }

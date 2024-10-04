@@ -1,16 +1,19 @@
 use std::{
-    fs::{create_dir_all, read_dir, File},
+    fs::{copy, create_dir_all, read_dir, File},
     io::{Read, Write},
+    path::Path,
 };
 
-use jane_eyre::eyre::{self, bail};
+use jane_eyre::eyre::{self, bail, OptionExt};
 use reqwest::redirect::Policy;
 use sha2::{digest::generic_array::functional::FunctionalSequence, Digest, Sha256};
 use tracing::{debug, trace, warn};
+use uuid::Uuid;
 
 use crate::{cohost::attachment_id_to_url, path::AttachmentsPath};
 
 pub trait AttachmentsContext {
+    fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath>;
     fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<AttachmentsPath>;
     fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath>;
     fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath>;
@@ -18,6 +21,18 @@ pub trait AttachmentsContext {
 
 pub struct RealAttachmentsContext;
 impl AttachmentsContext for RealAttachmentsContext {
+    #[tracing::instrument(skip(self))]
+    fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath> {
+        let dir = AttachmentsPath::ROOT.join(&Uuid::new_v4().to_string())?;
+        create_dir_all(&dir)?;
+        let filename = input_path.file_name().ok_or_eyre("no filename")?;
+        let filename = filename.to_str().ok_or_eyre("unsupported filename")?;
+        let path = dir.join(filename)?;
+        copy(input_path, &path)?;
+
+        Ok(path)
+    }
+
     #[tracing::instrument(skip(self))]
     fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<AttachmentsPath> {
         let mut hash = Sha256::new();
