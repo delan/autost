@@ -154,15 +154,13 @@ fn process_content(
 ) -> eyre::Result<String> {
     let dom = parse(content.as_bytes())?;
 
-    // rewrite attachment urls to relative cached paths.
     for node in Traverse::new(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
-                let element_attr_names = match name {
-                    name if name == &make_html_tag_name("img") => Some(("img", "src")),
-                    _ => None,
-                };
-                if let Some((element_name, attr_name)) = element_attr_names {
+                // rewrite attachment urls to relative cached paths.
+                if name == &make_html_tag_name("img") {
+                    let element_name = name.local.to_string();
+                    let attr_name = "src";
                     let mut attrs = attrs.borrow_mut();
                     if let Some(attr) = find_attr_mut(&mut attrs, &attr_name) {
                         let old_url = tendril_to_str(&attr.value)?.to_owned();
@@ -176,11 +174,33 @@ fn process_content(
                             name: make_attribute_name(&format!("data-import-{attr_name}")),
                             value: old_url.into(),
                         });
-                    }
-                    if element_name == "img" {
                         attrs.push(Attribute {
                             name: make_attribute_name("loading"),
                             value: "lazy".into(),
+                        });
+                    }
+                }
+                // rewrite urls in links to bake in the `base_href`.
+                if [make_html_tag_name("a"), make_html_tag_name("link")].contains(name) {
+                    let element_name = name.local.to_string();
+                    let attr_name = "href";
+                    let mut attrs = attrs.borrow_mut();
+                    if let Some(attr) = find_attr_mut(&mut attrs, &attr_name) {
+                        let old_url = tendril_to_str(&attr.value)?.to_owned();
+                        let new_url = if old_url.starts_with("#") {
+                            // TODO: do this instead once fragment links work again (#17)
+                            // format!("#user-content-{}", &old_url[1..])
+                            base_href.join(&old_url)?.to_string()
+                        } else {
+                            base_href.join(&old_url)?.to_string()
+                        };
+                        trace!(
+                            "rewriting <{element_name} {attr_name}>: {old_url:?} -> {new_url:?}"
+                        );
+                        attr.value = new_url.to_string().into();
+                        attrs.push(Attribute {
+                            name: make_attribute_name(&format!("data-import-{attr_name}")),
+                            value: old_url.into(),
                         });
                     }
                 }
