@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     ffi::OsString,
     fs::{create_dir_all, read_dir, DirEntry, File},
-    io::{Read, Write},
+    io::Write,
     path::Path,
 };
 
@@ -11,10 +11,10 @@ use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
 use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use reqwest::redirect::Policy;
-use tracing::{debug, info, trace, warn};
+use tracing::{info, trace, warn};
 
 use crate::{
+    attachments::{AttachmentsContext, RealAttachmentsContext},
     cohost::{
         attachment_id_to_url, attachment_url_to_id, Ask, AskingProject, Ast, Attachment, Block,
         Post,
@@ -25,7 +25,7 @@ use crate::{
         make_attribute_name, parse, serialize, tendril_to_str, Traverse,
     },
     migrations::run_migrations,
-    path::{AttachmentsPath, PostsPath, SitePath},
+    path::{PostsPath, SitePath},
     render_markdown, Author, PostMeta,
 };
 
@@ -49,7 +49,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
                     return Ok(());
                 }
             }
-            convert_chost(&entry, &RealConvertChostContext)
+            convert_chost(&entry, &RealAttachmentsContext)
                 .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
             Ok(())
         })
@@ -73,43 +73,8 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     Ok(())
 }
 
-trait ConvertChostContext {
-    fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath>;
-    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath>;
-}
-struct RealConvertChostContext;
-impl ConvertChostContext for RealConvertChostContext {
-    #[tracing::instrument(skip(self))]
-    fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
-        let url = attachment_id_to_url(id);
-        let dir = &*AttachmentsPath::ROOT;
-        let path = dir.join(id)?;
-        create_dir_all(&path)?;
-        cached_get_attachment(&url, &path, None)?;
-        let attachments_path = cached_attachment_url(id, dir)?;
-
-        attachments_path.site_path()
-    }
-
-    #[tracing::instrument(skip(self))]
-    fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath> {
-        fn thumb(url: &str) -> String {
-            format!("{url}?width=675")
-        }
-
-        let url = attachment_id_to_url(id);
-        let dir = &*AttachmentsPath::THUMBS;
-        let path = dir.join(id)?;
-        create_dir_all(&path)?;
-        cached_get_attachment(&url, &path, Some(thumb))?;
-        let attachments_path = cached_attachment_url(id, dir)?;
-
-        attachments_path.site_path()
-    }
-}
-
 #[tracing::instrument(level = "error", skip(context))]
-fn convert_chost(entry: &DirEntry, context: &dyn ConvertChostContext) -> eyre::Result<()> {
+fn convert_chost(entry: &DirEntry, context: &dyn AttachmentsContext) -> eyre::Result<()> {
     let input_path = entry.path();
 
     trace!("parsing");
@@ -143,7 +108,7 @@ fn convert_single_chost(
     post: Post,
     shared_post_filenames: Vec<PostsPath>,
     output_path: &PostsPath,
-    context: &dyn ConvertChostContext,
+    context: &dyn AttachmentsContext,
 ) -> eyre::Result<()> {
     info!("writing: {output_path:?}");
     let mut output = File::create(output_path)?;
@@ -214,8 +179,8 @@ fn convert_single_chost(
                 } => {
                     let template = CohostImgTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        thumb_src: context.cache_attachment_thumb(&attachmentId)?,
-                        src: context.cache_attachment_file(&attachmentId)?,
+                        thumb_src: context.cache_cohost_thumb(&attachmentId)?,
+                        src: context.cache_cohost_file(&attachmentId)?,
                         alt: altText,
                         width,
                         height,
@@ -229,7 +194,7 @@ fn convert_single_chost(
                 } => {
                     let template = CohostAudioTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        src: context.cache_attachment_file(&attachmentId)?,
+                        src: context.cache_cohost_file(&attachmentId)?,
                         artist,
                         title,
                     };
@@ -373,10 +338,7 @@ struct AskTemplate {
     content: String,
 }
 
-fn render_markdown_block(
-    markdown: &str,
-    context: &dyn ConvertChostContext,
-) -> eyre::Result<String> {
+fn render_markdown_block(markdown: &str, context: &dyn AttachmentsContext) -> eyre::Result<String> {
     let html = render_markdown(markdown);
     let dom = parse(html.as_bytes())?;
 
@@ -385,7 +347,7 @@ fn render_markdown_block(
 
 fn process_chost_fragment(
     mut dom: RcDom,
-    context: &dyn ConvertChostContext,
+    context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
     let mut attachment_ids = vec![];
 
@@ -407,10 +369,7 @@ fn process_chost_fragment(
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = context
-                                .cache_attachment_file(id)?
-                                .base_relative_url()
-                                .into();
+                            attr.value = context.cache_cohost_file(id)?.base_relative_url().into();
                             attrs.push(Attribute {
                                 name: QualName::new(
                                     None,
@@ -473,89 +432,20 @@ fn process_chost_fragment(
     Ok(serialize(dom)?)
 }
 
-fn cached_attachment_url(id: &str, dir: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
-    let path = dir.join(id)?;
-    let mut entries = read_dir(&path)?;
-    let Some(entry) = entries.next() else {
-        bail!("directory is empty: {path:?}");
-    };
-
-    Ok(path.join_dir_entry(&entry?)?)
-}
-
-fn cached_get_attachment(
-    url: &str,
-    path: &AttachmentsPath,
-    transform_redirect_target: Option<fn(&str) -> String>,
-) -> eyre::Result<AttachmentsPath> {
-    // if the attachment id directory exists...
-    if let Ok(mut entries) = read_dir(path) {
-        // and the directory contains a file...
-        if let Some(entry) = entries.next() {
-            // and we can open the file...
-            // TODO: move this logic into path module
-            let path = path.join_dir_entry(&entry?)?;
-            if let Ok(mut file) = File::open(&path) {
-                trace!("cache hit: {url}");
-                // check if we can read the file.
-                let mut result = Vec::default();
-                file.read_to_end(&mut result)?;
-                return Ok(path);
-            }
-        }
-    }
-
-    trace!("cache miss: {url}");
-    debug!("downloading attachment");
-
-    let client = reqwest::blocking::Client::builder()
-        .redirect(Policy::none())
-        .build()?;
-    let redirect = client.head(url).send()?;
-
-    let Some(url) = redirect.headers().get("location") else {
-        bail!("expected redirect but got {}: {url}", redirect.status());
-    };
-    let url = url.to_str()?;
-
-    let Some((_, original_filename)) = url.rsplit_once("/") else {
-        bail!("redirect target has no slashes: {url}");
-    };
-    let original_filename = urlencoding::decode(original_filename)?;
-    trace!("original filename: {original_filename}");
-
-    // cohost attachment redirects don’t preserve query params, so if we want to add any,
-    // we need to add them to the destination of the redirect.
-    // FIXME: this will silently misbehave if the endpoint introduces a second redirect!
-    let url = if let Some(transform) = transform_redirect_target {
-        let transformed_url = transform(url);
-        trace!("transformed redirect target: {transformed_url}");
-        transformed_url
-    } else {
-        url.to_owned()
-    };
-
-    let path = path.join(original_filename.as_ref())?;
-    let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
-    File::create(&path)?.write_all(&result)?;
-
-    Ok(path)
-}
-
 #[test]
 fn test_render_markdown_block() -> eyre::Result<()> {
-    struct TestConvertChostContext {}
-    impl ConvertChostContext for TestConvertChostContext {
-        fn cache_attachment_file(&self, id: &str) -> eyre::Result<SitePath> {
+    struct TestAttachmentsContext {}
+    impl AttachmentsContext for TestAttachmentsContext {
+        fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath> {
             Ok(SitePath::ATTACHMENTS.join(&format!("{id}"))?)
         }
-        fn cache_attachment_thumb(&self, id: &str) -> eyre::Result<SitePath> {
+        fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<SitePath> {
             Ok(SitePath::THUMBS.join(&format!("{id}"))?)
         }
     }
 
     let n = "\n";
-    let context = TestConvertChostContext {};
+    let context = TestAttachmentsContext {};
     assert_eq!(
         render_markdown_block("text", &context)?,
         format!(r#"<p>text</p>{n}"#)
