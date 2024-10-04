@@ -14,8 +14,8 @@ use url::Url;
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
-        parse, parse_html_document, serialize, serialize_node, tendril_to_str, text_content,
-        AttrsMutExt, AttrsRefExt, QualName, QualNameExt, Traverse,
+        parse, parse_html_document, serialize, serialize_node, text_content, AttrsMutExt,
+        AttrsRefExt, QualName, QualNameExt, TendrilExt, Traverse,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -163,7 +163,7 @@ fn process_content(
                     let attr_name = "src";
                     let mut attrs = attrs.borrow_mut();
                     if let Some(attr) = attrs.attr_mut(&attr_name) {
-                        let old_url = tendril_to_str(&attr.value)?.to_owned();
+                        let old_url = attr.value.to_str().to_owned();
                         let fetch_url = base_href.join(&old_url)?;
                         trace!("found attachment url in <{element_name} {attr_name}>: {old_url}");
                         attr.value = context
@@ -186,7 +186,7 @@ fn process_content(
                     let attr_name = "href";
                     let mut attrs = attrs.borrow_mut();
                     if let Some(attr) = attrs.attr_mut(&attr_name) {
-                        let old_url = tendril_to_str(&attr.value)?.to_owned();
+                        let old_url = attr.value.to_str().to_owned();
                         let new_url = if old_url.starts_with("#") {
                             // TODO: do this instead once fragment links work again (#17)
                             // format!("#user-content-{}", &old_url[1..])

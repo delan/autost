@@ -21,8 +21,8 @@ use crate::{
     },
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
-        debug_not_known_good_attributes_seen, parse, serialize, tendril_to_str, AttrsMutExt,
-        AttrsRefExt, QualNameExt, Traverse,
+        debug_not_known_good_attributes_seen, parse, serialize, AttrsMutExt, AttrsRefExt,
+        QualNameExt, TendrilExt, Traverse,
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
@@ -365,7 +365,7 @@ fn process_chost_fragment(
                 if let Some((element_name, attr_name)) = element_attr_names {
                     let mut attrs = attrs.borrow_mut();
                     if let Some(attr) = attrs.attr_mut(attr_name) {
-                        let old_url = tendril_to_str(&attr.value)?.to_owned();
+                        let old_url = attr.value.to_str().to_owned();
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());

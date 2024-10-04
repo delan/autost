@@ -140,13 +140,20 @@ impl AttrsRefExt for Ref<'_, Vec<Attribute>> {
     fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
         for attr in self.iter() {
             if attr.name == QualName::attribute(name) {
-                return Ok(Some(tendril_to_str(&attr.value)?));
+                return Ok(Some(attr.value.to_str()));
             }
         }
 
         Ok(None)
     }
 }
+
+pub trait TendrilExt: Borrow<[u8]> {
+    fn to_str(&self) -> &str {
+        str::from_utf8(self.borrow()).expect("only implemented by Tendril<UTF8>")
+    }
+}
+impl TendrilExt for StrTendril {}
 
 pub trait QualNameExt {
     fn html(name: &str) -> QualName {
@@ -268,10 +275,6 @@ pub fn create_element(dom: &mut RcDom, html_local_name: &str) -> Handle {
     dom.create_element(name, vec![], ElementFlags::default())
 }
 
-pub fn tendril_to_str(tendril: &StrTendril) -> eyre::Result<&str> {
-    Ok(str::from_utf8(tendril.borrow())?)
-}
-
 pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> QualName {
     let result = RENAME_IDL_TO_CONTENT_ATTRIBUTE
         .get_key_value(&(Some(tag_name), attribute_name))
@@ -384,7 +387,7 @@ pub fn text_content(node: Handle) -> eyre::Result<String> {
     let mut result = vec![];
     for node in Traverse::nodes(node) {
         if let NodeData::Text { contents } = &node.data {
-            result.push(tendril_to_str(&contents.borrow())?.to_owned());
+            result.push(contents.borrow().to_str().to_owned());
         }
     }
 
