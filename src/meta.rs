@@ -6,7 +6,7 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{attr_value, parse, serialize, tendril_to_str, QualNameExt},
+    dom::{parse, serialize, tendril_to_str, HandleExt, QualNameExt},
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
@@ -28,8 +28,10 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
                     if name == &QualName::html("meta") {
-                        let content = attr_value(&attrs.borrow(), "content")?.map(|t| t.to_owned());
-                        match attr_value(&attrs.borrow(), "name")? {
+                        let content = node
+                            .attr_str(&attrs.borrow(), "content")?
+                            .map(|t| t.to_owned());
+                        match node.attr_str(&attrs.borrow(), "name")? {
                             Some("title") => {
                                 meta.title = content;
                             }
@@ -54,9 +56,13 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         }
                         continue;
                     } else if name == &QualName::html("link") {
-                        let href = attr_value(&attrs.borrow(), "href")?.map(|t| t.to_owned());
-                        let name = attr_value(&attrs.borrow(), "name")?.map(|t| t.to_owned());
-                        match attr_value(&attrs.borrow(), "rel")? {
+                        let href = node
+                            .attr_str(&attrs.borrow(), "href")?
+                            .map(|t| t.to_owned());
+                        let name = node
+                            .attr_str(&attrs.borrow(), "name")?
+                            .map(|t| t.to_owned());
+                        match node.attr_str(&attrs.borrow(), "rel")? {
                             Some("archived") => {
                                 meta.archived = href;
                             }

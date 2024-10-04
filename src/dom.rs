@@ -105,6 +105,49 @@ impl Iterator for Traverse {
     }
 }
 
+pub trait HandleExt {
+    fn attr_mut<'attrs>(
+        &self,
+        attrs: &'attrs mut [Attribute],
+        name: &str,
+    ) -> Option<&'attrs mut Attribute>;
+
+    fn attr_str<'attrs>(
+        &self,
+        attrs: &'attrs [Attribute],
+        name: &str,
+    ) -> eyre::Result<Option<&'attrs str>>;
+}
+impl HandleExt for Handle {
+    fn attr_mut<'attrs>(
+        &self,
+        attrs: &'attrs mut [Attribute],
+        name: &str,
+    ) -> Option<&'attrs mut Attribute> {
+        for attr in attrs.iter_mut() {
+            if attr.name == QualName::attribute(name) {
+                return Some(attr);
+            }
+        }
+
+        None
+    }
+
+    fn attr_str<'attrs>(
+        &self,
+        attrs: &'attrs [Attribute],
+        name: &str,
+    ) -> eyre::Result<Option<&'attrs str>> {
+        for attr in attrs.iter() {
+            if attr.name == QualName::attribute(name) {
+                return Ok(Some(tendril_to_str(&attr.value)?));
+            }
+        }
+
+        Ok(None)
+    }
+}
+
 pub trait QualNameExt {
     fn html(name: &str) -> QualName {
         QualName::new(None, ns!(html), LocalName::from(name))
@@ -223,32 +266,6 @@ pub fn create_fragment() -> (RcDom, Handle) {
 pub fn create_element(dom: &mut RcDom, html_local_name: &str) -> Handle {
     let name = QualName::html(html_local_name);
     dom.create_element(name, vec![], ElementFlags::default())
-}
-
-pub fn find_attr_mut<'attrs>(
-    attrs: &'attrs mut [Attribute],
-    name: &str,
-) -> Option<&'attrs mut Attribute> {
-    for attr in attrs.iter_mut() {
-        if attr.name == QualName::attribute(name) {
-            return Some(attr);
-        }
-    }
-
-    None
-}
-
-pub fn attr_value<'attrs>(
-    attrs: &'attrs [Attribute],
-    name: &str,
-) -> eyre::Result<Option<&'attrs str>> {
-    for attr in attrs.iter() {
-        if attr.name == QualName::attribute(name) {
-            return Ok(Some(tendril_to_str(&attr.value)?));
-        }
-    }
-
-    Ok(None)
 }
 
 pub fn tendril_to_str(tendril: &StrTendril) -> eyre::Result<&str> {
