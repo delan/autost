@@ -5,7 +5,8 @@ use std::{
 
 use jane_eyre::eyre::{self, bail};
 use reqwest::redirect::Policy;
-use tracing::{debug, trace};
+use sha2::{digest::generic_array::functional::FunctionalSequence, Digest, Sha256};
+use tracing::{debug, trace, warn};
 
 use crate::{
     cohost::attachment_id_to_url,
@@ -13,12 +14,25 @@ use crate::{
 };
 
 pub trait AttachmentsContext {
+    fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<SitePath>;
     fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath>;
     fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<SitePath>;
 }
 
 pub struct RealAttachmentsContext;
 impl AttachmentsContext for RealAttachmentsContext {
+    #[tracing::instrument(skip(self))]
+    fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<SitePath> {
+        let mut hash = Sha256::new();
+        hash.update(url);
+        let hash = hash.finalize().map(|o| format!("{o:02x}")).join("");
+        let path = AttachmentsPath::ROOT.join(&format!("imported-{post_id}-{hash}"))?;
+        trace!(?path);
+        create_dir_all(&path)?;
+
+        cache_imported_attachment(url, &path)?.site_path()
+    }
+
     #[tracing::instrument(skip(self))]
     fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath> {
         let url = attachment_id_to_url(id);
@@ -56,6 +70,48 @@ fn cached_attachment_url(id: &str, dir: &AttachmentsPath) -> eyre::Result<Attach
     };
 
     Ok(path.join_dir_entry(&entry?)?)
+}
+
+fn cache_imported_attachment(url: &str, path: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
+    // if the attachment id directory exists...
+    if let Ok(mut entries) = read_dir(&path) {
+        // and the directory contains a file...
+        if let Some(entry) = entries.next() {
+            // and we can open the file...
+            // TODO: move this logic into path module
+            let path = path.join_dir_entry(&entry?)?;
+            if let Ok(mut file) = File::open(&path) {
+                trace!("cache hit: {url}");
+                // check if we can read the file.
+                let mut result = Vec::default();
+                file.read_to_end(&mut result)?;
+                return Ok(path);
+            }
+        }
+    }
+
+    trace!("cache miss");
+    debug!("downloading attachment");
+
+    let response = reqwest::blocking::get(url)?;
+    let extension = match response.headers().get("Content-Type") {
+        Some(x) if x == "image/gif" => "gif",
+        Some(x) if x == "image/jpeg" => "jpg",
+        Some(x) if x == "image/png" => "png",
+        Some(x) if x == "image/svg+xml" => "svg",
+        Some(x) if x == "image/webp" => "webp",
+        other => {
+            warn!("unknown attachment mime type: {other:?}");
+            "bin"
+        }
+    };
+    let path = path.join(&format!("file.{extension}"))?;
+    debug!(?path);
+
+    let result = response.bytes()?.to_vec();
+    File::create(&path)?.write_all(&result)?;
+
+    Ok(path)
 }
 
 /// given a cohost attachment redirect (`url`) and path to a uuid dir (`path`),

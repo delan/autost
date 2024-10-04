@@ -436,6 +436,9 @@ fn process_chost_fragment(
 fn test_render_markdown_block() -> eyre::Result<()> {
     struct TestAttachmentsContext {}
     impl AttachmentsContext for TestAttachmentsContext {
+        fn cache_imported(&self, _url: &str, _post_id: usize) -> eyre::Result<SitePath> {
+            unreachable!();
+        }
         fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath> {
             Ok(SitePath::ATTACHMENTS.join(&format!("{id}"))?)
         }

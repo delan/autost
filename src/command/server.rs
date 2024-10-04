@@ -21,7 +21,7 @@ use warp::{
     Filter,
 };
 
-use crate::SETTINGS;
+use crate::{path::AttachmentsPath, SETTINGS};
 use crate::{
     path::{PostsPath, SitePath},
     render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate,
@@ -158,8 +158,17 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let default_route = warp::filters::method::get()
         .and(warp::filters::path::peek())
         .and_then(|peek: Peek| async move {
-            let mut path = PathBuf::from("site");
-            for component in peek.segments() {
+            let mut segments = peek.segments().peekable();
+            // serve attachments out of main attachment store, in case we need to preview a post
+            // that refers to an attachment for the first time. otherwise they will 404, since
+            // render won’t have hard-linked it into the site output dir.
+            let mut path: PathBuf = if segments.peek() == Some(&"attachments") {
+                segments.next();
+                (&*AttachmentsPath::ROOT).as_ref().to_owned()
+            } else {
+                (&*SitePath::ROOT).as_ref().to_owned()
+            };
+            for component in segments {
                 let component = urlencoding::decode(component)
                     .wrap_err("failed to decode url path component")
                     .map_err(BadRequest)?;

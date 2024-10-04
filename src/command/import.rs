@@ -5,14 +5,17 @@ use std::{
 };
 
 use askama::Template;
+use html5ever::Attribute;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{Handle, NodeData};
 use tracing::{debug, info, trace};
 use url::Url;
 
 use crate::{
+    attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
-        attr_value, make_html_tag_name, parse_html_document, serialize_node, text_content, Traverse,
+        attr_value, find_attr_mut, make_attribute_name, make_html_tag_name, parse,
+        parse_html_document, serialize, serialize_node, tendril_to_str, text_content, Traverse,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -114,7 +117,7 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         let path = PostsPath::imported_post_path(post_id);
         match File::create_new(&path) {
             Ok(file) => {
-                result = Some((file, path));
+                result = Some((post_id, path, file));
                 break;
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
@@ -129,18 +132,64 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
             Err(other) => Err(other)?,
         }
     }
-    let (mut file, path) = result.ok_or_eyre("too many posts :(")?;
+    let (post_id, path, mut file) = result.ok_or_eyre("too many posts :(")?;
 
     info!("writing {path:?}");
     file.write_all(meta.render()?.as_bytes())?;
     file.write_all(b"\n\n")?;
-    let unsafe_html = e_content;
+    let unsafe_html = process_content(&e_content, post_id, &base_href, &RealAttachmentsContext)?;
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
 
     info!("click here to reply: {}", path.compose_reply_url());
 
     Ok(())
+}
+
+fn process_content(
+    content: &str,
+    post_id: usize,
+    base_href: &Url,
+    context: &dyn AttachmentsContext,
+) -> eyre::Result<String> {
+    let dom = parse(content.as_bytes())?;
+
+    // rewrite attachment urls to relative cached paths.
+    for node in Traverse::new(dom.document.clone()) {
+        match &node.data {
+            NodeData::Element { name, attrs, .. } => {
+                let element_attr_names = match name {
+                    name if name == &make_html_tag_name("img") => Some(("img", "src")),
+                    _ => None,
+                };
+                if let Some((element_name, attr_name)) = element_attr_names {
+                    let mut attrs = attrs.borrow_mut();
+                    if let Some(attr) = find_attr_mut(&mut attrs, &attr_name) {
+                        let old_url = tendril_to_str(&attr.value)?.to_owned();
+                        let fetch_url = base_href.join(&old_url)?;
+                        trace!("found attachment url in <{element_name} {attr_name}>: {old_url}");
+                        attr.value = context
+                            .cache_imported(&fetch_url.to_string(), post_id)?
+                            .base_relative_url()
+                            .into();
+                        attrs.push(Attribute {
+                            name: make_attribute_name(&format!("data-import-{attr_name}")),
+                            value: old_url.into(),
+                        });
+                    }
+                    if element_name == "img" {
+                        attrs.push(Attribute {
+                            name: make_attribute_name("loading"),
+                            value: "lazy".into(),
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(serialize(dom)?)
 }
 
 fn mf2_e(node: Handle, class: &str) -> eyre::Result<Option<String>> {
