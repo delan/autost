@@ -22,7 +22,7 @@ use crate::{
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
         debug_not_known_good_attributes_seen, parse, serialize, AttrsMutExt, AttrsRefExt,
-        QualNameExt, TendrilExt, Traverse,
+        QualNameExt, TendrilExt, Transform, Traverse,
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
@@ -389,11 +389,9 @@ fn process_chost_fragment(
     }
 
     // rewrite `<Mention handle>` elements into ordinary links.
-    let mut queue = vec![dom.document.clone()];
-    while !queue.is_empty() {
-        let node = queue.remove(0);
-        let mut children = vec![];
-        for kid in node.children.borrow().iter() {
+    let mut transform = Transform::new(dom.document.clone());
+    while transform.next(|kids, new_kids| {
+        for kid in kids {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
                     let attrs = attrs.borrow();
@@ -412,17 +410,16 @@ fn process_chost_fragment(
                             name: QualName::attribute("href"),
                             value: format!("https://cohost.org/{handle}").into(),
                         });
-                        children.push(new_kid);
+                        new_kids.push(new_kid);
                         continue;
                     }
                 }
                 _ => {}
             }
-            children.push(kid.clone());
-            queue.push(kid.clone());
+            new_kids.push(kid.clone());
         }
-        node.children.replace(children);
-    }
+        Ok(())
+    })? {}
 
     Ok(serialize(dom)?)
 }

@@ -71,7 +71,6 @@ pub struct Traverse {
     queue: Vec<Handle>,
     elements_only: bool,
 }
-
 impl Traverse {
     pub fn nodes(node: Handle) -> Self {
         Self {
@@ -87,7 +86,6 @@ impl Traverse {
         }
     }
 }
-
 impl Iterator for Traverse {
     type Item = Handle;
 
@@ -103,6 +101,27 @@ impl Iterator for Traverse {
         }
 
         None
+    }
+}
+
+pub struct Transform(Vec<Handle>);
+impl Transform {
+    pub fn new(node: Handle) -> Self {
+        Self(vec![node])
+    }
+
+    pub fn next(
+        &mut self,
+        f: impl FnOnce(&[Handle], &mut Vec<Handle>) -> eyre::Result<()>,
+    ) -> eyre::Result<bool> {
+        let node = self.0.remove(0);
+        let mut new_kids = vec![];
+        f(&node.children.borrow(), &mut new_kids)?;
+        for kid in new_kids.iter() {
+            self.0.push(kid.clone());
+        }
+        node.children.replace(new_kids);
+        Ok(!self.0.is_empty())
     }
 }
 

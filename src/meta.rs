@@ -6,7 +6,7 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{parse, serialize, AttrsRefExt, QualNameExt, TendrilExt},
+    dom::{parse, serialize, AttrsRefExt, QualNameExt, TendrilExt, Transform},
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
@@ -20,11 +20,9 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let mut author_name = None;
     let mut author_display_name = None;
     let mut author_display_handle = None;
-    let mut queue = vec![dom.document.clone()];
-    while !queue.is_empty() {
-        let node = queue.remove(0);
-        let mut children = vec![];
-        for kid in node.children.borrow().iter() {
+    let mut transform = Transform::new(dom.document.clone());
+    while transform.next(|kids, new_kids| {
+        for kid in kids {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
                     let attrs = attrs.borrow();
@@ -86,11 +84,10 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                 }
                 _ => {}
             }
-            children.push(kid.clone());
-            queue.push(kid.clone());
+            new_kids.push(kid.clone());
         }
-        node.children.replace(children);
-    }
+        Ok(())
+    })? {}
 
     if author_href.is_some()
         || author_name.is_some()
