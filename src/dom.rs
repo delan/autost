@@ -72,7 +72,7 @@ pub struct Traverse {
 }
 
 impl Traverse {
-    pub fn new(node: Handle) -> Self {
+    pub fn nodes(node: Handle) -> Self {
         Self {
             queue: vec![node],
             elements_only: false,
@@ -365,7 +365,7 @@ fn test_convert_idl_to_content_attribute() {
 
 pub fn text_content(node: Handle) -> eyre::Result<String> {
     let mut result = vec![];
-    for node in Traverse::new(node) {
+    for node in Traverse::nodes(node) {
         if let NodeData::Text { contents } = &node.data {
             result.push(tendril_to_str(&contents.borrow())?.to_owned());
         }

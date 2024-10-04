@@ -352,7 +352,7 @@ fn process_chost_fragment(
     let mut attachment_ids = vec![];
 
     // rewrite cohost attachment urls to relative cached paths.
-    for node in Traverse::new(dom.document.clone()) {
+    for node in Traverse::nodes(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
                 let img = QualName::html("img");

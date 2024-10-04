@@ -154,7 +154,7 @@ fn process_content(
 ) -> eyre::Result<String> {
     let dom = parse(content.as_bytes())?;
 
-    for node in Traverse::new(dom.document.clone()) {
+    for node in Traverse::nodes(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
                 // rewrite attachment urls to relative cached paths.
