@@ -7,7 +7,7 @@ use std::{
 };
 
 use askama::Template;
-use html5ever::{local_name, namespace_url, ns, Attribute, LocalName, QualName};
+use html5ever::{Attribute, QualName};
 use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -21,8 +21,8 @@ use crate::{
     },
     dom::{
         attr_value, convert_idl_to_content_attribute, create_element, create_fragment,
-        debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut,
-        make_attribute_name, parse, serialize, tendril_to_str, Traverse,
+        debug_attributes_seen, debug_not_known_good_attributes_seen, find_attr_mut, parse,
+        serialize, tendril_to_str, QualNameExt, Traverse,
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
@@ -269,7 +269,7 @@ fn process_ast(root: Ast) -> RcDom {
                 properties,
                 children,
             } => {
-                let name = QualName::new(None, ns!(html), LocalName::from(tagName.clone()));
+                let name = QualName::html(&tagName);
 
                 // sort the properties by attribute name, to avoid spurious output diffs.
                 let mut properties = properties.into_iter().collect::<Vec<_>>();
@@ -355,8 +355,8 @@ fn process_chost_fragment(
     for node in Traverse::new(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
-                let img = QualName::new(None, ns!(html), local_name!("img"));
-                let a = QualName::new(None, ns!(html), local_name!("a"));
+                let img = QualName::html("img");
+                let a = QualName::html("a");
                 let element_attr_names = match name {
                     name if name == &img => Some(("img", "src")),
                     name if name == &a => Some(("a", "href")),
@@ -371,18 +371,14 @@ fn process_chost_fragment(
                             attachment_ids.push(id.to_owned());
                             attr.value = context.cache_cohost_file(id)?.base_relative_url().into();
                             attrs.push(Attribute {
-                                name: QualName::new(
-                                    None,
-                                    ns!(),
-                                    LocalName::from(format!("data-cohost-{attr_name}")),
-                                ),
+                                name: QualName::attribute(&format!("data-cohost-{attr_name}")),
                                 value: old_url.into(),
                             });
                         }
                     }
                     if element_name == "img" {
                         attrs.push(Attribute {
-                            name: make_attribute_name("loading"),
+                            name: QualName::attribute("loading"),
                             value: "lazy".into(),
                         });
                     }
@@ -401,12 +397,11 @@ fn process_chost_fragment(
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
                     let attrs = attrs.borrow();
-                    let handle =
-                        if name == &QualName::new(None, ns!(html), LocalName::from("Mention")) {
-                            attr_value(&attrs, "handle")?
-                        } else {
-                            None
-                        };
+                    let handle = if name == &QualName::html("Mention") {
+                        attr_value(&attrs, "handle")?
+                    } else {
+                        None
+                    };
                     if let Some(handle) = handle {
                         let new_kid = create_element(&mut dom, "a");
                         new_kid.children.replace(kid.children.take());
@@ -414,7 +409,7 @@ fn process_chost_fragment(
                             bail!("irrefutable! guaranteed by create_element");
                         };
                         attrs.borrow_mut().push(Attribute {
-                            name: QualName::new(None, ns!(), local_name!("href")),
+                            name: QualName::attribute("href"),
                             value: format!("https://cohost.org/{handle}").into(),
                         });
                         children.push(new_kid);

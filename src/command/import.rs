@@ -14,8 +14,8 @@ use url::Url;
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
-        attr_value, find_attr_mut, make_attribute_name, make_html_tag_name, parse,
-        parse_html_document, serialize, serialize_node, tendril_to_str, text_content, Traverse,
+        attr_value, find_attr_mut, parse, parse_html_document, serialize, serialize_node,
+        tendril_to_str, text_content, QualName, QualNameExt, Traverse,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -36,7 +36,7 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         let NodeData::Element { name, attrs, .. } = &node.data else {
             unreachable!()
         };
-        if name == &make_html_tag_name("base") {
+        if name == &QualName::html("base") {
             if let Some(href) = attr_value(&attrs.borrow(), "href")? {
                 base_href = base_href.join(href)?;
                 break;
@@ -158,7 +158,7 @@ fn process_content(
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
                 // rewrite attachment urls to relative cached paths.
-                if name == &make_html_tag_name("img") {
+                if name == &QualName::html("img") {
                     let element_name = name.local.to_string();
                     let attr_name = "src";
                     let mut attrs = attrs.borrow_mut();
@@ -171,17 +171,17 @@ fn process_content(
                             .base_relative_url()
                             .into();
                         attrs.push(Attribute {
-                            name: make_attribute_name(&format!("data-import-{attr_name}")),
+                            name: QualName::attribute(&format!("data-import-{attr_name}")),
                             value: old_url.into(),
                         });
                         attrs.push(Attribute {
-                            name: make_attribute_name("loading"),
+                            name: QualName::attribute("loading"),
                             value: "lazy".into(),
                         });
                     }
                 }
                 // rewrite urls in links to bake in the `base_href`.
-                if [make_html_tag_name("a"), make_html_tag_name("link")].contains(name) {
+                if [QualName::html("a"), QualName::html("link")].contains(name) {
                     let element_name = name.local.to_string();
                     let attr_name = "href";
                     let mut attrs = attrs.borrow_mut();
@@ -199,7 +199,7 @@ fn process_content(
                         );
                         attr.value = new_url.to_string().into();
                         attrs.push(Attribute {
-                            name: make_attribute_name(&format!("data-import-{attr_name}")),
+                            name: QualName::attribute(&format!("data-import-{attr_name}")),
                             value: old_url.into(),
                         });
                     }

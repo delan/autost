@@ -10,13 +10,15 @@ use html5ever::{
     local_name, namespace_url, ns,
     tendril::{StrTendril, TendrilSink},
     tree_builder::TreeBuilderOpts,
-    Attribute, LocalName, Namespace, ParseOpts, QualName,
+    Attribute, LocalName, Namespace, ParseOpts,
 };
 use jane_eyre::eyre::{self, bail};
 use markup5ever_rcdom::{Handle, NodeData, RcDom, SerializableHandle};
 use serde_json::Value;
 use tracing::{error, warn};
 use xml5ever::driver::XmlParseOpts;
+
+pub use html5ever::QualName;
 
 static ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> = Mutex::new(BTreeSet::new());
 static NOT_KNOWN_GOOD_ATTRIBUTES_SEEN: Mutex<BTreeSet<(String, String)>> =
@@ -103,25 +105,28 @@ impl Iterator for Traverse {
     }
 }
 
-pub fn make_html_tag_name(name: &str) -> QualName {
-    QualName::new(None, ns!(html), LocalName::from(name))
-}
+pub trait QualNameExt {
+    fn html(name: &str) -> QualName {
+        QualName::new(None, ns!(html), LocalName::from(name))
+    }
 
-pub fn make_atom_tag_name(name: &str) -> QualName {
-    QualName::new(
-        None,
-        Namespace::from("http://www.w3.org/2005/Atom"),
-        LocalName::from(name),
-    )
-}
+    fn atom(name: &str) -> QualName {
+        QualName::new(
+            None,
+            Namespace::from("http://www.w3.org/2005/Atom"),
+            LocalName::from(name),
+        )
+    }
 
-pub fn make_attribute_name(name: &str) -> QualName {
-    // per html5ever::Attribute docs:
-    // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
-    // attributes this way, but the tree builder will adjust certain attribute names inside foreign
-    // content (MathML, SVG).”
-    QualName::new(None, ns!(), LocalName::from(name))
+    fn attribute(name: &str) -> QualName {
+        // per html5ever::Attribute docs:
+        // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
+        // attributes this way, but the tree builder will adjust certain attribute names inside foreign
+        // content (MathML, SVG).”
+        QualName::new(None, ns!(), LocalName::from(name))
+    }
 }
+impl QualNameExt for QualName {}
 
 pub fn parse(mut input: &[u8]) -> eyre::Result<RcDom> {
     let options = ParseOpts {
@@ -216,7 +221,7 @@ pub fn create_fragment() -> (RcDom, Handle) {
 }
 
 pub fn create_element(dom: &mut RcDom, html_local_name: &str) -> Handle {
-    let name = QualName::new(None, ns!(html), LocalName::from(html_local_name));
+    let name = QualName::html(html_local_name);
     dom.create_element(name, vec![], ElementFlags::default())
 }
 
@@ -225,7 +230,7 @@ pub fn find_attr_mut<'attrs>(
     name: &str,
 ) -> Option<&'attrs mut Attribute> {
     for attr in attrs.iter_mut() {
-        if attr.name == QualName::new(None, Namespace::default(), LocalName::from(name)) {
+        if attr.name == QualName::attribute(name) {
             return Some(attr);
         }
     }
@@ -238,7 +243,7 @@ pub fn attr_value<'attrs>(
     name: &str,
 ) -> eyre::Result<Option<&'attrs str>> {
     for attr in attrs.iter() {
-        if attr.name == QualName::new(None, Namespace::default(), LocalName::from(name)) {
+        if attr.name == QualName::attribute(name) {
             return Ok(Some(tendril_to_str(&attr.value)?));
         }
     }
@@ -272,7 +277,7 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
             .insert((tag_name.to_owned(), result.to_owned()));
     }
 
-    make_attribute_name(result)
+    QualName::attribute(result)
 }
 
 #[test]
@@ -280,7 +285,7 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
 fn test_rename_idl_to_content_attribute() {
     assert_eq!(
         rename_idl_to_content_attribute("div", "tabIndex"),
-        make_attribute_name("tabindex"),
+        QualName::attribute("tabindex"),
     );
 }
 
@@ -323,21 +328,21 @@ fn test_convert_idl_to_content_attribute() {
     assert_eq!(
         convert_idl_to_content_attribute("div", "id", Value::String("foo".to_owned())),
         Some(Attribute {
-            name: make_attribute_name("id"),
+            name: QualName::attribute("id"),
             value: "foo".into(),
         }),
     );
     assert_eq!(
         convert_idl_to_content_attribute("img", "width", Value::Number(13.into())),
         Some(Attribute {
-            name: make_attribute_name("width"),
+            name: QualName::attribute("width"),
             value: "13".into(),
         }),
     );
     assert_eq!(
         convert_idl_to_content_attribute("details", "open", Value::Bool(true)),
         Some(Attribute {
-            name: make_attribute_name("open"),
+            name: QualName::attribute("open"),
             value: "".into(),
         }),
     );
@@ -352,7 +357,7 @@ fn test_convert_idl_to_content_attribute() {
             Value::Array(vec!["foo".into(), "bar".into()]),
         ),
         Some(Attribute {
-            name: make_attribute_name("class"),
+            name: QualName::attribute("class"),
             value: "foo bar".into(),
         }),
     );

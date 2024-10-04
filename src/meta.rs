@@ -1,12 +1,12 @@
 use std::{collections::BTreeSet, fs::create_dir_all};
 
-use html5ever::{local_name, namespace_url, ns, QualName};
+use html5ever::QualName;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{attr_value, parse, serialize, tendril_to_str},
+    dom::{attr_value, parse, serialize, tendril_to_str, QualNameExt},
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
@@ -27,7 +27,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
         for kid in node.children.borrow().iter() {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
-                    if name == &QualName::new(None, ns!(html), local_name!("meta")) {
+                    if name == &QualName::html("meta") {
                         let content = attr_value(&attrs.borrow(), "content")?.map(|t| t.to_owned());
                         match attr_value(&attrs.borrow(), "name")? {
                             Some("title") => {
@@ -53,7 +53,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                             _ => {}
                         }
                         continue;
-                    } else if name == &QualName::new(None, ns!(html), local_name!("link")) {
+                    } else if name == &QualName::html("link") {
                         let href = attr_value(&attrs.borrow(), "href")?.map(|t| t.to_owned());
                         let name = attr_value(&attrs.borrow(), "name")?.map(|t| t.to_owned());
                         match attr_value(&attrs.borrow(), "rel")? {
