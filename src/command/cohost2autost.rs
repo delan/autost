@@ -181,8 +181,8 @@ fn convert_single_chost(
                 } => {
                     let template = CohostImgTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        thumb_src: context.cache_cohost_thumb(&attachmentId)?,
-                        src: context.cache_cohost_file(&attachmentId)?,
+                        thumb_src: context.cache_cohost_thumb(&attachmentId)?.site_path()?,
+                        src: context.cache_cohost_file(&attachmentId)?.site_path()?,
                         alt: altText,
                         width,
                         height,
@@ -196,7 +196,7 @@ fn convert_single_chost(
                 } => {
                     let template = CohostAudioTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        src: context.cache_cohost_file(&attachmentId)?,
+                        src: context.cache_cohost_file(&attachmentId)?.site_path()?,
                         artist,
                         title,
                     };
@@ -369,7 +369,11 @@ fn process_chost_fragment(
                         if let Some(id) = attachment_url_to_id(&old_url) {
                             trace!("found cohost attachment url in <{element_name} {attr_name}>: {old_url}");
                             attachment_ids.push(id.to_owned());
-                            attr.value = context.cache_cohost_file(id)?.base_relative_url().into();
+                            attr.value = context
+                                .cache_cohost_file(id)?
+                                .site_path()?
+                                .base_relative_url()
+                                .into();
                             attrs.push(Attribute {
                                 name: QualName::attribute(&format!("data-cohost-{attr_name}")),
                                 value: old_url.into(),
@@ -426,16 +430,17 @@ fn process_chost_fragment(
 
 #[test]
 fn test_render_markdown_block() -> eyre::Result<()> {
+    use crate::path::AttachmentsPath;
     struct TestAttachmentsContext {}
     impl AttachmentsContext for TestAttachmentsContext {
-        fn cache_imported(&self, _url: &str, _post_id: usize) -> eyre::Result<SitePath> {
+        fn cache_imported(&self, _url: &str, _post_id: usize) -> eyre::Result<AttachmentsPath> {
             unreachable!();
         }
-        fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath> {
-            Ok(SitePath::ATTACHMENTS.join(&format!("{id}"))?)
+        fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath> {
+            Ok(AttachmentsPath::ROOT.join(&format!("{id}"))?)
         }
-        fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<SitePath> {
-            Ok(SitePath::THUMBS.join(&format!("{id}"))?)
+        fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath> {
+            Ok(AttachmentsPath::THUMBS.join(&format!("{id}"))?)
         }
     }
 

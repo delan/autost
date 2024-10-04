@@ -168,6 +168,7 @@ fn process_content(
                         trace!("found attachment url in <{element_name} {attr_name}>: {old_url}");
                         attr.value = context
                             .cache_imported(&fetch_url.to_string(), post_id)?
+                            .site_path()?
                             .base_relative_url()
                             .into();
                         attrs.push(Attribute {

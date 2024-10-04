@@ -8,21 +8,18 @@ use reqwest::redirect::Policy;
 use sha2::{digest::generic_array::functional::FunctionalSequence, Digest, Sha256};
 use tracing::{debug, trace, warn};
 
-use crate::{
-    cohost::attachment_id_to_url,
-    path::{AttachmentsPath, SitePath},
-};
+use crate::{cohost::attachment_id_to_url, path::AttachmentsPath};
 
 pub trait AttachmentsContext {
-    fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<SitePath>;
-    fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath>;
-    fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<SitePath>;
+    fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<AttachmentsPath>;
+    fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath>;
+    fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath>;
 }
 
 pub struct RealAttachmentsContext;
 impl AttachmentsContext for RealAttachmentsContext {
     #[tracing::instrument(skip(self))]
-    fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<SitePath> {
+    fn cache_imported(&self, url: &str, post_id: usize) -> eyre::Result<AttachmentsPath> {
         let mut hash = Sha256::new();
         hash.update(url);
         let hash = hash.finalize().map(|o| format!("{o:02x}")).join("");
@@ -30,23 +27,22 @@ impl AttachmentsContext for RealAttachmentsContext {
         trace!(?path);
         create_dir_all(&path)?;
 
-        cache_imported_attachment(url, &path)?.site_path()
+        cache_imported_attachment(url, &path)
     }
 
     #[tracing::instrument(skip(self))]
-    fn cache_cohost_file(&self, id: &str) -> eyre::Result<SitePath> {
+    fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath> {
         let url = attachment_id_to_url(id);
         let dir = &*AttachmentsPath::ROOT;
         let path = dir.join(id)?;
         create_dir_all(&path)?;
         cache_cohost_attachment(&url, &path, None)?;
-        let attachments_path = cached_attachment_url(id, dir)?;
 
-        attachments_path.site_path()
+        cached_attachment_url(id, dir)
     }
 
     #[tracing::instrument(skip(self))]
-    fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<SitePath> {
+    fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath> {
         fn thumb(url: &str) -> String {
             format!("{url}?width=675")
         }
@@ -56,9 +52,8 @@ impl AttachmentsContext for RealAttachmentsContext {
         let path = dir.join(id)?;
         create_dir_all(&path)?;
         cache_cohost_attachment(&url, &path, Some(thumb))?;
-        let attachments_path = cached_attachment_url(id, dir)?;
 
-        attachments_path.site_path()
+        cached_attachment_url(id, dir)
     }
 }
 
