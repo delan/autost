@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    cell::{Ref, RefMut},
     collections::{BTreeMap, BTreeSet},
     str,
     sync::{LazyLock, Mutex},
@@ -106,25 +107,27 @@ impl Iterator for Traverse {
 }
 
 pub trait HandleExt {
-    fn attr_mut<'attrs>(
-        &self,
-        attrs: &'attrs mut [Attribute],
-        name: &str,
-    ) -> Option<&'attrs mut Attribute>;
-
-    fn attr_str<'attrs>(
-        &self,
-        attrs: &'attrs [Attribute],
-        name: &str,
-    ) -> eyre::Result<Option<&'attrs str>>;
+    fn attrs(&self) -> Option<RefMut<Vec<Attribute>>>;
 }
 impl HandleExt for Handle {
-    fn attr_mut<'attrs>(
-        &self,
-        attrs: &'attrs mut [Attribute],
-        name: &str,
-    ) -> Option<&'attrs mut Attribute> {
-        for attr in attrs.iter_mut() {
+    fn attrs(&self) -> Option<RefMut<Vec<Attribute>>> {
+        if let NodeData::Element { attrs, .. } = &self.data {
+            Some(attrs.borrow_mut())
+        } else {
+            None
+        }
+    }
+}
+
+pub trait AttrsRefExt {
+    fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>>;
+}
+pub trait AttrsMutExt {
+    fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute>;
+}
+impl AttrsMutExt for RefMut<'_, Vec<Attribute>> {
+    fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute> {
+        for attr in self.iter_mut() {
             if attr.name == QualName::attribute(name) {
                 return Some(attr);
             }
@@ -132,13 +135,10 @@ impl HandleExt for Handle {
 
         None
     }
-
-    fn attr_str<'attrs>(
-        &self,
-        attrs: &'attrs [Attribute],
-        name: &str,
-    ) -> eyre::Result<Option<&'attrs str>> {
-        for attr in attrs.iter() {
+}
+impl AttrsRefExt for Ref<'_, Vec<Attribute>> {
+    fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
+        for attr in self.iter() {
             if attr.name == QualName::attribute(name) {
                 return Ok(Some(tendril_to_str(&attr.value)?));
             }

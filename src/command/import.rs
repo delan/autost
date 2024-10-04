@@ -15,7 +15,7 @@ use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
         parse, parse_html_document, serialize, serialize_node, tendril_to_str, text_content,
-        HandleExt, QualName, QualNameExt, Traverse,
+        AttrsMutExt, AttrsRefExt, QualName, QualNameExt, Traverse,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -37,7 +37,7 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
             unreachable!()
         };
         if name == &QualName::html("base") {
-            if let Some(href) = node.attr_str(&attrs.borrow(), "href")? {
+            if let Some(href) = attrs.borrow().attr_str("href")? {
                 base_href = base_href.join(href)?;
                 break;
             }
@@ -162,7 +162,7 @@ fn process_content(
                     let element_name = name.local.to_string();
                     let attr_name = "src";
                     let mut attrs = attrs.borrow_mut();
-                    if let Some(attr) = node.attr_mut(&mut attrs, &attr_name) {
+                    if let Some(attr) = attrs.attr_mut(&attr_name) {
                         let old_url = tendril_to_str(&attr.value)?.to_owned();
                         let fetch_url = base_href.join(&old_url)?;
                         trace!("found attachment url in <{element_name} {attr_name}>: {old_url}");
@@ -185,7 +185,7 @@ fn process_content(
                     let element_name = name.local.to_string();
                     let attr_name = "href";
                     let mut attrs = attrs.borrow_mut();
-                    if let Some(attr) = node.attr_mut(&mut attrs, &attr_name) {
+                    if let Some(attr) = attrs.attr_mut(&attr_name) {
                         let old_url = tendril_to_str(&attr.value)?.to_owned();
                         let new_url = if old_url.starts_with("#") {
                             // TODO: do this instead once fragment links work again (#17)
@@ -243,9 +243,9 @@ fn mf2_u(node: Handle, class: &str, base_href: &Url) -> eyre::Result<Option<Url>
         unreachable!("guaranteed by mf2_find")
     };
 
-    if let Some(result) = node.attr_str(&attrs, "href")? {
+    if let Some(result) = attrs.attr_str("href")? {
         Ok(Some(base_href.join(result)?))
-    } else if let Some(result) = node.attr_str(&attrs, "value")? {
+    } else if let Some(result) = attrs.attr_str("value")? {
         Ok(Some(base_href.join(result)?))
     } else {
         bail!(".u-class has no value");
@@ -260,8 +260,9 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
     let NodeData::Element { attrs, .. } = &element.data else {
         unreachable!("guaranteed by mf2_find")
     };
-    let result = node
-        .attr_str(&attrs.borrow(), "datetime")?
+    let result = attrs
+        .borrow()
+        .attr_str("datetime")?
         .map(|datetime| datetime.to_owned())
         .ok_or_eyre(".dt-class has no [datetime]")?;
 
@@ -282,7 +283,7 @@ fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {
 
 fn has_class(node: Handle, class: &str) -> eyre::Result<bool> {
     if let NodeData::Element { attrs, .. } = &node.data {
-        if let Some(node_class) = node.attr_str(&attrs.borrow(), "class")? {
+        if let Some(node_class) = attrs.borrow().attr_str("class")? {
             if node_class.split(" ").find(|&c| c == class).is_some() {
                 return Ok(true);
             }

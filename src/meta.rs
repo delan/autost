@@ -6,7 +6,7 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{parse, serialize, tendril_to_str, HandleExt, QualNameExt},
+    dom::{parse, serialize, tendril_to_str, AttrsRefExt, QualNameExt},
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
@@ -27,11 +27,10 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
         for kid in node.children.borrow().iter() {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
+                    let attrs = attrs.borrow();
                     if name == &QualName::html("meta") {
-                        let content = node
-                            .attr_str(&attrs.borrow(), "content")?
-                            .map(|t| t.to_owned());
-                        match node.attr_str(&attrs.borrow(), "name")? {
+                        let content = attrs.attr_str("content")?.map(|t| t.to_owned());
+                        match attrs.attr_str("name")? {
                             Some("title") => {
                                 meta.title = content;
                             }
@@ -56,13 +55,9 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         }
                         continue;
                     } else if name == &QualName::html("link") {
-                        let href = node
-                            .attr_str(&attrs.borrow(), "href")?
-                            .map(|t| t.to_owned());
-                        let name = node
-                            .attr_str(&attrs.borrow(), "name")?
-                            .map(|t| t.to_owned());
-                        match node.attr_str(&attrs.borrow(), "rel")? {
+                        let href = attrs.attr_str("href")?.map(|t| t.to_owned());
+                        let name = attrs.attr_str("name")?.map(|t| t.to_owned());
+                        match attrs.attr_str("rel")? {
                             Some("archived") => {
                                 meta.archived = href;
                             }
@@ -79,7 +74,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         }
                         continue;
                     } else {
-                        for attr in attrs.borrow().iter() {
+                        for attr in attrs.iter() {
                             if let Ok(url) =
                                 SitePath::from_rendered_attachment_url(tendril_to_str(&attr.value)?)
                             {
