@@ -8,6 +8,11 @@
 <link rel="alternate" href="{% if let Some(url) = thread.url_for_atom_permalink()? %}{{ url }}{% endif %}"/>
 {% if let Some(published) = thread.meta.published %}<published>{{ published }}</published>{% endif %}
 <title>{{ thread.overall_title }}</title>
+{% if let Some(author) = thread.meta.author %}<author>
+<name>{{ author.name }}</name>
+<uri>{{ author.href }}</uri>
+</author>{% endif %}
+{% for tag in thread.main_post()?.meta.tags.iter() %}<category term="{{ tag }}" />{% endfor %}
 <content type="html" xml:base="{{ SETTINGS.external_base_url }}">
 {#- fluent-reader needs html base tag, not xml:base (yang991178/fluent-reader#692) -#}
 &lt;base href="{{ SETTINGS.external_base_url }}"&gt;

@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLock};
 
 use askama::Template;
-use jane_eyre::eyre::{self, Context};
+use jane_eyre::eyre::{self, Context, OptionExt};
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -212,6 +212,10 @@ impl Thread {
                     }
                 }
             })
+    }
+
+    pub fn main_post(&self) -> eyre::Result<&TemplatedPost> {
+        self.posts.last().ok_or_eyre("thread has no posts")
     }
 }
 
