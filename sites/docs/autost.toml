@@ -1,0 +1,19 @@
+base_url = "/autost/"
+external_base_url = "https://[::1]:8420/"
+site_title = "the autost book"
+other_self_authors = []
+interesting_tags = []
+
+[self_author]
+href = "#"
+name = "autost"
+display_name = "autost"
+display_handle = "autost.example"
+
+[renamed_tags]
+
+[implied_tags]
+
+[[nav]]
+href = "."
+text = "posts"
