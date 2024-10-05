@@ -1,5 +1,6 @@
 base_url = "/"
 external_base_url = "https://example.com/"
+# server_port = 8420
 site_title = "ao!!"
 other_self_authors = ["https://cohost.org/staff"]
 interesting_tags = [["photography"], ["reading", "watching", "listening"]]

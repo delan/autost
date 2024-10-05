@@ -265,9 +265,9 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
 
     let routes = routes.recover(recover);
 
-    info!("starting server on http://[::1]:8420");
+    info!("starting server on http://[::1]:{}", SETTINGS.server_port());
     warp::serve(routes)
-        .run(("::1".parse::<IpAddr>()?, 8420))
+        .run(("::1".parse::<IpAddr>()?, SETTINGS.server_port()))
         .await;
 
     Ok(())

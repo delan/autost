@@ -139,7 +139,8 @@ impl PostsPath {
     pub fn compose_reply_url(&self) -> String {
         // references_url is already urlencoded
         format!(
-            "http://[::1]:8420{}compose?reply_to={}",
+            "http://[::1]:{}{}compose?reply_to={}",
+            SETTINGS.server_port(),
             SETTINGS.base_url,
             self.references_url()
         )

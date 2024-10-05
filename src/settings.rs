@@ -15,6 +15,7 @@ use crate::{Author, TemplatedPost, Thread};
 pub struct Settings {
     pub base_url: String,
     pub external_base_url: String,
+    pub server_port: Option<u16>,
     pub site_title: String,
     pub other_self_authors: Vec<String>,
     pub interesting_tags: Vec<Vec<String>>,
@@ -123,6 +124,10 @@ impl Settings {
         } else {
             "".split("/").skip(1)
         }
+    }
+
+    pub fn server_port(&self) -> u16 {
+        self.server_port.unwrap_or(8420)
     }
 
     pub fn tag_is_interesting(&self, tag: &str) -> bool {
