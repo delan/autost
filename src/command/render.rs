@@ -32,6 +32,7 @@ pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
 pub fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
+    create_dir_all(&*PostsPath::ROOT)?;
     for entry in read_dir(&*PostsPath::ROOT)? {
         let entry = entry?;
         let metadata = entry.metadata()?;
