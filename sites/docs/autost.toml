@@ -1,5 +1,5 @@
 base_url = "/autost/"
-external_base_url = "https://[::1]:8420/"
+external_base_url = "https://delan.github.io/autost/"
 site_title = "the autost book"
 other_self_authors = []
 interesting_tags = []
