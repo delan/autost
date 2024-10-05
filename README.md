@@ -9,9 +9,20 @@ want to **archive your chosts on your website** but have too many for the [cohos
 
 autost is a single program you run in your terminal (`autost`).
 
-**go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!** go to [CHANGELOG.md](CHANGELOG.md) to find out what changed in each new release.
+**go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!**
 
-## make a new site
+go to [CHANGELOG.md](CHANGELOG.md) to find out what changed in each new release.
+
+for more docs, check out [the autost book](https://delan.github.io/autost/), which you can also render locally:
+
+```
+$ cd sites/docs
+$ cargo run render
+  - or -
+$ cargo run server
+```
+
+## how to make a new site
 
 ```
 $ autost new sites/example.com  # example (can be anywhere)
@@ -82,6 +93,16 @@ https://cohost.org/project/post/123456-slug tag,another tag
 ```
 $ cd sites/example.com
 $ autost server
+```
+
+## how to reply to a post on another blog
+
+this works with any blog that uses microformats2 [h-entry](https://microformats.org/wiki/h-entry). see [@nex3](https://github.com/nex3)’s [Reblogging posts with h-entry](https://nex-3.com/blog/reblogging-posts-with-h-entry/) for more details on how this works.
+
+```
+$ cd sites/example.com
+$ autost import https://nex-3.com/blog/reblogging-posts-with-h-entry/
+  INFO autost::command::import: click here to reply: http://[::1]:8420/posts/compose?reply_to=imported/1.html
 ```
 
 ## how to deploy
