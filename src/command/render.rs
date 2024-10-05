@@ -13,7 +13,7 @@ use crate::{
     meta::hard_link_attachments_into_site,
     migrations::run_migrations,
     path::{PostsPath, SitePath},
-    AtomFeedTemplate, TemplatedPost, Thread, ThreadsContentTemplate, ThreadsTemplate, SETTINGS,
+    AtomFeedTemplate, TemplatedPost, Thread, ThreadsTemplate, SETTINGS,
 };
 
 pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
@@ -194,12 +194,8 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         }
 
         // reader step: generate post page.
-        let template = ThreadsContentTemplate {
-            threads: vec![thread.clone()],
-        };
-        let content = template.render()?;
         let template = ThreadsTemplate {
-            content,
+            threads: vec![thread.clone()],
             page_title: format!("{} — {}", thread.overall_title, SETTINGS.site_title),
             feed_href: None,
         };
@@ -248,10 +244,8 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         }
     }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
-        let template = ThreadsContentTemplate { threads };
-        let content = template.render()?;
         let template = ThreadsTemplate {
-            content,
+            threads,
             page_title: format!("#{tag} — {}", SETTINGS.site_title),
             // TODO: move this logic into path module and check for slashes
             feed_href: Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
@@ -348,10 +342,8 @@ impl Collection {
     fn write_threads_page(&self, posts_page_path: &SitePath) -> eyre::Result<()> {
         let mut threads = self.threads.clone();
         threads.sort_by(Thread::reverse_chronological);
-        let template = ThreadsContentTemplate { threads };
-        let content = template.render()?;
         let template = ThreadsTemplate {
-            content,
+            threads,
             page_title: format!("{} — {}", self.title, SETTINGS.site_title),
             feed_href: self.feed_href.clone(),
         };

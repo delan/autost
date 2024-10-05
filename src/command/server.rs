@@ -86,9 +86,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
             let unsafe_html = render_markdown(&unsafe_source);
             let post = TemplatedPost::filter(&unsafe_html, None).map_err(InternalError)?;
             let thread = Thread::try_from(post).map_err(InternalError)?;
-            let template = ThreadsContentTemplate {
-                threads: vec![thread],
-            };
+            let template = ThreadsContentTemplate::new(vec![thread]);
             let result = template
                 .render()
                 .wrap_err("failed to render template")

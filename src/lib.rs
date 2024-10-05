@@ -69,7 +69,7 @@ pub struct ExtractedPost {
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads.html")]
 pub struct ThreadsTemplate {
-    pub content: String,
+    pub threads: Vec<Thread>,
     pub page_title: String,
     pub feed_href: Option<SitePath>,
 }
@@ -112,6 +112,12 @@ pub struct TemplatedPost {
     pub original_html: String,
     pub safe_html: String,
     pub needs_attachments: BTreeSet<SitePath>,
+}
+
+impl ThreadsContentTemplate {
+    pub fn new(threads: Vec<Thread>) -> Self {
+        Self { threads }
+    }
 }
 
 impl ThreadOrPostHeaderTemplate {
