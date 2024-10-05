@@ -78,6 +78,7 @@ pub struct ThreadsTemplate {
 #[template(path = "threads-content.html")]
 pub struct ThreadsContentTemplate {
     pub threads: Vec<Thread>,
+    pub simple_mode: bool,
 }
 
 #[derive(Clone, Debug, Template)]
@@ -116,7 +117,17 @@ pub struct TemplatedPost {
 
 impl ThreadsContentTemplate {
     pub fn new(threads: Vec<Thread>) -> Self {
-        Self { threads }
+        Self {
+            threads,
+            simple_mode: false,
+        }
+    }
+
+    pub fn simple(thread: Thread) -> Self {
+        Self {
+            threads: vec![thread],
+            simple_mode: true,
+        }
     }
 }
 
