@@ -208,6 +208,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                             Some("svg") => "image/svg+xml",
                             Some("webp") => "image/webp",
                             Some("woff2") => "font/woff2",
+                            Some("xml") => "text/xml",
                             Some(other) => {
                                 warn!("unknown file extension {other}; treating as application/octet-stream");
                                 "application/octet-stream"
