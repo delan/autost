@@ -364,8 +364,8 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
         // only check for that by running the first few steps of the “basic URL parser” on `url`
         // with an imaginary non-null “*base*”, but no “*encoding*”, “*url*”, or “*state override*”.
         //
-        // the imaginary “*base*” in our case has the http or https scheme, so “*base*” does not
-        // “have an [opaque path]”, and the scheme is not a “special scheme”.
+        // the imaginary “*base*” in our case has the http or https scheme, so the scheme is a
+        // “special scheme”, so “*base*” does not “have an [opaque path]”.
         //
         // <https://url.spec.whatwg.org/#scheme-relative-url-string>
         // <https://url.spec.whatwg.org/#path-absolute-url-string>
@@ -394,14 +394,15 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
 
         // “Keep running the following state machine by switching on state. If after a run
         // pointer points to the EOF code point, go to the next step.”
-        while !pointer.is_empty() {
+        loop {
             // “When a pointer is used, c references the code point the pointer points to as long
             // as it does not point nowhere. When the pointer points to nowhere c cannot be used.”
-            let c = pointer.chars().next().expect("guaranteed by while");
+            // Some(char) = non-EOF code point; None = EOF code point; no need for a nowhere case.
+            let c = pointer.chars().next();
 
             match state {
                 State::SchemeStartState => {
-                    if c.is_ascii_alphabetic() {
+                    if c.is_some_and(|c| c.is_ascii_alphabetic()) {
                         state = State::Scheme;
                     } else {
                         state = State::NoScheme;
@@ -409,9 +410,11 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                     }
                 }
                 State::Scheme => {
-                    if c.is_ascii_alphabetic() || c == '+' || c == '-' || c == '.' {
+                    if c.is_some_and(|c| {
+                        c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.'
+                    }) {
                         // do nothing
-                    } else if c == ':' {
+                    } else if c.is_some_and(|c| c == ':') {
                         // “Set url’s scheme to buffer.”
                         // we have an “absolute-URL string”.
                         return None;
@@ -421,6 +424,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                         // point in input).”
                         state = State::NoScheme;
                         pointer = &url[..];
+                        continue; // skip pointer increase
                     }
                 }
                 State::NoScheme => {
@@ -430,9 +434,9 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                     continue; // skip pointer increase
                 }
                 State::Relative => {
-                    if c == '/' {
+                    if c.is_some_and(|c| c == '/') {
                         state = State::RelativeSlash;
-                    } else if c == '\\' {
+                    } else if c.is_some_and(|c| c == '\\') {
                         state = State::RelativeSlash;
                     } else {
                         // “Set [...], url’s path to a clone of base’s path, [...].”
@@ -445,8 +449,13 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                     return None;
                 }
             }
-            // “Otherwise, increase pointer by 1 and continue with the state machine.”
-            pointer = &pointer[c.len_utf8()..];
+            if let Some(c) = c {
+                // “Otherwise, increase pointer by 1 and continue with the state machine.”
+                pointer = &pointer[c.len_utf8()..];
+            } else {
+                // “If after a run pointer points to the EOF code point, go to the next step.”
+                break;
+            }
         }
     }
 
@@ -470,5 +479,17 @@ fn test_is_path_relative_scheme_less_url_string() {
     assert_eq!(
         parse_path_relative_scheme_less_url_string(" relative?query#fragment").as_deref(),
         Some("relative?query#fragment")
+    );
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" script.js").as_deref(),
+        Some("script.js")
+    );
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" script2.js").as_deref(),
+        Some("script2.js")
+    );
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" 2script.js").as_deref(),
+        Some("2script.js")
     );
 }
