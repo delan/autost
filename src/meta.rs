@@ -6,7 +6,10 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{parse_html_fragment, AttrsRefExt, QualNameExt, TendrilExt, Transform},
+    dom::{
+        html_attributes_with_urls, parse_html_fragment, AttrsRefExt, QualNameExt, TendrilExt,
+        Transform,
+    },
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
@@ -71,13 +74,15 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                             _ => {}
                         }
                         continue;
-                    } else {
+                    } else if let Some(attr_names) = html_attributes_with_urls().get(name) {
                         for attr in attrs.iter() {
-                            if let Ok(url) =
-                                SitePath::from_rendered_attachment_url(attr.value.to_str())
-                            {
-                                trace!("found attachment url in rendered post: {url:?}");
-                                needs_attachments.insert(url);
+                            if attr_names.contains(&attr.name) {
+                                if let Ok(url) =
+                                    SitePath::from_rendered_attachment_url(attr.value.to_str())
+                                {
+                                    trace!("found attachment url in rendered post: {url:?}");
+                                    needs_attachments.insert(url);
+                                }
                             }
                         }
                     }
