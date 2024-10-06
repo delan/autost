@@ -2,10 +2,12 @@ use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLo
 
 use askama::Template;
 use jane_eyre::eyre::{self, Context, OptionExt};
+use markup5ever_rcdom::RcDom;
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
+    dom::serialize,
     meta::extract_metadata,
     path::{PostsPath, SitePath},
     settings::Settings,
@@ -59,9 +61,8 @@ pub struct Author {
     pub display_handle: String,
 }
 
-#[derive(Debug, PartialEq)]
 pub struct ExtractedPost {
-    pub unsafe_html: String,
+    pub dom: RcDom,
     pub meta: PostMeta,
     pub needs_attachments: BTreeSet<SitePath>,
 }
@@ -297,6 +298,7 @@ impl TemplatedPost {
     pub fn filter(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
         // reader step: extract metadata.
         let post = extract_metadata(unsafe_html)?;
+        let extracted_html = serialize(post.dom)?;
 
         // reader step: filter html.
         let safe_html = ammonia::Builder::default()
@@ -310,7 +312,7 @@ impl TemplatedPost {
             .add_tags(["audio", "meta"])
             .add_tag_attributes("meta", ["name", "content"])
             .id_prefix(Some("user-content-")) // cohost compatibility
-            .clean(&post.unsafe_html)
+            .clean(&extracted_html)
             .to_string();
 
         Ok(TemplatedPost {

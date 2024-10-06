@@ -6,7 +6,7 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{parse, serialize, AttrsRefExt, QualNameExt, TendrilExt, Transform},
+    dom::{parse, AttrsRefExt, QualNameExt, TendrilExt, Transform},
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
@@ -103,7 +103,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     }
 
     Ok(ExtractedPost {
-        unsafe_html: serialize(dom)?,
+        dom,
         meta,
         needs_attachments,
     })
@@ -130,35 +130,10 @@ pub fn hard_link_attachments_into_site<'paths>(
 
 #[test]
 fn test_extract_metadata() -> eyre::Result<()> {
-    fn post(
-        unsafe_html: &str,
-        archived: Option<&str>,
-        references: &[PostsPath],
-        title: Option<&str>,
-        published: Option<&str>,
-        author: Option<Author>,
-        tags: &[&str],
-        is_transparent_share: bool,
-        needs_attachments: &[SitePath],
-    ) -> ExtractedPost {
-        ExtractedPost {
-            unsafe_html: unsafe_html.to_owned(),
-            meta: PostMeta {
-                archived: archived.map(|a| a.to_owned()),
-                references: references.iter().map(|url| url.to_owned()).collect(),
-                title: title.map(|t| t.to_owned()),
-                published: published.map(|t| t.to_owned()),
-                author,
-                tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
-                is_transparent_share,
-            },
-            needs_attachments: needs_attachments.iter().map(|url| url.to_owned()).collect(),
-        }
-    }
-    assert_eq!(
-        extract_metadata(r#"<meta name="title" content="foo">bar"#)?,
-        post("bar", None, &[], Some("foo"), None, None, &[], false, &[]),
-    );
+    use crate::dom::serialize;
+    let post = extract_metadata(r#"<meta name="title" content="foo">bar"#)?;
+    assert_eq!(serialize(post.dom)?, "bar");
+    assert_eq!(post.meta.title.as_deref(), Some("foo"));
 
     Ok(())
 }
