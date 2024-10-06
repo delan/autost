@@ -1,17 +1,14 @@
 //! output templates. these templates are wrapped in a safe interface that
 //! guarantees that path-relative urls are made path-absolute.
 
-use std::collections::{BTreeMap, BTreeSet};
-
 use askama::Template;
 use jane_eyre::eyre;
 use markup5ever_rcdom::{NodeData, RcDom};
-use xml5ever::QualName;
 
 use crate::{
     dom::{
-        parse_html_document, parse_html_fragment, serialize_html_document, serialize_html_fragment,
-        QualNameExt, TendrilExt, Transform,
+        html_attributes_with_urls, parse_html_document, parse_html_fragment,
+        serialize_html_document, serialize_html_fragment, TendrilExt, Transform,
     },
     path::{parse_path_relative_scheme_less_url_string, SitePath},
     PostMeta, Thread, SETTINGS,
@@ -134,41 +131,11 @@ fn fix_relative_urls_in_html_fragment(html: &str) -> eyre::Result<String> {
 }
 
 fn fix_relative_urls(dom: RcDom) -> eyre::Result<RcDom> {
-    let affected_attrs = BTreeMap::from([
-        (
-            QualName::html("a"),
-            BTreeSet::from([QualName::attribute("href")]),
-        ),
-        (
-            QualName::html("base"),
-            BTreeSet::from([QualName::attribute("href")]),
-        ),
-        (
-            QualName::html("button"),
-            BTreeSet::from([QualName::attribute("formaction")]),
-        ),
-        (
-            QualName::html("img"),
-            BTreeSet::from([QualName::attribute("src")]),
-        ),
-        (
-            QualName::html("form"),
-            BTreeSet::from([QualName::attribute("action")]),
-        ),
-        (
-            QualName::html("link"),
-            BTreeSet::from([QualName::attribute("href")]),
-        ),
-        (
-            QualName::html("script"),
-            BTreeSet::from([QualName::attribute("src")]),
-        ),
-    ]);
     let mut transform = Transform::new(dom.document.clone());
     while transform.next(|kids, new_kids| {
         for kid in kids {
             if let NodeData::Element { name, attrs, .. } = &kid.data {
-                if let Some(attr_names) = affected_attrs.get(name) {
+                if let Some(attr_names) = html_attributes_with_urls().get(name) {
                     for attr in attrs.borrow_mut().iter_mut() {
                         if attr_names.contains(&attr.name) {
                             if let Some(url) =

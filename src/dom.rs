@@ -66,6 +66,39 @@ static RENAME_IDL_TO_CONTENT_ATTRIBUTE: LazyLock<
     result.insert((None, "tabIndex"), "tabindex");
     result
 });
+static HTML_ATTRIBUTES_WITH_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
+    LazyLock::new(|| {
+        BTreeMap::from([
+            (
+                QualName::html("a"),
+                BTreeSet::from([QualName::attribute("href")]),
+            ),
+            (
+                QualName::html("base"),
+                BTreeSet::from([QualName::attribute("href")]),
+            ),
+            (
+                QualName::html("button"),
+                BTreeSet::from([QualName::attribute("formaction")]),
+            ),
+            (
+                QualName::html("img"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+            (
+                QualName::html("form"),
+                BTreeSet::from([QualName::attribute("action")]),
+            ),
+            (
+                QualName::html("link"),
+                BTreeSet::from([QualName::attribute("href")]),
+            ),
+            (
+                QualName::html("script"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+        ])
+    });
 
 pub struct Traverse {
     queue: VecDeque<Handle>,
@@ -434,4 +467,8 @@ pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
         .iter()
         .cloned()
         .collect()
+}
+
+pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
+    &HTML_ATTRIBUTES_WITH_URLS
 }
