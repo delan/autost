@@ -9,7 +9,7 @@ use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::{Author, TemplatedPost, Thread};
+use crate::{path::parse_path_relative_scheme_less_url_string, Author, TemplatedPost, Thread};
 
 #[derive(Deserialize)]
 pub struct Settings {
@@ -123,6 +123,14 @@ impl Settings {
                 .skip(1)
         } else {
             "".split("/").skip(1)
+        }
+    }
+
+    pub fn base_url_relativise(&self, url: &str) -> String {
+        if let Some(url) = parse_path_relative_scheme_less_url_string(url) {
+            format!("{}{}", self.base_url, url)
+        } else {
+            url.to_owned()
         }
     }
 

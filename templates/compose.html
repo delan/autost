@@ -3,18 +3,19 @@
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
 <title>autost</title>
+<body data-base-url="{{ SETTINGS.base_url }}">
 <nav>
     <ul>
-    {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
+    {%~ for link in SETTINGS.nav ~%}<li><a href="{{ SETTINGS.base_url_relativise(link.href) }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
 </nav>
-<form class="compose" method="post" action="preview">
+<form class="compose" method="post" action="{{ SETTINGS.base_url }}preview">
     <textarea class="source" name="source">{{ source }}</textarea>
-    <button type="submit" class="preview" value="preview" formaction="preview">preview</button>
-    <button type="submit" class="publish" value="publish" formaction="publish">publish</button>
+    <button type="submit" class="preview" value="preview" formaction="{{ SETTINGS.base_url }}preview">preview</button>
+    <button type="submit" class="publish" value="publish" formaction="{{ SETTINGS.base_url }}publish">publish</button>
     <details open class="expand server"><summary>show shared posts in full?</summary></details>
     <pre class="error"></pre>
     <div class="preview"></div>
 </form>
 
-<script src="script.js"></script>
+<script src="{{ SETTINGS.base_url }}script.js"></script>

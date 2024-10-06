@@ -327,8 +327,7 @@ impl TemplatedPost {
                                 if let Some(url) =
                                     parse_path_relative_scheme_less_url_string(attr.value.to_str())
                                 {
-                                    // TODO: clean this up and move logic into path module
-                                    attr.value = format!("{}{}", SETTINGS.base_url, url).into();
+                                    attr.value = SETTINGS.base_url_relativise(&url).into();
                                 }
                             }
                         }

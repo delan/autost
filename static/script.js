@@ -75,7 +75,7 @@ checkAutostServer();
 
 async function checkAutostServer() {
     // if /compose exists, we are using the autost server.
-    const composeUrl = `${document.baseURI}compose`;
+    const composeUrl = `${document.body.dataset.baseUrl}compose`;
     const composeResponse = await fetch(composeUrl);
     if (!composeResponse.ok) return;
 
