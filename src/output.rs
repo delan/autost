@@ -26,8 +26,8 @@ pub struct ThreadsPageTemplate<'template> {
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads-content.html")]
-pub struct ThreadsContentTemplate {
-    threads: Vec<Thread>,
+pub struct ThreadsContentTemplate<'template> {
+    thread: &'template Thread,
     simple_mode: bool,
 }
 
@@ -64,27 +64,27 @@ impl<'template> ThreadsPageTemplate<'template> {
     }
 }
 
-impl ThreadsContentTemplate {
-    pub fn render_normal(threads: Vec<Thread>) -> eyre::Result<String> {
+impl<'template> ThreadsContentTemplate<'template> {
+    pub fn render_normal(thread: &'template Thread) -> eyre::Result<String> {
         fix_relative_urls_in_html_fragment(&Self::render_normal_without_fixing_relative_urls(
-            threads,
+            thread,
         )?)
     }
 
     pub fn render_normal_without_fixing_relative_urls(
-        threads: Vec<Thread>,
+        thread: &'template Thread,
     ) -> eyre::Result<String> {
         Ok(Self {
-            threads,
+            thread,
             simple_mode: false,
         }
         .render()?)
     }
 
-    fn render_simple(thread: &Thread) -> eyre::Result<String> {
+    fn render_simple(thread: &'template Thread) -> eyre::Result<String> {
         fix_relative_urls_in_html_fragment(
             &Self {
-                threads: vec![thread.to_owned()],
+                thread,
                 simple_mode: true,
             }
             .render()?,

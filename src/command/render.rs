@@ -279,7 +279,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     }
 
     let threads_content =
-        ThreadsContentTemplate::render_normal_without_fixing_relative_urls(vec![thread.clone()])?;
+        ThreadsContentTemplate::render_normal_without_fixing_relative_urls(&thread)?;
 
     debug!("writing post page: {rendered_path:?}");
     let threads_page = ThreadsPageTemplate::render(

@@ -1,4 +1,3 @@
-{% for thread in threads %}
 <article class="thread h-entry"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}"{% endif %}>
 {% if !simple_mode && !thread.meta.references.is_empty() %}
 {{ ThreadOrPostHeaderTemplate::render(thread.to_owned(),thread.meta.to_owned(),true)?|safe }}
@@ -25,4 +24,3 @@
 </{% if simple_mode && !post.is_main_post %}blockquote{% else %}article{% endif %}>
 {% endfor %}
 </article>
-{% endfor %}
