@@ -41,8 +41,8 @@ pub struct ThreadOrPostHeaderTemplate {
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
-pub struct AtomFeedTemplate {
-    threads: Vec<Thread>,
+pub struct AtomFeedTemplate<'threads> {
+    threads: &'threads [Thread],
     feed_title: String,
     updated: String,
 }
@@ -109,9 +109,9 @@ impl ThreadOrPostHeaderTemplate {
     }
 }
 
-impl AtomFeedTemplate {
+impl<'threads> AtomFeedTemplate<'threads> {
     pub fn render(
-        threads: Vec<Thread>,
+        threads: &'threads [Thread],
         feed_title: String,
         updated: String,
     ) -> eyre::Result<String> {

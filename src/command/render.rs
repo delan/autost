@@ -129,7 +129,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         interesting_output_paths.extend(result.interesting_output_paths);
         for (tag, threads) in result.threads_by_interesting_tag {
             threads_by_interesting_tag
-                .entry(tag.clone())
+                .entry(tag)
                 .or_insert(vec![])
                 .extend(threads);
         }
@@ -145,18 +145,30 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     // author step: generate atom feeds.
     let atom_feed_path = collections.write_atom_feed("index", &SitePath::ROOT, &now)?;
     interesting_output_paths.insert(atom_feed_path);
-    for (tag, threads) in threads_by_interesting_tag.clone().into_iter() {
+
+    // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
+    for (tag, threads) in threads_by_interesting_tag {
         let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
         writeln!(
             File::create(&atom_feed_path)?,
             "{}",
             AtomFeedTemplate::render(
-                threads,
+                &threads,
                 format!("{} — {tag}", SETTINGS.site_title),
                 now.clone()
             )?
         )?;
         interesting_output_paths.insert(atom_feed_path);
+        let threads_content = render_cached_threads_content(&threads_content_cache, threads);
+        let threads_page = ThreadsPageTemplate::render(
+            threads_content,
+            format!("#{tag} — {}", SETTINGS.site_title),
+            Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
+        )?;
+        // TODO: move this logic into path module and check for slashes
+        let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
+        writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
+        interesting_output_paths.insert(threads_page_path);
     }
 
     let mut tags = tags.into_iter().collect::<Vec<_>>();
@@ -181,18 +193,6 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         if collections.is_interesting(key) {
             interesting_output_paths.insert(threads_page_path);
         }
-    }
-    for (tag, threads) in threads_by_interesting_tag.into_iter() {
-        let threads_content = render_cached_threads_content(&threads_content_cache, threads);
-        let threads_page = ThreadsPageTemplate::render(
-            threads_content,
-            format!("#{tag} — {}", SETTINGS.site_title),
-            Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
-        )?;
-        // TODO: move this logic into path module and check for slashes
-        let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
-        interesting_output_paths.insert(threads_page_path);
     }
 
     let interesting_output_paths = interesting_output_paths
@@ -459,7 +459,7 @@ impl Collection {
         writeln!(
             File::create(atom_feed_path)?,
             "{}",
-            AtomFeedTemplate::render(threads, SETTINGS.site_title.clone(), now.to_owned())?
+            AtomFeedTemplate::render(&threads, SETTINGS.site_title.clone(), now.to_owned())?
         )?;
 
         Ok(())
