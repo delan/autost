@@ -194,7 +194,7 @@ impl SitePath {
         Self::new(path)
     }
 
-    /// use this only in contexts where there is a `<base>` or `xml:base`.
+    /// use this only in post authoring contexts, like the output of importers.
     pub fn base_relative_url(&self) -> String {
         self.relative_url()
     }
