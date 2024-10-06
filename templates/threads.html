@@ -1,5 +1,4 @@
 <!doctype html><meta charset="utf-8">
-<base href="{{ SETTINGS.base_url }}">{# you can change your base url without rerunning cohost2autost #}
 {%~ if let Some(feed_href) = feed_href ~%}<link rel="alternate" type="application/atom+xml" href="{{ feed_href.internal_url() }}">{%~ endif ~%}
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="style.css">
