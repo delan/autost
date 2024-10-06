@@ -5,13 +5,13 @@ use std::{
 };
 
 use chrono::{SecondsFormat, Utc};
-use jane_eyre::eyre::{self, bail};
+use jane_eyre::eyre::{self, bail, OptionExt};
 use tracing::{debug, info};
 
 use crate::{
     meta::hard_link_attachments_into_site,
     migrations::run_migrations,
-    output::{AtomFeedTemplate, ThreadsPageTemplate},
+    output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath},
     TemplatedPost, Thread, SETTINGS,
 };
@@ -115,8 +115,13 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         mut interesting_output_paths,
         mut threads_by_interesting_tag,
     } = RenderResult::default()?;
+    let mut threads_content_cache = BTreeMap::default();
     for result in results {
-        let result = result?;
+        let CacheableRenderResult {
+            render_result: result,
+            threads_content,
+            thread,
+        } = result?;
         for (tag, count) in result.tags {
             *tags.entry(tag).or_insert(0) += count;
         }
@@ -128,6 +133,9 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
                 .or_insert(vec![])
                 .extend(threads);
         }
+        let path = thread.path.ok_or_eyre("thread has no path")?;
+        debug_assert!(!threads_content_cache.contains_key(&path));
+        threads_content_cache.insert(path, threads_content);
     }
 
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
@@ -168,23 +176,22 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             collections.threads(key).len()
         );
         // TODO: write internal collections to another dir?
-        let threads_page_path = collections.write_threads_page(key, &SitePath::ROOT)?;
+        let threads_page_path =
+            collections.write_threads_page(key, &SitePath::ROOT, &threads_content_cache)?;
         if collections.is_interesting(key) {
             interesting_output_paths.insert(threads_page_path);
         }
     }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
+        let threads_content = render_cached_threads_content(&threads_content_cache, threads);
+        let threads_page = ThreadsPageTemplate::render(
+            threads_content,
+            format!("#{tag} — {}", SETTINGS.site_title),
+            Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
+        )?;
         // TODO: move this logic into path module and check for slashes
         let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(
-            File::create(&threads_page_path)?,
-            "{}",
-            ThreadsPageTemplate::render(
-                threads,
-                format!("#{tag} — {}", SETTINGS.site_title),
-                Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?)
-            )?
-        )?;
+        writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
         interesting_output_paths.insert(threads_page_path);
     }
 
@@ -200,7 +207,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     Ok(())
 }
 
-fn render_single_post(path: PostsPath) -> Result<RenderResult, eyre::Error> {
+fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
     let post = TemplatedPost::load(&path)?;
@@ -266,18 +273,29 @@ fn render_single_post(path: PostsPath) -> Result<RenderResult, eyre::Error> {
             result.collections.push("skipped_other", thread.clone());
         }
     }
+
+    let threads_content = ThreadsContentTemplate::render_normal(vec![thread.clone()])?;
+    let result = CacheableRenderResult {
+        render_result: result,
+        threads_content: threads_content.clone(),
+        thread: thread.clone(),
+    };
+
     debug!("writing post page: {rendered_path:?}");
-    writeln!(
-        File::create(rendered_path)?,
-        "{}",
-        ThreadsPageTemplate::render(
-            vec![thread.clone()],
-            format!("{} — {}", thread.overall_title, SETTINGS.site_title),
-            None
-        )?
+    let threads_page = ThreadsPageTemplate::render(
+        threads_content,
+        format!("{} — {}", thread.overall_title, SETTINGS.site_title),
+        None,
     )?;
+    writeln!(File::create(rendered_path)?, "{}", threads_page)?;
 
     Ok(result)
+}
+
+struct CacheableRenderResult {
+    render_result: RenderResult,
+    threads_content: String,
+    thread: Thread,
 }
 
 struct RenderResult {
@@ -375,9 +393,14 @@ impl Collections {
         self.inner[key].is_interesting()
     }
 
-    fn write_threads_page(&self, key: &str, output_dir: &SitePath) -> eyre::Result<SitePath> {
+    fn write_threads_page(
+        &self,
+        key: &str,
+        output_dir: &SitePath,
+        threads_content_cache: &BTreeMap<PostsPath, String>,
+    ) -> eyre::Result<SitePath> {
         let path = output_dir.join(&format!("{key}.html"))?;
-        self.inner[key].write_threads_page(&path)?;
+        self.inner[key].write_threads_page(&path, threads_content_cache)?;
 
         Ok(path)
     }
@@ -409,14 +432,18 @@ impl Collection {
         self.feed_href.is_some()
     }
 
-    fn write_threads_page(&self, posts_page_path: &SitePath) -> eyre::Result<()> {
-        let mut threads = self.threads.clone();
-        threads.sort_by(Thread::reverse_chronological);
+    fn write_threads_page(
+        &self,
+        posts_page_path: &SitePath,
+        threads_content_cache: &BTreeMap<PostsPath, String>,
+    ) -> eyre::Result<()> {
+        let threads_content =
+            render_cached_threads_content(threads_content_cache, self.threads.clone());
         writeln!(
             File::create(posts_page_path)?,
             "{}",
             ThreadsPageTemplate::render(
-                threads,
+                threads_content,
                 format!("{} — {}", self.title, SETTINGS.site_title),
                 self.feed_href.clone()
             )?
@@ -436,4 +463,18 @@ impl Collection {
 
         Ok(())
     }
+}
+
+fn render_cached_threads_content(
+    cache: &BTreeMap<PostsPath, String>,
+    mut threads: Vec<Thread>,
+) -> String {
+    threads.sort_by(Thread::reverse_chronological);
+    let threads_contents = threads
+        .iter()
+        .filter_map(|thread| thread.path.as_ref())
+        .map(|path| &*cache[path])
+        .collect::<Vec<_>>();
+
+    threads_contents.join("")
 }

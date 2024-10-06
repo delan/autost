@@ -17,7 +17,9 @@ use crate::{
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads.html")]
 pub struct ThreadsPageTemplate {
-    threads: Vec<Thread>,
+    /// not `threads: Vec<Thread>`, to encourage us to cache ThreadsContentTemplate output between
+    /// individual thread pages and combined collection pages.
+    threads_content: String,
     page_title: String,
     feed_href: Option<SitePath>,
 }
@@ -47,13 +49,13 @@ pub struct AtomFeedTemplate {
 
 impl ThreadsPageTemplate {
     pub fn render(
-        threads: Vec<Thread>,
+        threads_content: String,
         page_title: String,
         feed_href: Option<SitePath>,
     ) -> eyre::Result<String> {
         fix_relative_urls_in_html_document(
             &Self {
-                threads,
+                threads_content,
                 page_title,
                 feed_href,
             }
