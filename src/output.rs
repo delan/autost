@@ -16,12 +16,12 @@ use crate::{
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads.html")]
-pub struct ThreadsPageTemplate<'threads> {
+pub struct ThreadsPageTemplate<'template> {
     /// not `threads: Vec<Thread>`, to encourage us to cache ThreadsContentTemplate output between
     /// individual thread pages and combined collection pages.
-    threads_content: &'threads str,
-    page_title: String,
-    feed_href: Option<SitePath>,
+    threads_content: &'template str,
+    page_title: &'template str,
+    feed_href: &'template Option<SitePath>,
 }
 
 #[derive(Clone, Debug, Template)]
@@ -41,17 +41,17 @@ pub struct ThreadOrPostHeaderTemplate {
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
-pub struct AtomFeedTemplate<'threads> {
-    thread_refs: Vec<&'threads Thread>,
-    feed_title: String,
-    updated: String,
+pub struct AtomFeedTemplate<'template> {
+    thread_refs: Vec<&'template Thread>,
+    feed_title: &'template str,
+    updated: &'template str,
 }
 
-impl<'threads> ThreadsPageTemplate<'threads> {
+impl<'template> ThreadsPageTemplate<'template> {
     pub fn render(
-        threads_content: &'threads str,
-        page_title: String,
-        feed_href: Option<SitePath>,
+        threads_content: &'template str,
+        page_title: &'template str,
+        feed_href: &'template Option<SitePath>,
     ) -> eyre::Result<String> {
         fix_relative_urls_in_html_document(
             &Self {
@@ -109,11 +109,11 @@ impl ThreadOrPostHeaderTemplate {
     }
 }
 
-impl<'threads> AtomFeedTemplate<'threads> {
+impl<'template> AtomFeedTemplate<'template> {
     pub fn render(
-        thread_refs: Vec<&'threads Thread>,
-        feed_title: String,
-        updated: String,
+        thread_refs: Vec<&'template Thread>,
+        feed_title: &'template str,
+        updated: &'template str,
     ) -> eyre::Result<String> {
         Ok(Self {
             thread_refs,

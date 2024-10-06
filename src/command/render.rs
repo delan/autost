@@ -155,16 +155,16 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             .collect::<Vec<_>>();
         let atom_feed = AtomFeedTemplate::render(
             thread_refs,
-            format!("{} — {tag}", SETTINGS.site_title),
-            now.clone(),
+            &format!("{} — {tag}", SETTINGS.site_title),
+            &now,
         )?;
         writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
         interesting_output_paths.insert(atom_feed_path);
         let threads_content = render_cached_threads_content(&threads_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
             &threads_content,
-            format!("#{tag} — {}", SETTINGS.site_title),
-            Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
+            &format!("#{tag} — {}", SETTINGS.site_title),
+            &Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
         )?;
         // TODO: move this logic into path module and check for slashes
         let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
@@ -284,8 +284,8 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     debug!("writing post page: {rendered_path:?}");
     let threads_page = ThreadsPageTemplate::render(
         &threads_content,
-        format!("{} — {}", thread.overall_title, SETTINGS.site_title),
-        None,
+        &format!("{} — {}", thread.overall_title, SETTINGS.site_title),
+        &None,
     )?;
     writeln!(File::create(rendered_path)?, "{}", threads_page)?;
 
@@ -468,8 +468,8 @@ impl Collection {
             "{}",
             ThreadsPageTemplate::render(
                 &threads_content,
-                format!("{} — {}", self.title, SETTINGS.site_title),
-                self.feed_href.clone()
+                &format!("{} — {}", self.title, SETTINGS.site_title),
+                &self.feed_href,
             )?
         )?;
 
@@ -490,7 +490,7 @@ impl Collection {
         writeln!(
             File::create(atom_feed_path)?,
             "{}",
-            AtomFeedTemplate::render(thread_refs, SETTINGS.site_title.clone(), now.to_owned())?
+            AtomFeedTemplate::render(thread_refs, &SETTINGS.site_title, now)?
         )?;
 
         Ok(())
