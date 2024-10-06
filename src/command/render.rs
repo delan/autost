@@ -274,7 +274,8 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         }
     }
 
-    let threads_content = ThreadsContentTemplate::render_normal(vec![thread.clone()])?;
+    let threads_content =
+        ThreadsContentTemplate::render_normal_without_fixing_relative_urls(vec![thread.clone()])?;
     let result = CacheableRenderResult {
         render_result: result,
         threads_content: threads_content.clone(),

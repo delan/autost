@@ -71,7 +71,9 @@ impl ThreadsContentTemplate {
         )?)
     }
 
-    fn render_normal_without_fixing_relative_urls(threads: Vec<Thread>) -> eyre::Result<String> {
+    pub fn render_normal_without_fixing_relative_urls(
+        threads: Vec<Thread>,
+    ) -> eyre::Result<String> {
         Ok(Self {
             threads,
             simple_mode: false,
