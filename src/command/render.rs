@@ -115,13 +115,11 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         mut interesting_output_paths,
         mut threads_by_interesting_tag,
     } = RenderResult::default()?;
-    let mut threads_content_cache = BTreeMap::default();
     let mut threads_cache = BTreeMap::default();
     for result in results {
         let CacheableRenderResult {
             render_result: result,
-            threads_content,
-            thread,
+            cached_thread,
         } = result?;
         for (tag, count) in result.tags {
             *tags.entry(tag).or_insert(0) += count;
@@ -134,11 +132,13 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
                 .or_default()
                 .extend(threads);
         }
-        let path = thread.path.clone().ok_or_eyre("thread has no path")?;
-        debug_assert!(!threads_content_cache.contains_key(&path));
+        let path = cached_thread
+            .thread
+            .path
+            .clone()
+            .ok_or_eyre("thread has no path")?;
         debug_assert!(!threads_cache.contains_key(&path));
-        threads_content_cache.insert(path.clone(), threads_content);
-        threads_cache.insert(path, thread);
+        threads_cache.insert(path, cached_thread);
     }
 
     // author step: generate atom feeds.
@@ -151,7 +151,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
         let thread_refs = threads
             .iter()
-            .map(|thread| &threads_cache[&thread.path])
+            .map(|thread| &threads_cache[&thread.path].thread)
             .collect::<Vec<_>>();
         let atom_feed = AtomFeedTemplate::render(
             thread_refs,
@@ -160,9 +160,9 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         )?;
         writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
         interesting_output_paths.insert(atom_feed_path);
-        let threads_content = render_cached_threads_content(&threads_content_cache, &threads);
+        let threads_content = render_cached_threads_content(&threads_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
-            threads_content,
+            &threads_content,
             format!("#{tag} — {}", SETTINGS.site_title),
             Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
         )?;
@@ -190,7 +190,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         );
         // TODO: write internal collections to another dir?
         let threads_page_path =
-            collections.write_threads_page(key, &SitePath::ROOT, &threads_content_cache)?;
+            collections.write_threads_page(key, &SitePath::ROOT, &threads_cache)?;
         if collections.is_interesting(key) {
             interesting_output_paths.insert(threads_page_path);
         }
@@ -280,27 +280,29 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
 
     let threads_content =
         ThreadsContentTemplate::render_normal_without_fixing_relative_urls(vec![thread.clone()])?;
-    let result = CacheableRenderResult {
-        render_result: result,
-        threads_content: threads_content.clone(),
-        thread: thread.clone(),
-    };
 
     debug!("writing post page: {rendered_path:?}");
     let threads_page = ThreadsPageTemplate::render(
-        threads_content,
+        &threads_content,
         format!("{} — {}", thread.overall_title, SETTINGS.site_title),
         None,
     )?;
     writeln!(File::create(rendered_path)?, "{}", threads_page)?;
+
+    let result = CacheableRenderResult {
+        render_result: result,
+        cached_thread: CachedThread {
+            thread,
+            threads_content,
+        },
+    };
 
     Ok(result)
 }
 
 struct CacheableRenderResult {
     render_result: RenderResult,
-    threads_content: String,
-    thread: Thread,
+    cached_thread: CachedThread,
 }
 
 struct RenderResult {
@@ -308,6 +310,11 @@ struct RenderResult {
     collections: Collections,
     interesting_output_paths: BTreeSet<SitePath>,
     threads_by_interesting_tag: BTreeMap<String, BTreeSet<ThreadInCollection>>,
+}
+
+struct CachedThread {
+    thread: Thread,
+    threads_content: String,
 }
 
 struct Collections {
@@ -414,10 +421,10 @@ impl Collections {
         &self,
         key: &str,
         output_dir: &SitePath,
-        threads_content_cache: &BTreeMap<PostsPath, String>,
+        threads_cache: &BTreeMap<PostsPath, CachedThread>,
     ) -> eyre::Result<SitePath> {
         let path = output_dir.join(&format!("{key}.html"))?;
-        self.inner[key].write_threads_page(&path, threads_content_cache)?;
+        self.inner[key].write_threads_page(&path, threads_cache)?;
 
         Ok(path)
     }
@@ -427,7 +434,7 @@ impl Collections {
         key: &str,
         output_dir: &SitePath,
         now: &str,
-        threads_cache: &BTreeMap<PostsPath, Thread>,
+        threads_cache: &BTreeMap<PostsPath, CachedThread>,
     ) -> eyre::Result<SitePath> {
         let path = output_dir.join(&format!("{key}.feed.xml"))?;
         self.inner[key].write_atom_feed(&path, now, threads_cache)?;
@@ -453,14 +460,14 @@ impl Collection {
     fn write_threads_page(
         &self,
         posts_page_path: &SitePath,
-        threads_content_cache: &BTreeMap<PostsPath, String>,
+        threads_cache: &BTreeMap<PostsPath, CachedThread>,
     ) -> eyre::Result<()> {
-        let threads_content = render_cached_threads_content(threads_content_cache, &self.threads);
+        let threads_content = render_cached_threads_content(threads_cache, &self.threads);
         writeln!(
             File::create(posts_page_path)?,
             "{}",
             ThreadsPageTemplate::render(
-                threads_content,
+                &threads_content,
                 format!("{} — {}", self.title, SETTINGS.site_title),
                 self.feed_href.clone()
             )?
@@ -473,12 +480,12 @@ impl Collection {
         &self,
         atom_feed_path: &SitePath,
         now: &str,
-        threads_cache: &BTreeMap<PostsPath, Thread>,
+        threads_cache: &BTreeMap<PostsPath, CachedThread>,
     ) -> eyre::Result<()> {
         let thread_refs = self
             .threads
             .iter()
-            .map(|thread| &threads_cache[&thread.path])
+            .map(|thread| &threads_cache[&thread.path].thread)
             .collect::<Vec<_>>();
         writeln!(
             File::create(atom_feed_path)?,
@@ -506,12 +513,12 @@ impl PartialOrd for ThreadInCollection {
 }
 
 fn render_cached_threads_content(
-    cache: &BTreeMap<PostsPath, String>,
+    cache: &BTreeMap<PostsPath, CachedThread>,
     threads: &BTreeSet<ThreadInCollection>,
 ) -> String {
     let threads_contents = threads
         .iter()
-        .map(|thread| &*cache[&thread.path])
+        .map(|thread| &*cache[&thread.path].threads_content)
         .collect::<Vec<_>>();
 
     threads_contents.join("")

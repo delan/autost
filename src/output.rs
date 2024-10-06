@@ -16,10 +16,10 @@ use crate::{
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads.html")]
-pub struct ThreadsPageTemplate {
+pub struct ThreadsPageTemplate<'threads> {
     /// not `threads: Vec<Thread>`, to encourage us to cache ThreadsContentTemplate output between
     /// individual thread pages and combined collection pages.
-    threads_content: String,
+    threads_content: &'threads str,
     page_title: String,
     feed_href: Option<SitePath>,
 }
@@ -47,9 +47,9 @@ pub struct AtomFeedTemplate<'threads> {
     updated: String,
 }
 
-impl ThreadsPageTemplate {
+impl<'threads> ThreadsPageTemplate<'threads> {
     pub fn render(
-        threads_content: String,
+        threads_content: &'threads str,
         page_title: String,
         feed_href: Option<SitePath>,
     ) -> eyre::Result<String> {
