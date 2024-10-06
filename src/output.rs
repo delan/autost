@@ -33,9 +33,9 @@ pub struct ThreadsContentTemplate<'template> {
 
 #[derive(Clone, Debug, Template)]
 #[template(path = "thread-or-post-header.html")]
-pub struct ThreadOrPostHeaderTemplate {
-    thread: Thread,
-    post_meta: PostMeta,
+pub struct ThreadOrPostHeaderTemplate<'template> {
+    thread: &'template Thread,
+    post_meta: &'template PostMeta,
     is_thread_header: bool,
 }
 
@@ -92,10 +92,10 @@ impl<'template> ThreadsContentTemplate<'template> {
     }
 }
 
-impl ThreadOrPostHeaderTemplate {
+impl<'template> ThreadOrPostHeaderTemplate<'template> {
     pub fn render(
-        thread: Thread,
-        post_meta: PostMeta,
+        thread: &'template Thread,
+        post_meta: &'template PostMeta,
         is_thread_header: bool,
     ) -> eyre::Result<String> {
         fix_relative_urls_in_html_fragment(
