@@ -1,15 +1,22 @@
-use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLock};
+use std::{
+    cmp::Ordering,
+    collections::{BTreeMap, BTreeSet},
+    fs::File,
+    io::Read,
+    sync::LazyLock,
+};
 
 use askama::Template;
 use jane_eyre::eyre::{self, Context, OptionExt};
-use markup5ever_rcdom::RcDom;
+use markup5ever_rcdom::{NodeData, RcDom};
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use xml5ever::QualName;
 
 use crate::{
-    dom::serialize,
+    dom::{serialize, QualNameExt, TendrilExt, Transform},
     meta::extract_metadata,
-    path::{PostsPath, SitePath},
+    path::{parse_path_relative_scheme_less_url_string, PostsPath, SitePath},
     settings::Settings,
 };
 
@@ -298,9 +305,42 @@ impl TemplatedPost {
     pub fn filter(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
         // reader step: extract metadata.
         let post = extract_metadata(unsafe_html)?;
-        let extracted_html = serialize(post.dom)?;
+
+        // reader step: fix relative urls.
+        let affected_attrs = BTreeMap::from([
+            (
+                QualName::html("a"),
+                BTreeSet::from([QualName::attribute("href")]),
+            ),
+            (
+                QualName::html("img"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+        ]);
+        let mut transform = Transform::new(post.dom.document.clone());
+        while transform.next(|kids, new_kids| {
+            for kid in kids {
+                if let NodeData::Element { name, attrs, .. } = &kid.data {
+                    if let Some(attr_names) = affected_attrs.get(name) {
+                        for attr in attrs.borrow_mut().iter_mut() {
+                            if attr_names.contains(&attr.name) {
+                                if let Some(url) =
+                                    parse_path_relative_scheme_less_url_string(attr.value.to_str())
+                                {
+                                    // TODO: clean this up and move logic into path module
+                                    attr.value = format!("{}{}", SETTINGS.base_url, url).into();
+                                }
+                            }
+                        }
+                    }
+                }
+                new_kids.push(kid.clone());
+            }
+            Ok(())
+        })? {}
 
         // reader step: filter html.
+        let extracted_html = serialize(post.dom)?;
         let safe_html = ammonia::Builder::default()
             .add_generic_attributes(["style", "id"])
             .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost

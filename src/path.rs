@@ -6,6 +6,7 @@ use std::{
 };
 
 use jane_eyre::eyre::{self, bail, Context};
+use url::Url;
 
 use crate::SETTINGS;
 
@@ -345,4 +346,129 @@ pub fn hard_link_if_not_exists(
     }
 
     Ok(())
+}
+
+/// if the given string is a “path-relative-scheme-less-URL string”, returns that string after
+/// the initial C0/space/tab/newline stripping, otherwise returns None.
+///
+/// - `foo/bar` → true
+/// - `/foo/bar` → false
+/// - `foo:/bar` → false
+///
+/// <https://url.spec.whatwg.org/#path-relative-scheme-less-url-string>
+pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
+    // is it a “relative-URL string”? (case “Otherwise”)
+    // <https://url.spec.whatwg.org/#relative-url-string>
+    if Url::parse(url) == Err(url::ParseError::RelativeUrlWithoutBase) {
+        // if so, it may be a “scheme-relative-URL string” or “path-absolute-URL string”, but we can
+        // only check for that by running the first few steps of the “basic URL parser” on `url`
+        // with an imaginary non-null “*base*”, but no “*encoding*”, “*url*”, or “*state override*”.
+        //
+        // the imaginary “*base*” in our case has the http or https scheme, so “*base*” does not
+        // “have an [opaque path]”, and the scheme is not a “special scheme”.
+        //
+        // <https://url.spec.whatwg.org/#scheme-relative-url-string>
+        // <https://url.spec.whatwg.org/#path-absolute-url-string>
+        // <https://url.spec.whatwg.org/#concept-basic-url-parser>
+
+        // “Remove any leading and trailing [C0 control or space] from *input*.”
+        let url = url.strip_prefix(|c| c <= '\x20').unwrap_or(url);
+        let url = url.strip_suffix(|c| c <= '\x20').unwrap_or(url);
+
+        // “Remove all [ASCII tab or newline] from *input*.”
+        let url = url.replace(|c| c == '\x09' || c == '\x0A' || c == '\x0D', "");
+
+        // “Let *state* be *state override* if given, or [scheme start state] otherwise.”
+        #[derive(Debug)]
+        enum State {
+            SchemeStartState,
+            Scheme,
+            NoScheme,
+            Relative,
+            RelativeSlash,
+        }
+        let mut state = State::SchemeStartState;
+
+        // “Let *pointer* be a [pointer] for *input*.”
+        let mut pointer = &url[..];
+
+        // “Keep running the following state machine by switching on state. If after a run
+        // pointer points to the EOF code point, go to the next step.”
+        while !pointer.is_empty() {
+            // “When a pointer is used, c references the code point the pointer points to as long
+            // as it does not point nowhere. When the pointer points to nowhere c cannot be used.”
+            let c = pointer.chars().next().expect("guaranteed by while");
+
+            match state {
+                State::SchemeStartState => {
+                    if c.is_ascii_alphabetic() {
+                        state = State::Scheme;
+                    } else {
+                        state = State::NoScheme;
+                        continue; // skip pointer increase
+                    }
+                }
+                State::Scheme => {
+                    if c.is_ascii_alphabetic() || c == '+' || c == '-' || c == '.' {
+                        // do nothing
+                    } else if c == ':' {
+                        // “Set url’s scheme to buffer.”
+                        // we have an “absolute-URL string”.
+                        return None;
+                    } else {
+                        // “Otherwise, if state override is not given, set buffer to the empty
+                        // string, state to no scheme state, and start over (from the first code
+                        // point in input).”
+                        state = State::NoScheme;
+                        pointer = &url[..];
+                    }
+                }
+                State::NoScheme => {
+                    // “Otherwise, if base’s scheme is not "file", set state to relative state
+                    // and decrease pointer by 1.”
+                    state = State::Relative;
+                    continue; // skip pointer increase
+                }
+                State::Relative => {
+                    if c == '/' {
+                        state = State::RelativeSlash;
+                    } else if c == '\\' {
+                        state = State::RelativeSlash;
+                    } else {
+                        // “Set [...], url’s path to a clone of base’s path, [...].”
+                        // we have a “path-relative-scheme-less-URL string”.
+                        return Some(url);
+                    }
+                }
+                State::RelativeSlash => {
+                    // we have a “scheme-relative-URL string” or “path-absolute-URL string”.
+                    return None;
+                }
+            }
+            // “Otherwise, increase pointer by 1 and continue with the state machine.”
+            pointer = &pointer[c.len_utf8()..];
+        }
+    }
+
+    None
+}
+
+#[test]
+fn test_is_path_relative_scheme_less_url_string() {
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" http://host/absolute?query#fragment"),
+        None
+    );
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" //host/absolute?query#fragment"),
+        None
+    );
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" /absolute?query#fragment"),
+        None
+    );
+    assert_eq!(
+        parse_path_relative_scheme_less_url_string(" relative?query#fragment").as_deref(),
+        Some("relative?query#fragment")
+    );
 }
