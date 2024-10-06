@@ -6,6 +6,7 @@ use std::{
 
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail, OptionExt};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use tracing::{debug, info};
 
 use crate::{
@@ -104,8 +105,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     }
 
     let results = post_paths
-        // TODO: .into_par_iter()
-        .into_iter()
+        .into_par_iter()
         .map(render_single_post)
         .collect::<Vec<_>>();
 
