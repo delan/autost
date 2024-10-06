@@ -64,13 +64,17 @@ impl ThreadsPageTemplate {
 
 impl ThreadsContentTemplate {
     pub fn render_normal(threads: Vec<Thread>) -> eyre::Result<String> {
-        fix_relative_urls_in_html_fragment(
-            &Self {
-                threads,
-                simple_mode: false,
-            }
-            .render()?,
-        )
+        fix_relative_urls_in_html_fragment(&Self::render_normal_without_fixing_relative_urls(
+            threads,
+        )?)
+    }
+
+    fn render_normal_without_fixing_relative_urls(threads: Vec<Thread>) -> eyre::Result<String> {
+        Ok(Self {
+            threads,
+            simple_mode: false,
+        }
+        .render()?)
     }
 
     pub fn render_simple(thread: Thread) -> eyre::Result<String> {
