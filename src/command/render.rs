@@ -52,37 +52,6 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     run_migrations()?;
 
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    let mut collections = Collections::new([
-        (
-            "index",
-            Collection::new(Some(SitePath::ROOT.join("index.feed.xml")?), "posts"),
-        ),
-        ("all", Collection::new(None, "all posts")),
-        (
-            "untagged_interesting",
-            Collection::new(None, "untagged interesting posts"),
-        ),
-        (
-            "excluded",
-            Collection::new(None, "archived posts that were marked excluded"),
-        ),
-        (
-            "marked_interesting",
-            Collection::new(None, "archived posts that were marked interesting"),
-        ),
-        (
-            "skipped_own",
-            Collection::new(None, "own skipped archived posts"),
-        ),
-        (
-            "skipped_other",
-            Collection::new(None, "others’ skipped archived posts"),
-        ),
-    ]);
-    let mut threads_by_interesting_tag = BTreeMap::default();
-    let mut tags = BTreeMap::default();
-    let mut interesting_output_paths = BTreeSet::default();
-
     create_dir_all(&*SitePath::ROOT)?;
     create_dir_all(&*SitePath::TAGGED)?;
 
@@ -134,76 +103,31 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         std::fs::set_permissions(deploy_path, permissions)?;
     }
 
-    for path in post_paths {
-        let post = TemplatedPost::load(&path)?;
-        let Some(rendered_path) = path.rendered_path()? else {
-            bail!("post has no rendered path");
-        };
-        let thread = Thread::try_from(post)?;
-        hard_link_attachments_into_site(thread.needs_attachments())?;
+    let results = post_paths
+        // TODO: .into_par_iter()
+        .into_iter()
+        .map(render_single_post)
+        .collect::<Vec<_>>();
 
-        for tag in thread.meta.tags.iter() {
-            *tags.entry(tag.clone()).or_insert(0usize) += 1;
+    let RenderResult {
+        mut tags,
+        mut collections,
+        mut interesting_output_paths,
+        mut threads_by_interesting_tag,
+    } = RenderResult::default()?;
+    for result in results {
+        let result = result?;
+        for (tag, count) in result.tags {
+            *tags.entry(tag).or_insert(0) += count;
         }
-        collections.push("all", thread.clone());
-        let mut was_interesting = false;
-        if thread.meta.archived.is_none() && SETTINGS.self_author == thread.meta.author {
-            was_interesting = true;
-        } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
-            collections.push("excluded", thread.clone());
-        } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
-            collections.push("marked_interesting", thread.clone());
-            was_interesting = true;
-        } else {
-            for tag in thread.meta.tags.iter() {
-                if SETTINGS.tag_is_interesting(tag) {
-                    was_interesting = true;
-                    break;
-                }
-            }
+        collections.merge(result.collections);
+        interesting_output_paths.extend(result.interesting_output_paths);
+        for (tag, threads) in result.threads_by_interesting_tag {
+            threads_by_interesting_tag
+                .entry(tag.clone())
+                .or_insert(vec![])
+                .extend(threads);
         }
-        if was_interesting {
-            interesting_output_paths.insert(rendered_path.clone());
-            collections.push("index", thread.clone());
-            for tag in thread.meta.tags.iter() {
-                if SETTINGS.tag_is_interesting(tag) {
-                    threads_by_interesting_tag
-                        .entry(tag.clone())
-                        .or_insert(vec![])
-                        .push(thread.clone());
-                }
-            }
-            if thread.meta.tags.is_empty() {
-                collections.push("untagged_interesting", thread.clone());
-            }
-        } else {
-            // if the thread had some input from us at publish time, that is, if the last post was
-            // authored by us with content and/or tags...
-            if thread.posts.last().is_some_and(|post| {
-                (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
-                    && post
-                        .meta
-                        .author
-                        .as_ref()
-                        .is_some_and(|author| SETTINGS.other_self_authors.contains(&author.href))
-            }) {
-                collections.push("skipped_own", thread.clone());
-            } else {
-                collections.push("skipped_other", thread.clone());
-            }
-        }
-
-        // reader step: generate post page.
-        debug!("writing post page: {rendered_path:?}");
-        writeln!(
-            File::create(rendered_path)?,
-            "{}",
-            ThreadsPageTemplate::render(
-                vec![thread.clone()],
-                format!("{} — {}", thread.overall_title, SETTINGS.site_title),
-                None
-            )?
-        )?;
     }
 
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
@@ -276,6 +200,93 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     Ok(())
 }
 
+fn render_single_post(path: PostsPath) -> Result<RenderResult, eyre::Error> {
+    let mut result = RenderResult::default()?;
+
+    let post = TemplatedPost::load(&path)?;
+    let Some(rendered_path) = path.rendered_path()? else {
+        bail!("post has no rendered path");
+    };
+    let thread = Thread::try_from(post)?;
+    hard_link_attachments_into_site(thread.needs_attachments())?;
+    for tag in thread.meta.tags.iter() {
+        *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
+    }
+    result.collections.push("all", thread.clone());
+    let mut was_interesting = false;
+    if thread.meta.archived.is_none() && SETTINGS.self_author == thread.meta.author {
+        was_interesting = true;
+    } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
+        result.collections.push("excluded", thread.clone());
+    } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
+        result
+            .collections
+            .push("marked_interesting", thread.clone());
+        was_interesting = true;
+    } else {
+        for tag in thread.meta.tags.iter() {
+            if SETTINGS.tag_is_interesting(tag) {
+                was_interesting = true;
+                break;
+            }
+        }
+    }
+    if was_interesting {
+        result
+            .interesting_output_paths
+            .insert(rendered_path.clone());
+        result.collections.push("index", thread.clone());
+        for tag in thread.meta.tags.iter() {
+            if SETTINGS.tag_is_interesting(tag) {
+                result
+                    .threads_by_interesting_tag
+                    .entry(tag.clone())
+                    .or_insert(vec![])
+                    .push(thread.clone());
+            }
+        }
+        if thread.meta.tags.is_empty() {
+            result
+                .collections
+                .push("untagged_interesting", thread.clone());
+        }
+    } else {
+        // if the thread had some input from us at publish time, that is, if the last post was
+        // authored by us with content and/or tags...
+        if thread.posts.last().is_some_and(|post| {
+            (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
+                && post
+                    .meta
+                    .author
+                    .as_ref()
+                    .is_some_and(|author| SETTINGS.other_self_authors.contains(&author.href))
+        }) {
+            result.collections.push("skipped_own", thread.clone());
+        } else {
+            result.collections.push("skipped_other", thread.clone());
+        }
+    }
+    debug!("writing post page: {rendered_path:?}");
+    writeln!(
+        File::create(rendered_path)?,
+        "{}",
+        ThreadsPageTemplate::render(
+            vec![thread.clone()],
+            format!("{} — {}", thread.overall_title, SETTINGS.site_title),
+            None
+        )?
+    )?;
+
+    Ok(result)
+}
+
+struct RenderResult {
+    tags: BTreeMap<String, usize>,
+    collections: Collections,
+    interesting_output_paths: BTreeSet<SitePath>,
+    threads_by_interesting_tag: BTreeMap<String, Vec<Thread>>,
+}
+
 struct Collections {
     inner: BTreeMap<&'static str, Collection>,
 }
@@ -286,10 +297,61 @@ struct Collection {
     threads: Vec<Thread>,
 }
 
+impl RenderResult {
+    fn default() -> eyre::Result<Self> {
+        Ok(Self {
+            tags: Default::default(),
+            collections: Collections::default()?,
+            interesting_output_paths: Default::default(),
+            threads_by_interesting_tag: Default::default(),
+        })
+    }
+}
+
 impl Collections {
-    fn new(collections: impl IntoIterator<Item = (&'static str, Collection)>) -> Self {
-        Self {
-            inner: collections.into_iter().collect(),
+    fn default() -> eyre::Result<Self> {
+        Ok(Self {
+            inner: [
+                (
+                    "index",
+                    Collection::new(Some(SitePath::ROOT.join("index.feed.xml")?), "posts"),
+                ),
+                ("all", Collection::new(None, "all posts")),
+                (
+                    "untagged_interesting",
+                    Collection::new(None, "untagged interesting posts"),
+                ),
+                (
+                    "excluded",
+                    Collection::new(None, "archived posts that were marked excluded"),
+                ),
+                (
+                    "marked_interesting",
+                    Collection::new(None, "archived posts that were marked interesting"),
+                ),
+                (
+                    "skipped_own",
+                    Collection::new(None, "own skipped archived posts"),
+                ),
+                (
+                    "skipped_other",
+                    Collection::new(None, "others’ skipped archived posts"),
+                ),
+            ]
+            .into(),
+        })
+    }
+
+    fn merge(&mut self, other: Self) {
+        assert!(self.inner.keys().eq(other.inner.keys()));
+        for (key, collection) in other.inner {
+            assert_eq!(self.inner[key].feed_href, collection.feed_href);
+            assert_eq!(self.inner[key].title, collection.title);
+            self.inner
+                .get_mut(key)
+                .expect("guaranteed by assert")
+                .threads
+                .extend(collection.threads);
         }
     }
 
