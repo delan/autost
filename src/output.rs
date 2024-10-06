@@ -140,7 +140,27 @@ fn fix_relative_urls(dom: RcDom) -> eyre::Result<RcDom> {
             BTreeSet::from([QualName::attribute("href")]),
         ),
         (
+            QualName::html("base"),
+            BTreeSet::from([QualName::attribute("href")]),
+        ),
+        (
+            QualName::html("button"),
+            BTreeSet::from([QualName::attribute("formaction")]),
+        ),
+        (
             QualName::html("img"),
+            BTreeSet::from([QualName::attribute("src")]),
+        ),
+        (
+            QualName::html("form"),
+            BTreeSet::from([QualName::attribute("action")]),
+        ),
+        (
+            QualName::html("link"),
+            BTreeSet::from([QualName::attribute("href")]),
+        ),
+        (
+            QualName::html("script"),
             BTreeSet::from([QualName::attribute("src")]),
         ),
     ]);

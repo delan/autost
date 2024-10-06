@@ -2,15 +2,15 @@
 <base href="{{ SETTINGS.base_url }}">{# you can change your base url without rerunning cohost2autost #}
 {%~ if let Some(feed_href) = feed_href ~%}<link rel="alternate" type="application/atom+xml" href="{{ feed_href.internal_url() }}">{%~ endif ~%}
 <meta name="viewport" content="width=device-width">
-<link rel="stylesheet" href="{{ SETTINGS.base_url }}style.css">
+<link rel="stylesheet" href="style.css">
 <title>{{ page_title }}</title>
 <body data-base-url="{{ SETTINGS.base_url }}">
 <nav>
     <ul>
-    {%~ for link in SETTINGS.nav ~%}<li><a href="{{ SETTINGS.base_url_relativise(link.href) }}">{{ link.text }}</a>{%~ endfor ~%}
+    {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
     {% for tags in SETTINGS.interesting_tag_groups_iter() %}<ul class="tags">
-    {% for tag in tags -%}<li><a href="{{ SETTINGS.base_url }}tagged/{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
+    {% for tag in tags -%}<li><a href="tagged/{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
     </ul>{% endfor %}
     <hr>
     <ul>
@@ -18,4 +18,4 @@
     </ul>
 </nav>
 {{ ThreadsContentTemplate::render_normal(threads.to_owned())?|safe }}
-<script src="{{ SETTINGS.base_url }}script.js"></script>
+<script src="script.js"></script>
