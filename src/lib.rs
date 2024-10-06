@@ -243,8 +243,6 @@ impl TemplatedPost {
         // reader step: extract metadata.
         let post = extract_metadata(unsafe_html)?;
 
-        // reader step: fix relative urls.
-
         // reader step: filter html.
         let extracted_html = serialize_html_fragment(post.dom)?;
         let safe_html = ammonia::Builder::default()
