@@ -4,7 +4,6 @@ use std::{
     io::Write,
 };
 
-use askama::Template;
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail};
 use tracing::{debug, info};
@@ -12,8 +11,9 @@ use tracing::{debug, info};
 use crate::{
     meta::hard_link_attachments_into_site,
     migrations::run_migrations,
+    output::{AtomFeedTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath},
-    AtomFeedTemplate, TemplatedPost, Thread, ThreadsTemplate, SETTINGS,
+    TemplatedPost, Thread, SETTINGS,
 };
 
 pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
@@ -194,13 +194,16 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         }
 
         // reader step: generate post page.
-        let template = ThreadsTemplate {
-            threads: vec![thread.clone()],
-            page_title: format!("{} — {}", thread.overall_title, SETTINGS.site_title),
-            feed_href: None,
-        };
         debug!("writing post page: {rendered_path:?}");
-        writeln!(File::create(rendered_path)?, "{}", template.render()?)?;
+        writeln!(
+            File::create(rendered_path)?,
+            "{}",
+            ThreadsPageTemplate::render(
+                vec![thread.clone()],
+                format!("{} — {}", thread.overall_title, SETTINGS.site_title),
+                None
+            )?
+        )?;
     }
 
     for (_, threads) in threads_by_interesting_tag.iter_mut() {
@@ -211,13 +214,16 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     let atom_feed_path = collections.write_atom_feed("index", &SitePath::ROOT, &now)?;
     interesting_output_paths.insert(atom_feed_path);
     for (tag, threads) in threads_by_interesting_tag.clone().into_iter() {
-        let template = AtomFeedTemplate {
-            threads,
-            feed_title: format!("{} — {tag}", SETTINGS.site_title),
-            updated: now.clone(),
-        };
         let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
-        writeln!(File::create(&atom_feed_path)?, "{}", template.render()?)?;
+        writeln!(
+            File::create(&atom_feed_path)?,
+            "{}",
+            AtomFeedTemplate::render(
+                threads,
+                format!("{} — {tag}", SETTINGS.site_title),
+                now.clone()
+            )?
+        )?;
         interesting_output_paths.insert(atom_feed_path);
     }
 
@@ -244,15 +250,17 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         }
     }
     for (tag, threads) in threads_by_interesting_tag.into_iter() {
-        let template = ThreadsTemplate {
-            threads,
-            page_title: format!("#{tag} — {}", SETTINGS.site_title),
-            // TODO: move this logic into path module and check for slashes
-            feed_href: Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
-        };
-        // TODO: move this logic into path module
+        // TODO: move this logic into path module and check for slashes
         let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(File::create(&threads_page_path)?, "{}", template.render()?)?;
+        writeln!(
+            File::create(&threads_page_path)?,
+            "{}",
+            ThreadsPageTemplate::render(
+                threads,
+                format!("#{tag} — {}", SETTINGS.site_title),
+                Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?)
+            )?
+        )?;
         interesting_output_paths.insert(threads_page_path);
     }
 
@@ -342,12 +350,15 @@ impl Collection {
     fn write_threads_page(&self, posts_page_path: &SitePath) -> eyre::Result<()> {
         let mut threads = self.threads.clone();
         threads.sort_by(Thread::reverse_chronological);
-        let template = ThreadsTemplate {
-            threads,
-            page_title: format!("{} — {}", self.title, SETTINGS.site_title),
-            feed_href: self.feed_href.clone(),
-        };
-        writeln!(File::create(posts_page_path)?, "{}", template.render()?)?;
+        writeln!(
+            File::create(posts_page_path)?,
+            "{}",
+            ThreadsPageTemplate::render(
+                threads,
+                format!("{} — {}", self.title, SETTINGS.site_title),
+                self.feed_href.clone()
+            )?
+        )?;
 
         Ok(())
     }
@@ -355,12 +366,11 @@ impl Collection {
     fn write_atom_feed(&self, atom_feed_path: &SitePath, now: &str) -> eyre::Result<()> {
         let mut threads = self.threads.clone();
         threads.sort_by(Thread::reverse_chronological);
-        let template = AtomFeedTemplate {
-            threads,
-            feed_title: SETTINGS.site_title.clone(),
-            updated: now.to_owned(),
-        };
-        writeln!(File::create(atom_feed_path)?, "{}", template.render()?)?;
+        writeln!(
+            File::create(atom_feed_path)?,
+            "{}",
+            AtomFeedTemplate::render(threads, SETTINGS.site_title.clone(), now.to_owned())?
+        )?;
 
         Ok(())
     }

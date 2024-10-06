@@ -1,7 +1,7 @@
 {% for thread in threads %}
 <article class="thread h-entry"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}"{% endif %}>
 {% if !simple_mode && !thread.meta.references.is_empty() %}
-{{ ThreadOrPostHeaderTemplate::new(thread,thread.meta,true)|safe }}
+{{ ThreadOrPostHeaderTemplate::render(thread.to_owned(),thread.meta.to_owned(),true)?|safe }}
 {% endif %}
 {% for post in thread.posts_in_thread() %}
 <{% if simple_mode && !post.is_main_post %}blockquote style="
@@ -11,7 +11,7 @@
     border-radius: 0.5rem;
     box-shadow: 0px 4px 5px #00000024, 0px 1px 10px #0000001f, 0px 2px 4px #0003;
 "{% else %}article{% endif %} class="post cohost{% if !post.is_main_post %} h-entry{% endif %}">
-{% if !simple_mode || !post.is_main_post %}{{ ThreadOrPostHeaderTemplate::new(thread,post.inner.meta,false)|safe }}{% endif %}
+{% if !simple_mode || !post.is_main_post %}{{ ThreadOrPostHeaderTemplate::render(thread.to_owned(),post.inner.meta.to_owned(),false)?|safe }}{% endif %}
     {% if !post.inner.meta.is_transparent_share %}
     <div class="content e-content">{{ post.inner.safe_html|safe }}</div>
     {% endif %}

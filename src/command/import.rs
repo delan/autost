@@ -14,8 +14,8 @@ use url::Url;
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
-        parse, parse_html_document, serialize, serialize_node, text_content, AttrsMutExt,
-        AttrsRefExt, QualName, QualNameExt, TendrilExt, Traverse,
+        parse_html_document, parse_html_fragment, serialize_html_fragment, serialize_node_contents,
+        text_content, AttrsMutExt, AttrsRefExt, QualName, QualNameExt, TendrilExt, Traverse,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -152,7 +152,7 @@ fn process_content(
     base_href: &Url,
     context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
-    let dom = parse(content.as_bytes())?;
+    let dom = parse_html_fragment(content.as_bytes())?;
 
     for node in Traverse::nodes(dom.document.clone()) {
         match &node.data {
@@ -210,7 +210,7 @@ fn process_content(
         }
     }
 
-    Ok(serialize(dom)?)
+    Ok(serialize_html_fragment(dom)?)
 }
 
 fn mf2_e(node: Handle, class: &str) -> eyre::Result<Option<String>> {
@@ -218,7 +218,7 @@ fn mf2_e(node: Handle, class: &str) -> eyre::Result<Option<String>> {
     let Some(node) = mf2_find(node, class) else {
         return Ok(None);
     };
-    let html = serialize_node(node)?;
+    let html = serialize_node_contents(node)?;
 
     Ok(Some(html))
 }

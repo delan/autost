@@ -1,22 +1,15 @@
-use std::{
-    cmp::Ordering,
-    collections::{BTreeMap, BTreeSet},
-    fs::File,
-    io::Read,
-    sync::LazyLock,
-};
+use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLock};
 
 use askama::Template;
 use jane_eyre::eyre::{self, Context, OptionExt};
-use markup5ever_rcdom::{NodeData, RcDom};
+use markup5ever_rcdom::RcDom;
 use serde::Deserialize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-use xml5ever::QualName;
 
 use crate::{
-    dom::{serialize, QualNameExt, TendrilExt, Transform},
+    dom::serialize_html_fragment,
     meta::extract_metadata,
-    path::{parse_path_relative_scheme_less_url_string, PostsPath, SitePath},
+    path::{PostsPath, SitePath},
     settings::Settings,
 };
 
@@ -35,6 +28,7 @@ pub mod cohost;
 pub mod dom;
 pub mod meta;
 pub mod migrations;
+pub mod output;
 pub mod path;
 pub mod settings;
 
@@ -74,37 +68,6 @@ pub struct ExtractedPost {
     pub needs_attachments: BTreeSet<SitePath>,
 }
 
-#[derive(Clone, Debug, Template)]
-#[template(path = "threads.html")]
-pub struct ThreadsTemplate {
-    pub threads: Vec<Thread>,
-    pub page_title: String,
-    pub feed_href: Option<SitePath>,
-}
-
-#[derive(Clone, Debug, Template)]
-#[template(path = "threads-content.html")]
-pub struct ThreadsContentTemplate {
-    pub threads: Vec<Thread>,
-    pub simple_mode: bool,
-}
-
-#[derive(Clone, Debug, Template)]
-#[template(path = "thread-or-post-header.html")]
-pub struct ThreadOrPostHeaderTemplate {
-    pub thread: Thread,
-    pub post_meta: PostMeta,
-    pub is_thread_header: bool,
-}
-
-#[derive(Clone, Debug, Template)]
-#[template(path = "feed.xml")]
-pub struct AtomFeedTemplate {
-    pub threads: Vec<Thread>,
-    pub feed_title: String,
-    pub updated: String,
-}
-
 #[derive(Clone, Debug)]
 pub struct Thread {
     pub path: Option<PostsPath>,
@@ -121,32 +84,6 @@ pub struct TemplatedPost {
     pub original_html: String,
     pub safe_html: String,
     pub needs_attachments: BTreeSet<SitePath>,
-}
-
-impl ThreadsContentTemplate {
-    pub fn new(threads: Vec<Thread>) -> Self {
-        Self {
-            threads,
-            simple_mode: false,
-        }
-    }
-
-    pub fn simple(thread: Thread) -> Self {
-        Self {
-            threads: vec![thread],
-            simple_mode: true,
-        }
-    }
-}
-
-impl ThreadOrPostHeaderTemplate {
-    pub fn new(thread: &Thread, post_meta: &PostMeta, is_thread_header: bool) -> Self {
-        Self {
-            thread: thread.to_owned(),
-            post_meta: post_meta.to_owned(),
-            is_thread_header,
-        }
-    }
 }
 
 impl Thread {
@@ -307,39 +244,9 @@ impl TemplatedPost {
         let post = extract_metadata(unsafe_html)?;
 
         // reader step: fix relative urls.
-        let affected_attrs = BTreeMap::from([
-            (
-                QualName::html("a"),
-                BTreeSet::from([QualName::attribute("href")]),
-            ),
-            (
-                QualName::html("img"),
-                BTreeSet::from([QualName::attribute("src")]),
-            ),
-        ]);
-        let mut transform = Transform::new(post.dom.document.clone());
-        while transform.next(|kids, new_kids| {
-            for kid in kids {
-                if let NodeData::Element { name, attrs, .. } = &kid.data {
-                    if let Some(attr_names) = affected_attrs.get(name) {
-                        for attr in attrs.borrow_mut().iter_mut() {
-                            if attr_names.contains(&attr.name) {
-                                if let Some(url) =
-                                    parse_path_relative_scheme_less_url_string(attr.value.to_str())
-                                {
-                                    attr.value = SETTINGS.base_url_relativise(&url).into();
-                                }
-                            }
-                        }
-                    }
-                }
-                new_kids.push(kid.clone());
-            }
-            Ok(())
-        })? {}
 
         // reader step: filter html.
-        let extracted_html = serialize(post.dom)?;
+        let extracted_html = serialize_html_fragment(post.dom)?;
         let safe_html = ammonia::Builder::default()
             .add_generic_attributes(["style", "id"])
             .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost

@@ -22,8 +22,8 @@ use crate::{
     },
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
-        debug_not_known_good_attributes_seen, parse, serialize, AttrsMutExt, AttrsRefExt,
-        QualNameExt, TendrilExt, Transform, Traverse,
+        debug_not_known_good_attributes_seen, parse_html_fragment, serialize_html_fragment,
+        AttrsMutExt, AttrsRefExt, QualNameExt, TendrilExt, Transform, Traverse,
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
@@ -340,7 +340,7 @@ struct AskTemplate {
 
 fn render_markdown_block(markdown: &str, context: &dyn AttachmentsContext) -> eyre::Result<String> {
     let html = render_markdown(markdown);
-    let dom = parse(html.as_bytes())?;
+    let dom = parse_html_fragment(html.as_bytes())?;
 
     process_chost_fragment(dom, context)
 }
@@ -425,7 +425,7 @@ fn process_chost_fragment(
         Ok(())
     })? {}
 
-    Ok(serialize(dom)?)
+    Ok(serialize_html_fragment(dom)?)
 }
 
 #[test]

@@ -6,13 +6,13 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
-    dom::{parse, AttrsRefExt, QualNameExt, TendrilExt, Transform},
+    dom::{parse_html_fragment, AttrsRefExt, QualNameExt, TendrilExt, Transform},
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
 };
 
 pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
-    let dom = parse(&mut unsafe_html.as_bytes())?;
+    let dom = parse_html_fragment(&mut unsafe_html.as_bytes())?;
 
     let mut meta = PostMeta::default();
     let mut needs_attachments = BTreeSet::default();
@@ -130,9 +130,9 @@ pub fn hard_link_attachments_into_site<'paths>(
 
 #[test]
 fn test_extract_metadata() -> eyre::Result<()> {
-    use crate::dom::serialize;
+    use crate::dom::serialize_html_fragment;
     let post = extract_metadata(r#"<meta name="title" content="foo">bar"#)?;
-    assert_eq!(serialize(post.dom)?, "bar");
+    assert_eq!(serialize_html_fragment(post.dom)?, "bar");
     assert_eq!(post.meta.title.as_deref(), Some("foo"));
 
     Ok(())

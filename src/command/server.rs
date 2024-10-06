@@ -21,10 +21,10 @@ use warp::{
     Filter,
 };
 
-use crate::{path::AttachmentsPath, SETTINGS};
+use crate::{output::ThreadsContentTemplate, path::AttachmentsPath, SETTINGS};
 use crate::{
     path::{PostsPath, SitePath},
-    render_markdown, PostMeta, TemplatedPost, Thread, ThreadsContentTemplate,
+    render_markdown, PostMeta, TemplatedPost, Thread,
 };
 
 use crate::command::render::render_all;
@@ -86,9 +86,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
             let unsafe_html = render_markdown(&unsafe_source);
             let post = TemplatedPost::filter(&unsafe_html, None).map_err(InternalError)?;
             let thread = Thread::try_from(post).map_err(InternalError)?;
-            let template = ThreadsContentTemplate::new(vec![thread]);
-            let result = template
-                .render()
+            let result = ThreadsContentTemplate::render_normal(vec![thread])
                 .wrap_err("failed to render template")
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(result)

@@ -199,7 +199,7 @@ pub trait QualNameExt {
 }
 impl QualNameExt for QualName {}
 
-pub fn parse(mut input: &[u8]) -> eyre::Result<RcDom> {
+pub fn parse_html_fragment(mut input: &[u8]) -> eyre::Result<RcDom> {
     let options = ParseOpts {
         tree_builder: TreeBuilderOpts {
             drop_doctype: true,
@@ -231,7 +231,11 @@ pub fn parse_xml(mut input: &[u8]) -> eyre::Result<RcDom> {
     Ok(dom)
 }
 
-pub fn serialize(dom: RcDom) -> eyre::Result<String> {
+pub fn serialize_html_document(dom: RcDom) -> eyre::Result<String> {
+    serialize_node_contents(dom.document.clone())
+}
+
+pub fn serialize_html_fragment(dom: RcDom) -> eyre::Result<String> {
     // html5ever::parse_fragment builds a tree with the input wrapped in an <html> element.
     // this is consistent with how the web platform dom requires exactly one root element.
     let children = dom.document.children.borrow();
@@ -246,12 +250,13 @@ pub fn serialize(dom: RcDom) -> eyre::Result<String> {
         bail!("expected root element to be <html>");
     }
 
-    serialize_node(children[0].clone())
+    serialize_node_contents(children[0].clone())
 }
 
-pub fn serialize_node(node: Handle) -> eyre::Result<String> {
+pub fn serialize_node_contents(node: Handle) -> eyre::Result<String> {
     let mut result = Vec::default();
     let node: SerializableHandle = node.clone().into();
+    // default SerializeOpts has `traversal_scope: ChildrenOnly(None)`.
     html5ever::serialize(&mut result, &node, Default::default())?;
     let result = String::from_utf8(result)?;
 
@@ -260,24 +265,27 @@ pub fn serialize_node(node: Handle) -> eyre::Result<String> {
 
 #[test]
 fn test_serialize() -> eyre::Result<()> {
-    assert_eq!(serialize(RcDom::default()).map_err(|_| ()), Err(()));
+    assert_eq!(
+        serialize_html_fragment(RcDom::default()).map_err(|_| ()),
+        Err(())
+    );
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize(dom)?, "");
+    assert_eq!(serialize_html_fragment(dom)?, "");
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize(dom).map_err(|_| ()), Err(()));
+    assert_eq!(serialize_html_fragment(dom).map_err(|_| ()), Err(()));
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "p");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize(dom).map_err(|_| ()), Err(()));
+    assert_eq!(serialize_html_fragment(dom).map_err(|_| ()), Err(()));
 
     Ok(())
 }

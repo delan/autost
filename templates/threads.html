@@ -17,5 +17,5 @@
     {%~ if let Some(feed_href) = feed_href ~%}<li><a href="{{ feed_href.internal_url() }}">atom feed</a> for everything you see here{%~ endif ~%}
     </ul>
 </nav>
-{{ ThreadsContentTemplate::new(threads.to_owned())|safe }}
+{{ ThreadsContentTemplate::render_normal(threads.to_owned())?|safe }}
 <script src="{{ SETTINGS.base_url }}script.js"></script>
