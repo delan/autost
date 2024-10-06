@@ -116,6 +116,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         mut threads_by_interesting_tag,
     } = RenderResult::default()?;
     let mut threads_content_cache = BTreeMap::default();
+    let mut threads_cache = BTreeMap::default();
     for result in results {
         let CacheableRenderResult {
             render_result: result,
@@ -130,36 +131,36 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         for (tag, threads) in result.threads_by_interesting_tag {
             threads_by_interesting_tag
                 .entry(tag)
-                .or_insert(vec![])
+                .or_default()
                 .extend(threads);
         }
-        let path = thread.path.ok_or_eyre("thread has no path")?;
+        let path = thread.path.clone().ok_or_eyre("thread has no path")?;
         debug_assert!(!threads_content_cache.contains_key(&path));
-        threads_content_cache.insert(path, threads_content);
-    }
-
-    for (_, threads) in threads_by_interesting_tag.iter_mut() {
-        threads.sort_by(Thread::reverse_chronological);
+        debug_assert!(!threads_cache.contains_key(&path));
+        threads_content_cache.insert(path.clone(), threads_content);
+        threads_cache.insert(path, thread);
     }
 
     // author step: generate atom feeds.
-    let atom_feed_path = collections.write_atom_feed("index", &SitePath::ROOT, &now)?;
+    let atom_feed_path =
+        collections.write_atom_feed("index", &SitePath::ROOT, &now, &threads_cache)?;
     interesting_output_paths.insert(atom_feed_path);
 
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
     for (tag, threads) in threads_by_interesting_tag {
         let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
-        writeln!(
-            File::create(&atom_feed_path)?,
-            "{}",
-            AtomFeedTemplate::render(
-                &threads,
-                format!("{} — {tag}", SETTINGS.site_title),
-                now.clone()
-            )?
+        let thread_refs = threads
+            .iter()
+            .map(|thread| &threads_cache[&thread.path])
+            .collect::<Vec<_>>();
+        let atom_feed = AtomFeedTemplate::render(
+            thread_refs,
+            format!("{} — {tag}", SETTINGS.site_title),
+            now.clone(),
         )?;
+        writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
         interesting_output_paths.insert(atom_feed_path);
-        let threads_content = render_cached_threads_content(&threads_content_cache, threads);
+        let threads_content = render_cached_threads_content(&threads_content_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
             threads_content,
             format!("#{tag} — {}", SETTINGS.site_title),
@@ -185,7 +186,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     for key in collections.keys() {
         info!(
             "writing threads page for collection {key:?} ({} threads)",
-            collections.threads(key).len()
+            collections.len(key),
         );
         // TODO: write internal collections to another dir?
         let threads_page_path =
@@ -219,16 +220,16 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     for tag in thread.meta.tags.iter() {
         *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
     }
-    result.collections.push("all", thread.clone());
+    result.collections.push("all", &path, &thread);
     let mut was_interesting = false;
     if thread.meta.archived.is_none() && SETTINGS.self_author == thread.meta.author {
         was_interesting = true;
     } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
-        result.collections.push("excluded", thread.clone());
+        result.collections.push("excluded", &path, &thread);
     } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
         result
             .collections
-            .push("marked_interesting", thread.clone());
+            .push("marked_interesting", &path, &thread);
         was_interesting = true;
     } else {
         for tag in thread.meta.tags.iter() {
@@ -242,20 +243,23 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         result
             .interesting_output_paths
             .insert(rendered_path.clone());
-        result.collections.push("index", thread.clone());
+        result.collections.push("index", &path, &thread);
         for tag in thread.meta.tags.iter() {
             if SETTINGS.tag_is_interesting(tag) {
                 result
                     .threads_by_interesting_tag
                     .entry(tag.clone())
-                    .or_insert(vec![])
-                    .push(thread.clone());
+                    .or_default()
+                    .insert(ThreadInCollection {
+                        published: thread.meta.published.clone(),
+                        path: path.clone(),
+                    });
             }
         }
         if thread.meta.tags.is_empty() {
             result
                 .collections
-                .push("untagged_interesting", thread.clone());
+                .push("untagged_interesting", &path, &thread);
         }
     } else {
         // if the thread had some input from us at publish time, that is, if the last post was
@@ -268,9 +272,9 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
                     .as_ref()
                     .is_some_and(|author| SETTINGS.other_self_authors.contains(&author.href))
         }) {
-            result.collections.push("skipped_own", thread.clone());
+            result.collections.push("skipped_own", &path, &thread);
         } else {
-            result.collections.push("skipped_other", thread.clone());
+            result.collections.push("skipped_other", &path, &thread);
         }
     }
 
@@ -303,7 +307,7 @@ struct RenderResult {
     tags: BTreeMap<String, usize>,
     collections: Collections,
     interesting_output_paths: BTreeSet<SitePath>,
-    threads_by_interesting_tag: BTreeMap<String, Vec<Thread>>,
+    threads_by_interesting_tag: BTreeMap<String, BTreeSet<ThreadInCollection>>,
 }
 
 struct Collections {
@@ -313,7 +317,13 @@ struct Collections {
 struct Collection {
     feed_href: Option<SitePath>,
     title: String,
-    threads: Vec<Thread>,
+    threads: BTreeSet<ThreadInCollection>,
+}
+
+#[derive(Eq, PartialEq)]
+struct ThreadInCollection {
+    published: Option<String>,
+    path: PostsPath,
 }
 
 impl RenderResult {
@@ -366,11 +376,14 @@ impl Collections {
         for (key, collection) in other.inner {
             assert_eq!(self.inner[key].feed_href, collection.feed_href);
             assert_eq!(self.inner[key].title, collection.title);
-            self.inner
+            let threads = &mut self
+                .inner
                 .get_mut(key)
                 .expect("guaranteed by assert")
-                .threads
-                .extend(collection.threads);
+                .threads;
+            for thread in collection.threads {
+                threads.insert(thread);
+            }
         }
     }
 
@@ -378,16 +391,19 @@ impl Collections {
         self.inner.keys().map(|key| *key)
     }
 
-    fn threads(&self, key: &str) -> &[Thread] {
-        &self.inner[key].threads
+    fn len(&self, key: &str) -> usize {
+        self.inner[key].threads.len()
     }
 
-    fn push(&mut self, key: &str, thread: Thread) {
+    fn push(&mut self, key: &str, path: &PostsPath, thread: &Thread) {
         self.inner
             .get_mut(key)
             .expect("BUG: unknown collection!")
             .threads
-            .push(thread);
+            .insert(ThreadInCollection {
+                published: thread.meta.published.clone(),
+                path: path.clone(),
+            });
     }
 
     fn is_interesting(&self, key: &str) -> bool {
@@ -411,9 +427,10 @@ impl Collections {
         key: &str,
         output_dir: &SitePath,
         now: &str,
+        threads_cache: &BTreeMap<PostsPath, Thread>,
     ) -> eyre::Result<SitePath> {
         let path = output_dir.join(&format!("{key}.feed.xml"))?;
-        self.inner[key].write_atom_feed(&path, now)?;
+        self.inner[key].write_atom_feed(&path, now, threads_cache)?;
 
         Ok(path)
     }
@@ -424,7 +441,7 @@ impl Collection {
         Self {
             feed_href,
             title: title.to_owned(),
-            threads: vec![],
+            threads: BTreeSet::default(),
         }
     }
 
@@ -438,8 +455,7 @@ impl Collection {
         posts_page_path: &SitePath,
         threads_content_cache: &BTreeMap<PostsPath, String>,
     ) -> eyre::Result<()> {
-        let threads_content =
-            render_cached_threads_content(threads_content_cache, self.threads.clone());
+        let threads_content = render_cached_threads_content(threads_content_cache, &self.threads);
         writeln!(
             File::create(posts_page_path)?,
             "{}",
@@ -453,28 +469,49 @@ impl Collection {
         Ok(())
     }
 
-    fn write_atom_feed(&self, atom_feed_path: &SitePath, now: &str) -> eyre::Result<()> {
-        let mut threads = self.threads.clone();
-        threads.sort_by(Thread::reverse_chronological);
+    fn write_atom_feed(
+        &self,
+        atom_feed_path: &SitePath,
+        now: &str,
+        threads_cache: &BTreeMap<PostsPath, Thread>,
+    ) -> eyre::Result<()> {
+        let thread_refs = self
+            .threads
+            .iter()
+            .map(|thread| &threads_cache[&thread.path])
+            .collect::<Vec<_>>();
         writeln!(
             File::create(atom_feed_path)?,
             "{}",
-            AtomFeedTemplate::render(&threads, SETTINGS.site_title.clone(), now.to_owned())?
+            AtomFeedTemplate::render(thread_refs, SETTINGS.site_title.clone(), now.to_owned())?
         )?;
 
         Ok(())
     }
 }
 
+impl Ord for ThreadInCollection {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // reverse chronological
+        self.published
+            .cmp(&other.published)
+            .reverse()
+            .then_with(|| self.path.cmp(&other.path))
+    }
+}
+impl PartialOrd for ThreadInCollection {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 fn render_cached_threads_content(
     cache: &BTreeMap<PostsPath, String>,
-    mut threads: Vec<Thread>,
+    threads: &BTreeSet<ThreadInCollection>,
 ) -> String {
-    threads.sort_by(Thread::reverse_chronological);
     let threads_contents = threads
         .iter()
-        .filter_map(|thread| thread.path.as_ref())
-        .map(|path| &*cache[path])
+        .map(|thread| &*cache[&thread.path])
         .collect::<Vec<_>>();
 
     threads_contents.join("")

@@ -42,7 +42,7 @@ pub struct ThreadOrPostHeaderTemplate {
 #[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
 pub struct AtomFeedTemplate<'threads> {
-    threads: &'threads [Thread],
+    thread_refs: Vec<&'threads Thread>,
     feed_title: String,
     updated: String,
 }
@@ -81,10 +81,10 @@ impl ThreadsContentTemplate {
         .render()?)
     }
 
-    pub fn render_simple(thread: Thread) -> eyre::Result<String> {
+    fn render_simple(thread: &Thread) -> eyre::Result<String> {
         fix_relative_urls_in_html_fragment(
             &Self {
-                threads: vec![thread],
+                threads: vec![thread.to_owned()],
                 simple_mode: true,
             }
             .render()?,
@@ -111,12 +111,12 @@ impl ThreadOrPostHeaderTemplate {
 
 impl<'threads> AtomFeedTemplate<'threads> {
     pub fn render(
-        threads: &'threads [Thread],
+        thread_refs: Vec<&'threads Thread>,
         feed_title: String,
         updated: String,
     ) -> eyre::Result<String> {
         Ok(Self {
-            threads,
+            thread_refs,
             feed_title,
             updated,
         }

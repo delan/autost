@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
 <updated>{{ updated }}</updated>
 <title>{{ feed_title }}</title>
-{% for thread in threads %}
+{% for thread in thread_refs %}
 <entry>
 {% if let Some(id) = thread.atom_feed_entry_id()? %}<id>{{ id }}</id>{% endif %}
 <link rel="alternate" href="{% if let Some(url) = thread.url_for_atom_permalink()? %}{{ url }}{% endif %}"/>
@@ -16,7 +16,7 @@
 <content type="html" xml:base="{{ SETTINGS.external_base_url }}">
 {#- fluent-reader needs html base tag, not xml:base (yang991178/fluent-reader#692) -#}
 &lt;base href="{{ SETTINGS.external_base_url }}"&gt;
-{{ ThreadsContentTemplate::render_simple(thread.to_owned())? }}
+{{ ThreadsContentTemplate::render_simple(thread)? }}
 </content>
 </entry>
 {% endfor %}
