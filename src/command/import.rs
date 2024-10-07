@@ -248,9 +248,7 @@ fn process_content(
                     if let Some(attr) = attrs.attr_mut(&attr_name) {
                         let old_url = attr.value.to_str().to_owned();
                         let new_url = if old_url.starts_with("#") {
-                            // TODO: do this instead once fragment links work again (#17)
-                            // format!("#user-content-{}", &old_url[1..])
-                            base_href.join(&old_url)?.to_string()
+                            format!("#user-content-{}", &old_url[1..])
                         } else {
                             base_href.join(&old_url)?.to_string()
                         };
