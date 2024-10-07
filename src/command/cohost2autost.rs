@@ -436,7 +436,11 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         fn store(&self, _input_path: &Path) -> eyre::Result<AttachmentsPath> {
             unreachable!()
         }
-        fn cache_imported(&self, _url: &str, _post_id: usize) -> eyre::Result<AttachmentsPath> {
+        fn cache_imported(
+            &self,
+            _url: &str,
+            _post_basename: &str,
+        ) -> eyre::Result<AttachmentsPath> {
             unreachable!();
         }
         fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath> {

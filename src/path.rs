@@ -5,7 +5,7 @@ use std::{
     sync::LazyLock,
 };
 
-use jane_eyre::eyre::{self, bail, Context};
+use jane_eyre::eyre::{self, bail, Context, OptionExt};
 use url::Url;
 
 use crate::SETTINGS;
@@ -28,7 +28,10 @@ trait PathKind: Sized {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum PostsKind {
-    Post { is_markdown: bool },
+    Post {
+        is_markdown: bool,
+        in_imported_dir: bool,
+    },
     Other,
 }
 
@@ -45,20 +48,69 @@ impl PathKind for PostsKind {
     const ROOT: &'static str = "posts";
 
     fn new(path: &Path) -> eyre::Result<Self> {
-        let mut components = path.components().skip(1);
-        if let Some(component) = components.next().and_then(|c| c.as_os_str().to_str()) {
-            if components.next().is_none() {
-                if component.ends_with(".html") {
-                    return Ok(Self::Post { is_markdown: false });
-                }
-                if component.ends_with(".md") {
-                    return Ok(Self::Post { is_markdown: true });
-                }
-            }
-        }
+        let components = path
+            .components()
+            .skip(1)
+            .map(|c| {
+                c.as_os_str()
+                    .to_str()
+                    .ok_or_eyre("unsupported path component")
+            })
+            .collect::<eyre::Result<Vec<_>>>()?;
 
-        Ok(Self::Other)
+        Ok(match components[..] {
+            [c] if c.ends_with(".html") => Self::Post {
+                is_markdown: false,
+                in_imported_dir: false,
+            },
+            [c] if c.ends_with(".md") => Self::Post {
+                is_markdown: true,
+                in_imported_dir: false,
+            },
+            ["imported", c] if c.ends_with(".html") => Self::Post {
+                is_markdown: false,
+                in_imported_dir: true,
+            },
+            _ => Self::Other,
+        })
     }
+}
+
+#[test]
+fn test_posts_kind() -> eyre::Result<()> {
+    assert_eq!(PostsKind::new(Path::new("posts"))?, PostsKind::Other);
+    assert_eq!(PostsKind::new(Path::new("posts/foo"))?, PostsKind::Other);
+    assert_eq!(
+        PostsKind::new(Path::new("posts/1.html"))?,
+        PostsKind::Post {
+            is_markdown: false,
+            in_imported_dir: false
+        }
+    );
+    assert_eq!(
+        PostsKind::new(Path::new("posts/1.md"))?,
+        PostsKind::Post {
+            is_markdown: true,
+            in_imported_dir: false
+        }
+    );
+    assert_eq!(
+        PostsKind::new(Path::new("posts/imported"))?,
+        PostsKind::Other
+    );
+    assert_eq!(
+        PostsKind::new(Path::new("posts/imported/foo"))?,
+        PostsKind::Other
+    );
+    assert_eq!(
+        PostsKind::new(Path::new("posts/imported/1.html"))?,
+        PostsKind::Post {
+            is_markdown: false,
+            in_imported_dir: true
+        }
+    );
+
+    Ok(())
 }
 
 impl PathKind for SiteKind {
@@ -153,7 +205,7 @@ impl PostsPath {
                 let (basename, _) = self
                     .filename()
                     .rsplit_once(".")
-                    .expect("guaranteed by PostKind::new");
+                    .expect("guaranteed by PostsKind::new");
                 let filename = format!("{basename}.html");
                 Ok(Some(SitePath::ROOT.join(&filename)?))
             }
@@ -162,7 +214,29 @@ impl PostsPath {
     }
 
     pub fn is_markdown_post(&self) -> bool {
-        matches!(self.kind, PostsKind::Post { is_markdown: true })
+        matches!(
+            self.kind,
+            PostsKind::Post {
+                is_markdown: true,
+                ..
+            }
+        )
+    }
+
+    pub fn basename(&self) -> Option<&str> {
+        if let PostsKind::Post {
+            in_imported_dir: true,
+            ..
+        } = self.kind
+        {
+            let (basename, _) = self
+                .filename()
+                .rsplit_once(".")
+                .expect("guaranteed by PostsKind::new");
+            return Some(basename);
+        }
+
+        None
     }
 }
 

@@ -28,8 +28,67 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let url = args.next().unwrap();
     create_dir_all(&*PostsPath::IMPORTED)?;
 
+    let FetchPostResult {
+        base_href,
+        e_content,
+        u_url,
+        meta,
+    } = fetch_post(&url).await?;
+
+    let mut result = None;
+    for post_id in 1.. {
+        let path = PostsPath::imported_post_path(post_id);
+        match File::create_new(&path) {
+            Ok(file) => {
+                info!("creating new post: {path:?}");
+                result = Some((path, file));
+                break;
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let post = TemplatedPost::load(&path)?;
+                if post.meta.archived == Some(u_url.to_string()) {
+                    info!("updating existing post: {path:?}");
+                    let file = File::create(&path)?;
+                    result = Some((path, file));
+                    break;
+                }
+            }
+            Err(other) => Err(other)?,
+        }
+    }
+
+    let (path, file) = result.ok_or_eyre("too many posts :(")?;
+    write_post(file, meta, e_content, base_href, path)?;
+
+    Ok(())
+}
+
+pub async fn reimport(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+    run_migrations()?;
+
+    let path = args.next().unwrap();
+    let path = PostsPath::from_site_root_relative_path(&path)?;
+    let post = TemplatedPost::load(&path)?;
+    let url = post.meta.archived.ok_or_eyre("post is not archived")?;
+    let FetchPostResult {
+        base_href,
+        e_content,
+        u_url,
+        meta,
+    } = fetch_post(&url).await?;
+    assert_eq!(url, u_url.to_string());
+
+    info!("updating existing post: {path:?}");
+    let file = File::create(&path)?;
+    write_post(file, meta, e_content, base_href, path)?;
+
+    Ok(())
+}
+
+async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
+    info!("GET {url}");
     let client = reqwest::Client::new();
-    let response = client.get(&url).send().await?;
+    let response = client.get(url).send().await?;
     let dom = parse_html_document(&response.bytes().await?)?;
     let mut base_href = Url::parse(&url)?;
     for node in Traverse::elements(dom.document.clone()) {
@@ -112,43 +171,43 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     };
     debug!(?meta);
 
-    let mut result = None;
-    for post_id in 1.. {
-        let path = PostsPath::imported_post_path(post_id);
-        match File::create_new(&path) {
-            Ok(file) => {
-                result = Some((post_id, path, file));
-                break;
-            }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                let post = TemplatedPost::load(&path)?;
-                if post.meta.archived == Some(u_url.to_string()) {
-                    info!("updating existing post: {path:?}");
-                    let file = File::create(&path)?;
-                    result = Some((post_id, path, file));
-                    break;
-                }
-            }
-            Err(other) => Err(other)?,
-        }
-    }
-    let (post_id, path, mut file) = result.ok_or_eyre("too many posts :(")?;
+    Ok(FetchPostResult {
+        base_href,
+        e_content,
+        u_url,
+        meta,
+    })
+}
 
+fn write_post(
+    mut file: File,
+    meta: PostMeta,
+    e_content: String,
+    base_href: Url,
+    path: PostsPath,
+) -> eyre::Result<()> {
     info!("writing {path:?}");
     file.write_all(meta.render()?.as_bytes())?;
     file.write_all(b"\n\n")?;
-    let unsafe_html = process_content(&e_content, post_id, &base_href, &RealAttachmentsContext)?;
+    let basename = path.basename().ok_or_eyre("path has no basename")?;
+    let unsafe_html = process_content(&e_content, basename, &base_href, &RealAttachmentsContext)?;
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
-
     info!("click here to reply: {}", path.compose_reply_url());
 
     Ok(())
 }
 
+struct FetchPostResult {
+    base_href: Url,
+    e_content: String,
+    u_url: Url,
+    meta: PostMeta,
+}
+
 fn process_content(
     content: &str,
-    post_id: usize,
+    post_basename: &str,
     base_href: &Url,
     context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
@@ -167,7 +226,7 @@ fn process_content(
                         let fetch_url = base_href.join(&old_url)?;
                         trace!("found attachment url in <{element_name} {attr_name}>: {old_url}");
                         attr.value = context
-                            .cache_imported(&fetch_url.to_string(), post_id)?
+                            .cache_imported(&fetch_url.to_string(), post_basename)?
                             .site_path()?
                             .base_relative_url()
                             .into();
