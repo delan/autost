@@ -14,8 +14,9 @@ use url::Url;
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
+        html_attributes_with_embedding_urls, html_attributes_with_non_embedding_urls,
         parse_html_document, parse_html_fragment, serialize_html_fragment, serialize_node_contents,
-        text_content, AttrsMutExt, AttrsRefExt, QualName, QualNameExt, TendrilExt, Traverse,
+        text_content, AttrsRefExt, QualName, QualNameExt, TendrilExt, Traverse,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -216,52 +217,67 @@ fn process_content(
     for node in Traverse::nodes(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
-                // rewrite attachment urls to relative cached paths.
+                let mut attrs = attrs.borrow_mut();
+                let mut extra_attrs = vec![];
+                if let Some(attr_names) = html_attributes_with_embedding_urls().get(name) {
+                    for attr in attrs.iter_mut() {
+                        if attr_names.contains(&attr.name) {
+                            // rewrite attachment urls to relative cached paths.
+                            let old_url = attr.value.to_str().to_owned();
+                            let fetch_url = base_href.join(&old_url)?;
+                            trace!(
+                                "found attachment url in <{} {}>: {old_url}",
+                                name.local,
+                                attr.name.local
+                            );
+                            attr.value = context
+                                .cache_imported(&fetch_url.to_string(), post_basename)?
+                                .site_path()?
+                                .base_relative_url()
+                                .into();
+                            extra_attrs.push(Attribute {
+                                name: QualName::attribute(&format!(
+                                    "data-import-{}",
+                                    attr.name.local
+                                )),
+                                value: old_url.into(),
+                            });
+                        }
+                    }
+                }
+                if let Some(attr_names) = html_attributes_with_non_embedding_urls().get(name) {
+                    for attr in attrs.iter_mut() {
+                        if attr_names.contains(&attr.name) {
+                            // rewrite urls in links to bake in the `base_href`.
+                            let old_url = attr.value.to_str().to_owned();
+                            let new_url = if old_url.starts_with("#") {
+                                format!("#user-content-{}", &old_url[1..])
+                            } else {
+                                base_href.join(&old_url)?.to_string()
+                            };
+                            trace!(
+                                "rewriting <{} {}>: {old_url:?} -> {new_url:?}",
+                                name.local,
+                                attr.name.local,
+                            );
+                            attr.value = new_url.to_string().into();
+                            extra_attrs.push(Attribute {
+                                name: QualName::attribute(&format!(
+                                    "data-import-{}",
+                                    attr.name.local
+                                )),
+                                value: old_url.into(),
+                            });
+                        }
+                    }
+                }
                 if name == &QualName::html("img") {
-                    let element_name = name.local.to_string();
-                    let attr_name = "src";
-                    let mut attrs = attrs.borrow_mut();
-                    if let Some(attr) = attrs.attr_mut(&attr_name) {
-                        let old_url = attr.value.to_str().to_owned();
-                        let fetch_url = base_href.join(&old_url)?;
-                        trace!("found attachment url in <{element_name} {attr_name}>: {old_url}");
-                        attr.value = context
-                            .cache_imported(&fetch_url.to_string(), post_basename)?
-                            .site_path()?
-                            .base_relative_url()
-                            .into();
-                        attrs.push(Attribute {
-                            name: QualName::attribute(&format!("data-import-{attr_name}")),
-                            value: old_url.into(),
-                        });
-                        attrs.push(Attribute {
-                            name: QualName::attribute("loading"),
-                            value: "lazy".into(),
-                        });
-                    }
+                    extra_attrs.push(Attribute {
+                        name: QualName::attribute("loading"),
+                        value: "lazy".into(),
+                    });
                 }
-                // rewrite urls in links to bake in the `base_href`.
-                if [QualName::html("a"), QualName::html("link")].contains(name) {
-                    let element_name = name.local.to_string();
-                    let attr_name = "href";
-                    let mut attrs = attrs.borrow_mut();
-                    if let Some(attr) = attrs.attr_mut(&attr_name) {
-                        let old_url = attr.value.to_str().to_owned();
-                        let new_url = if old_url.starts_with("#") {
-                            format!("#user-content-{}", &old_url[1..])
-                        } else {
-                            base_href.join(&old_url)?.to_string()
-                        };
-                        trace!(
-                            "rewriting <{element_name} {attr_name}>: {old_url:?} -> {new_url:?}"
-                        );
-                        attr.value = new_url.to_string().into();
-                        attrs.push(Attribute {
-                            name: QualName::attribute(&format!("data-import-{attr_name}")),
-                            value: old_url.into(),
-                        });
-                    }
-                }
+                attrs.extend(extra_attrs);
             }
             _ => {}
         }

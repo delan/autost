@@ -66,6 +66,7 @@ static RENAME_IDL_TO_CONTENT_ATTRIBUTE: LazyLock<
     result.insert((None, "tabIndex"), "tabindex");
     result
 });
+
 static HTML_ATTRIBUTES_WITH_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
     LazyLock::new(|| {
         BTreeMap::from([
@@ -98,6 +99,26 @@ static HTML_ATTRIBUTES_WITH_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>
                 BTreeSet::from([QualName::attribute("src")]),
             ),
         ])
+    });
+static HTML_ATTRIBUTES_WITH_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
+    LazyLock::new(|| {
+        BTreeMap::from([(
+            QualName::html("img"),
+            BTreeSet::from([QualName::attribute("src")]),
+        )])
+    });
+static HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
+    LazyLock::new(|| {
+        let mut result = HTML_ATTRIBUTES_WITH_URLS.clone();
+        for (other_name, other_attr_names) in HTML_ATTRIBUTES_WITH_EMBEDDING_URLS.iter() {
+            let attr_names = result
+                .get_mut(other_name)
+                .expect("guaranteed by constant values");
+            for other_attr_name in other_attr_names.iter() {
+                attr_names.remove(other_attr_name);
+            }
+        }
+        result
     });
 
 pub struct Traverse {
@@ -471,4 +492,13 @@ pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
 
 pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_URLS
+}
+
+pub fn html_attributes_with_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
+    &HTML_ATTRIBUTES_WITH_EMBEDDING_URLS
+}
+
+pub fn html_attributes_with_non_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>>
+{
+    &HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS
 }
