@@ -123,10 +123,10 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 let post = TemplatedPost::load(&path)?;
                 if post.meta.archived == Some(u_url.to_string()) {
-                    info!("found existing post: {path:?}");
-                    // TODO: optionally update existing post?
-                    info!("click here to reply: {}", path.compose_reply_url());
-                    return Ok(());
+                    info!("updating existing post: {path:?}");
+                    let file = File::create(&path)?;
+                    result = Some((post_id, path, file));
+                    break;
                 }
             }
             Err(other) => Err(other)?,
