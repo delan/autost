@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs::{create_dir_all, read_dir, File},
     io::Write,
 };
@@ -115,7 +115,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         mut interesting_output_paths,
         mut threads_by_interesting_tag,
     } = RenderResult::default()?;
-    let mut threads_cache = BTreeMap::default();
+    let mut threads_cache = HashMap::default();
     for result in results {
         let CacheableRenderResult {
             render_result: result,
@@ -306,10 +306,10 @@ struct CacheableRenderResult {
 }
 
 struct RenderResult {
-    tags: BTreeMap<String, usize>,
+    tags: HashMap<String, usize>,
     collections: Collections,
     interesting_output_paths: BTreeSet<SitePath>,
-    threads_by_interesting_tag: BTreeMap<String, BTreeSet<ThreadInCollection>>,
+    threads_by_interesting_tag: HashMap<String, BTreeSet<ThreadInCollection>>,
 }
 
 struct CachedThread {
@@ -421,7 +421,7 @@ impl Collections {
         &self,
         key: &str,
         output_dir: &SitePath,
-        threads_cache: &BTreeMap<PostsPath, CachedThread>,
+        threads_cache: &HashMap<PostsPath, CachedThread>,
     ) -> eyre::Result<SitePath> {
         let path = output_dir.join(&format!("{key}.html"))?;
         self.inner[key].write_threads_page(&path, threads_cache)?;
@@ -434,7 +434,7 @@ impl Collections {
         key: &str,
         output_dir: &SitePath,
         now: &str,
-        threads_cache: &BTreeMap<PostsPath, CachedThread>,
+        threads_cache: &HashMap<PostsPath, CachedThread>,
     ) -> eyre::Result<SitePath> {
         let path = output_dir.join(&format!("{key}.feed.xml"))?;
         self.inner[key].write_atom_feed(&path, now, threads_cache)?;
@@ -460,7 +460,7 @@ impl Collection {
     fn write_threads_page(
         &self,
         posts_page_path: &SitePath,
-        threads_cache: &BTreeMap<PostsPath, CachedThread>,
+        threads_cache: &HashMap<PostsPath, CachedThread>,
     ) -> eyre::Result<()> {
         let threads_content = render_cached_threads_content(threads_cache, &self.threads);
         writeln!(
@@ -480,7 +480,7 @@ impl Collection {
         &self,
         atom_feed_path: &SitePath,
         now: &str,
-        threads_cache: &BTreeMap<PostsPath, CachedThread>,
+        threads_cache: &HashMap<PostsPath, CachedThread>,
     ) -> eyre::Result<()> {
         let thread_refs = self
             .threads
@@ -513,7 +513,7 @@ impl PartialOrd for ThreadInCollection {
 }
 
 fn render_cached_threads_content(
-    cache: &BTreeMap<PostsPath, CachedThread>,
+    cache: &HashMap<PostsPath, CachedThread>,
     threads: &BTreeSet<ThreadInCollection>,
 ) -> String {
     let threads_contents = threads
