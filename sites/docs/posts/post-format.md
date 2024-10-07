@@ -10,7 +10,7 @@ posts are markdown (`.md`) or html (`.html`) fragments with html “front matter
 <dt><code>&lt;link rel="archived" href></code>
 <dd><a href="https://microformats.org/wiki/index.php?title=existing-rel-values&oldid=70595#HTML5_link_type_extensions">link to the original post</a>, for imported posts.
 <dt><code>&lt;link rel="references" href></code>
-<dd>one for each post being replied to, including the posts that *those* posts are replying to (these are *not* resolved recursively).
+<dd>one for each post being replied to, including the posts that <em>those</em> posts are replying to (these are <em>not</em> resolved recursively).
 <dt><code>&lt;meta name="title" content></code>
 <dd>title or “headline” of the post.
 <dt><code>&lt;meta name="published" content></code>

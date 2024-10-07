@@ -91,7 +91,7 @@ you can have any number of these sections, or none at all. each of these section
 
 <dl>
 <dt style="margin-top: 1em;"><code>href = "."</code> <strong><small>(required in section)</small></strong>
-<dd>url of the link. relative urls are relative to `base_url`, not to the current page.
+<dd>url of the link. relative urls are relative to <code>base_url</code>, not to the current page.
 <dt style="margin-top: 1em;"><code>text = "posts"</code> <strong><small>(required in section)</small></strong>
 <dd>text to display in the link.
 </dl>
