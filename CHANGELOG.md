@@ -1,3 +1,32 @@
+# [1.0.0](https://github.com/delan/autost/releases/tag/1.0.0) (2024-10-10)
+
+- check out the new [**autost book**](https://delan.github.io/autost/) for more detailed docs!
+- you can now **reply to (or share) posts from other blogs** (`autost import`, `autost reimport`)
+  - for consistency, we suggest setting your `[self_author] display_handle` to a domain name
+- you can now **create attachments from local files** (`autost attach`)
+
+in the html output…
+- **your posts are now rebloggable** thanks to the microformats2 h-entry format (#16)
+  - for more details, check out [*Reblogging posts with h-entry*](https://nex-3.com/blog/reblogging-posts-with-h-entry/) by [@nex3](https://github.com/nex3)
+- **fragment links** like `[](#section)` now work properly, since we no longer use &lt;base href> (#17)
+- author display names are now wrapped in parentheses
+
+in the atom output…
+- threads with multiple posts are **no longer an unreadable mess** (#19)
+- entries now include **&lt;author>** and **&lt;category>** metadata
+- your subscribers will need to convince their clients to redownload your posts, or unsubscribe and resubscribe, to see these effects on existing posts
+
+in `autost server` and the composer…
+- added a setting to make `autost server` listen on another port (`server_port`)
+- request errors are now more readable, and disappear when requests succeed
+- atom feeds (and other .xml files) are now served with the correct mime type
+- the **reply** buttons are no longer broken when `base_url` is not `/posts/`
+- the **publish** button no longer creates the post file if there are errors
+
+when rendering your site with `autost render` or `autost server`…
+- your posts are now rendered on all CPU cores
+- we no longer crash if you have no `posts` directory
+
 # [0.3.0](https://github.com/delan/autost/releases/tag/0.3.0) (2024-10-01)
 
 - you can now **download and run autost without building it yourself** or needing the source code
