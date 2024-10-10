@@ -105,6 +105,22 @@ $ autost import https://nex-3.com/blog/reblogging-posts-with-h-entry/
   INFO autost::command::import: click here to reply: http://[::1]:8420/posts/compose?reply_to=imported/1.html
 ```
 
+if you run `autost import` with the same url again, the existing imported post will be updated. you can also use `autost reimport` to update an existing imported post:
+
+```
+$ cd sites/example.com
+$ autost reimport posts/imported/1.html
+```
+
+## how to create an attachment from a local file
+
+**warning: this command does not strip any exif data yet, including your gps location!**
+
+```
+$ cd sites/example.com
+$ autost attach path/to/diffie.jpg
+```
+
 ## how to deploy
 
 the best way to upload your site to a web host depends on if you have chosts you might not want people to see. if you upload everything, someone can count from 1.html to 9999999.html and find all of your chosts.
