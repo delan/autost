@@ -148,6 +148,9 @@ article.post > footer .tag {
 article.post > .content {
     margin: 1em;
 }
+article.post > .content > pre {
+    overflow: auto;
+}
 @media screen and (max-width: 30em) {
     article.thread {
         margin-left: -1em;
