@@ -9,7 +9,7 @@
         {% if is_thread_header || thread.meta.references.is_empty() %}</a>{% endif %}
         </span>
     </div>
-    {% if !is_thread_header %}<h1>
+    {% if !is_thread_header %}<h1 class="p-name">
         {% if thread.meta.references.is_empty() %}<a href="{% if let Some(url) = thread.url_for_html_permalink()? %}{{ url }}{% endif %}">{% endif %}
         {% if let Some(title) = post_meta.title %}{{ title }}{% endif %}
         {% if thread.meta.references.is_empty() %}</a>{% endif %}
