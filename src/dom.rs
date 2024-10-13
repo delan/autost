@@ -75,6 +75,10 @@ static HTML_ATTRIBUTES_WITH_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>
                 BTreeSet::from([QualName::attribute("href")]),
             ),
             (
+                QualName::html("audio"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+            (
                 QualName::html("base"),
                 BTreeSet::from([QualName::attribute("href")]),
             ),
@@ -102,10 +106,16 @@ static HTML_ATTRIBUTES_WITH_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>
     });
 static HTML_ATTRIBUTES_WITH_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
     LazyLock::new(|| {
-        BTreeMap::from([(
-            QualName::html("img"),
-            BTreeSet::from([QualName::attribute("src")]),
-        )])
+        BTreeMap::from([
+            (
+                QualName::html("audio"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+            (
+                QualName::html("img"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+        ])
     });
 static HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
     LazyLock::new(|| {
