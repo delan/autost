@@ -296,11 +296,37 @@ fn mf2_e(node: Handle, class: &str) -> eyre::Result<Option<String>> {
     Ok(Some(html))
 }
 
+/// <https://microformats.org/wiki/index.php?title=microformats2-parsing&oldid=70607#parsing_a_p-_property>
 fn mf2_p(node: Handle, class: &str) -> eyre::Result<Option<String>> {
     // TODO: handle other cases in <https://microformats.org/wiki/microformats2-parsing#parsing_a_p-_property>
     let Some(node) = mf2_find(node, class) else {
         return Ok(None);
     };
+    if let NodeData::Element { name, attrs, .. } = &node.data {
+        let attrs = attrs.borrow();
+        // “If `abbr.p-x[title]` or `link.p-x[title]`, then return the `title` attribute.”
+        if name == &QualName::html("abbr") || name == &QualName::html("link") {
+            if let Some(title) = attrs.attr_str("title")? {
+                return Ok(Some(title.to_owned()));
+            }
+        }
+        // “else if `data.p-x[value]` or `input.p-x[value]`, then return the `value` attribute”
+        if name == &QualName::html("data") || name == &QualName::html("input") {
+            if let Some(value) = attrs.attr_str("value")? {
+                return Ok(Some(value.to_owned()));
+            }
+        }
+        // “else if `img.p-x[alt]` or `area.p-x[alt]`, then return the `alt` attribute”
+        if name == &QualName::html("img") || name == &QualName::html("area") {
+            if let Some(alt) = attrs.attr_str("alt")? {
+                return Ok(Some(alt.to_owned()));
+            }
+        }
+    }
+    // “else return the textContent of the element after:”
+    // - TODO: “dropping any nested <script> & <style> elements;”
+    // - TODO: “replacing any nested <img> elements with their alt attribute, if present; otherwise their src attribute, if present, adding a space at the beginning and end, resolving the URL if it’s relative;”
+    // - “removing all leading/trailing spaces”
     let result = text_content(node)?.trim_ascii().to_owned();
 
     Ok(Some(result))
