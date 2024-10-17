@@ -17,6 +17,7 @@ pub trait AttachmentsContext {
     fn cache_imported(&self, url: &str, post_basename: &str) -> eyre::Result<AttachmentsPath>;
     fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath>;
     fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath>;
+    fn cache_cohost_emoji(&self, id: &str, url: &str) -> eyre::Result<AttachmentsPath>;
 }
 
 pub struct RealAttachmentsContext;
@@ -69,6 +70,16 @@ impl AttachmentsContext for RealAttachmentsContext {
         cache_cohost_attachment(&url, &path, Some(thumb))?;
 
         cached_attachment_url(id, dir)
+    }
+
+    #[tracing::instrument(skip(self))]
+    fn cache_cohost_emoji(&self, id: &str, url: &str) -> eyre::Result<AttachmentsPath> {
+        let dir = &*AttachmentsPath::EMOJI;
+        let path = dir.join(id)?;
+        trace!(?path);
+        create_dir_all(&path)?;
+
+        cache_imported_attachment(&url, &path)
     }
 }
 

@@ -190,6 +190,12 @@ pub fn attachment_url_to_id(url: &str) -> Option<&str> {
         .map(|id_plus| &id_plus[..36])
 }
 
+pub fn custom_emoji_url_to_id(url: &str) -> Option<&str> {
+    url.strip_prefix("https://cohost.org/static/")
+        .and_then(|basename| basename.rsplit_once("."))
+        .map(|(id, _extension)| id)
+}
+
 #[test]
 fn test_attachment_url_to_id() {
     assert_eq!(

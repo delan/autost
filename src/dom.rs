@@ -33,6 +33,8 @@ static KNOWN_GOOD_ATTRIBUTES: LazyLock<BTreeSet<(Option<&'static str>, &'static 
         result.insert((None, "style"));
         result.insert((None, "tabindex"));
         result.insert((None, "title"));
+        result.insert((Some("CustomEmoji"), "name"));
+        result.insert((Some("CustomEmoji"), "url"));
         result.insert((Some("Mention"), "handle"));
         result.insert((Some("a"), "href"));
         result.insert((Some("a"), "name"));

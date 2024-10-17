@@ -17,8 +17,8 @@ use tracing::{info, trace, warn};
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     cohost::{
-        attachment_id_to_url, attachment_url_to_id, Ask, AskingProject, Ast, Attachment, Block,
-        Post,
+        attachment_id_to_url, attachment_url_to_id, custom_emoji_url_to_id, Ask, AskingProject,
+        Ast, Attachment, Block, Post,
     },
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
@@ -409,6 +409,45 @@ fn process_chost_fragment(
                             continue;
                         }
                     }
+                    // rewrite `<CustomEmoji name url>` elements into ordinary images.
+                    if name == &QualName::html("CustomEmoji") {
+                        let name = attrs.attr_str("name")?;
+                        let url = attrs.attr_str("url")?;
+                        let new_kid = create_element(&mut dom, "img");
+                        new_kid.children.replace(kid.children.take());
+                        let NodeData::Element { attrs, .. } = &new_kid.data else {
+                            bail!("irrefutable! guaranteed by create_element");
+                        };
+                        if let Some(name) = name {
+                            attrs.borrow_mut().push(Attribute {
+                                name: QualName::attribute("alt"),
+                                value: format!(":{name}:").into(),
+                            });
+                            attrs.borrow_mut().push(Attribute {
+                                name: QualName::attribute("title"),
+                                value: format!(":{name}:").into(),
+                            });
+                        }
+                        if let Some(url) = url {
+                            if let Some(id) = custom_emoji_url_to_id(url) {
+                                trace!("found cohost custom emoji url in <CustomEmoji url>: {url}");
+                                attrs.borrow_mut().push(Attribute {
+                                    name: QualName::attribute("src"),
+                                    value: context
+                                        .cache_cohost_emoji(id, url)?
+                                        .site_path()?
+                                        .base_relative_url()
+                                        .into(),
+                                });
+                            }
+                            attrs.borrow_mut().push(Attribute {
+                                name: QualName::attribute("data-cohost-url"),
+                                value: url.into(),
+                            });
+                        }
+                        new_kids.push(new_kid);
+                        continue;
+                    }
                     attrs.extend(extra_attrs);
                 }
                 _ => {}
@@ -441,6 +480,13 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath> {
             Ok(AttachmentsPath::THUMBS.join(&format!("{id}"))?)
+        }
+        fn cache_cohost_emoji(
+            &self,
+            _id: &str,
+            _url: &str,
+        ) -> eyre::Result<crate::path::AttachmentsPath> {
+            unreachable!()
         }
     }
 

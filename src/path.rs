@@ -307,6 +307,8 @@ impl AttachmentsPath {
         LazyLock::new(|| Self::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument"));
     pub const THUMBS: LazyLock<Self> =
         LazyLock::new(|| Self::ROOT.join("thumbs").expect("guaranteed by argument"));
+    pub const EMOJI: LazyLock<Self> =
+        LazyLock::new(|| Self::ROOT.join("emoji").expect("guaranteed by argument"));
 
     pub fn site_path(&self) -> eyre::Result<SitePath> {
         let mut result = SitePath::ATTACHMENTS.to_owned();
