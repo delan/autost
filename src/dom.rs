@@ -207,10 +207,10 @@ impl HandleExt for Handle {
 pub trait AttrsRefExt {
     fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>>;
 }
-pub trait AttrsMutExt {
+pub trait AttrsMutExt: AttrsRefExt {
     fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute>;
 }
-impl AttrsMutExt for RefMut<'_, Vec<Attribute>> {
+impl AttrsMutExt for Vec<Attribute> {
     fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute> {
         for attr in self.iter_mut() {
             if attr.name == QualName::attribute(name) {
@@ -221,7 +221,7 @@ impl AttrsMutExt for RefMut<'_, Vec<Attribute>> {
         None
     }
 }
-impl AttrsRefExt for Ref<'_, Vec<Attribute>> {
+impl AttrsRefExt for Vec<Attribute> {
     fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
         for attr in self.iter() {
             if attr.name == QualName::attribute(name) {
@@ -230,6 +230,21 @@ impl AttrsRefExt for Ref<'_, Vec<Attribute>> {
         }
 
         Ok(None)
+    }
+}
+impl AttrsRefExt for Ref<'_, Vec<Attribute>> {
+    fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
+        (**self).attr_str(name)
+    }
+}
+impl AttrsRefExt for RefMut<'_, Vec<Attribute>> {
+    fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
+        (**self).attr_str(name)
+    }
+}
+impl AttrsMutExt for RefMut<'_, Vec<Attribute>> {
+    fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute> {
+        (**self).attr_mut(name)
     }
 }
 

@@ -23,7 +23,7 @@ use crate::{
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
         debug_not_known_good_attributes_seen, html_attributes_with_urls, parse_html_fragment,
-        serialize_html_fragment, AttrsRefExt, QualNameExt, TendrilExt, Transform, Traverse,
+        serialize_html_fragment, AttrsRefExt, QualNameExt, TendrilExt, Transform,
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
@@ -351,76 +351,65 @@ fn process_chost_fragment(
 ) -> eyre::Result<String> {
     let mut attachment_ids = vec![];
 
-    // rewrite cohost attachment urls to relative cached paths.
-    for node in Traverse::nodes(dom.document.clone()) {
-        match &node.data {
-            NodeData::Element { name, attrs, .. } => {
-                let mut attrs = attrs.borrow_mut();
-                let mut extra_attrs = vec![];
-                if let Some(attr_names) = html_attributes_with_urls().get(name) {
-                    for attr in attrs.iter_mut() {
-                        if attr_names.contains(&attr.name) {
-                            let old_url = attr.value.to_str().to_owned();
-                            if let Some(id) = attachment_url_to_id(&old_url) {
-                                trace!(
-                                    "found cohost attachment url in <{} {}>: {old_url}",
-                                    name.local,
-                                    attr.name.local
-                                );
-                                attachment_ids.push(id.to_owned());
-                                attr.value = context
-                                    .cache_cohost_file(id)?
-                                    .site_path()?
-                                    .base_relative_url()
-                                    .into();
-                                extra_attrs.push(Attribute {
-                                    name: QualName::attribute(&format!(
-                                        "data-cohost-{}",
-                                        attr.name.local
-                                    )),
-                                    value: old_url.into(),
-                                });
-                            }
-                        }
-                    }
-                }
-                if name == &QualName::html("img") {
-                    extra_attrs.push(Attribute {
-                        name: QualName::attribute("loading"),
-                        value: "lazy".into(),
-                    });
-                }
-                attrs.extend(extra_attrs);
-            }
-            _ => {}
-        }
-    }
-
-    // rewrite `<Mention handle>` elements into ordinary links.
     let mut transform = Transform::new(dom.document.clone());
     while transform.next(|kids, new_kids| {
         for kid in kids {
             match &kid.data {
                 NodeData::Element { name, attrs, .. } => {
-                    let attrs = attrs.borrow();
-                    let handle = if name == &QualName::html("Mention") {
-                        attrs.attr_str("handle")?
-                    } else {
-                        None
-                    };
-                    if let Some(handle) = handle {
-                        let new_kid = create_element(&mut dom, "a");
-                        new_kid.children.replace(kid.children.take());
-                        let NodeData::Element { attrs, .. } = &new_kid.data else {
-                            bail!("irrefutable! guaranteed by create_element");
-                        };
-                        attrs.borrow_mut().push(Attribute {
-                            name: QualName::attribute("href"),
-                            value: format!("https://cohost.org/{handle}").into(),
-                        });
-                        new_kids.push(new_kid);
-                        continue;
+                    // rewrite cohost attachment urls to relative cached paths.
+                    let mut attrs = attrs.borrow_mut();
+                    let mut extra_attrs = vec![];
+                    if let Some(attr_names) = html_attributes_with_urls().get(name) {
+                        for attr in attrs.iter_mut() {
+                            if attr_names.contains(&attr.name) {
+                                let old_url = attr.value.to_str().to_owned();
+                                if let Some(id) = attachment_url_to_id(&old_url) {
+                                    trace!(
+                                        "found cohost attachment url in <{} {}>: {old_url}",
+                                        name.local,
+                                        attr.name.local
+                                    );
+                                    attachment_ids.push(id.to_owned());
+                                    attr.value = context
+                                        .cache_cohost_file(id)?
+                                        .site_path()?
+                                        .base_relative_url()
+                                        .into();
+                                    extra_attrs.push(Attribute {
+                                        name: QualName::attribute(&format!(
+                                            "data-cohost-{}",
+                                            attr.name.local
+                                        )),
+                                        value: old_url.into(),
+                                    });
+                                }
+                            }
+                        }
                     }
+                    // make all `<img>` elements lazy loaded.
+                    if name == &QualName::html("img") {
+                        extra_attrs.push(Attribute {
+                            name: QualName::attribute("loading"),
+                            value: "lazy".into(),
+                        });
+                    }
+                    // rewrite `<Mention handle>` elements into ordinary links.
+                    if name == &QualName::html("Mention") {
+                        if let Some(handle) = attrs.attr_str("handle")? {
+                            let new_kid = create_element(&mut dom, "a");
+                            new_kid.children.replace(kid.children.take());
+                            let NodeData::Element { attrs, .. } = &new_kid.data else {
+                                bail!("irrefutable! guaranteed by create_element");
+                            };
+                            attrs.borrow_mut().push(Attribute {
+                                name: QualName::attribute("href"),
+                                value: format!("https://cohost.org/{handle}").into(),
+                            });
+                            new_kids.push(new_kid);
+                            continue;
+                        }
+                    }
+                    attrs.extend(extra_attrs);
                 }
                 _ => {}
             }
