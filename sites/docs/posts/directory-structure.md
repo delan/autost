@@ -14,7 +14,9 @@
 
 `/attachments/` (`AttachmentsPath` internally), is where your attachments are stored, including attachments cached from chosts or other imported posts.
 - `<uuid>/<original filename>` for your own attachments and attachments in chosts
+- `thumbs/<uuid>/<original filename>` for thumbnails of attachments in chosts
 - `imported-<id>-<sha256 of url>/file.<ext>` for attachments in other imported posts
+- `emoji/<id>/file.<ext>` for emoji in chosts
 
 `/site/` (`SitePath` internally), or the *site output path*, is where your site gets rendered to. you can delete this directory whenever you want a clean build.
 - `1.html` … `9999999.html` for each of your “interesting” chosts
