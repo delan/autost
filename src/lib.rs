@@ -205,8 +205,15 @@ impl TryFrom<TemplatedPost> for Thread {
             .iter()
             .rev()
             .find(|post| !post.meta.is_transparent_share)
-            .filter(|post| !post.meta.title.as_ref().is_some_and(|t| t.is_empty()))
-            .and_then(|post| post.meta.title.clone());
+            .map(|post| {
+                if let Some(title) = post.meta.title.clone().filter(|t| !t.is_empty()) {
+                    title
+                } else if let Some(author) = post.meta.author.as_ref() {
+                    format!("untitled post by {}", author.display_handle)
+                } else {
+                    "untitled post".to_owned()
+                }
+            });
 
         let needs_attachments = posts
             .iter()
