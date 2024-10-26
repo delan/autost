@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width">
 <link rel="stylesheet" href="style.css">
 <title>{{ page_title }}</title>
+{%~ if let Some(thread_page_meta) = thread_page_meta ~%}{{ thread_page_meta|safe }}{%~ endif ~%}
 <body data-base-url="{{ SETTINGS.base_url }}">
 <nav>
     <ul>

@@ -17,6 +17,7 @@ use crate::{
 #[derive(Clone, Debug, Template)]
 #[template(path = "threads.html")]
 pub struct ThreadsPageTemplate<'template> {
+    thread_page_meta: Option<&'template str>,
     /// not `threads: Vec<Thread>`, to encourage us to cache ThreadsContentTemplate output between
     /// individual thread pages and combined collection pages.
     threads_content: &'template str,
@@ -40,6 +41,12 @@ pub struct ThreadOrPostHeaderTemplate<'template> {
 }
 
 #[derive(Clone, Debug, Template)]
+#[template(path = "thread-or-post-meta.html")]
+pub struct ThreadOrPostMetaTemplate<'template> {
+    thread: &'template Thread,
+}
+
+#[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
 pub struct AtomFeedTemplate<'template> {
     thread_refs: Vec<&'template Thread>,
@@ -47,14 +54,34 @@ pub struct AtomFeedTemplate<'template> {
     updated: &'template str,
 }
 
-impl<'template> ThreadsPageTemplate<'template> {
+impl ThreadsPageTemplate<'_> {
     pub fn render(
-        threads_content: &'template str,
-        page_title: &'template str,
-        feed_href: &'template Option<SitePath>,
+        threads_content: &str,
+        page_title: &str,
+        feed_href: &Option<SitePath>,
     ) -> eyre::Result<String> {
         fix_relative_urls_in_html_document(
-            &Self {
+            &ThreadsPageTemplate {
+                thread_page_meta: None,
+                threads_content,
+                page_title,
+                feed_href,
+            }
+            .render()?,
+        )
+    }
+
+    pub fn render_single_thread(
+        thread: &Thread,
+        threads_content: &str,
+        page_title: &str,
+        feed_href: &Option<SitePath>,
+    ) -> eyre::Result<String> {
+        let thread_page_meta = ThreadOrPostMetaTemplate::render(thread)?;
+
+        fix_relative_urls_in_html_document(
+            &ThreadsPageTemplate {
+                thread_page_meta: Some(&thread_page_meta),
                 threads_content,
                 page_title,
                 feed_href,
@@ -106,6 +133,12 @@ impl<'template> ThreadOrPostHeaderTemplate<'template> {
             }
             .render()?,
         )
+    }
+}
+
+impl<'template> ThreadOrPostMetaTemplate<'template> {
+    pub fn render(thread: &'template Thread) -> eyre::Result<String> {
+        fix_relative_urls_in_html_fragment(&Self { thread }.render()?)
     }
 }
 
