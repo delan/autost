@@ -133,11 +133,11 @@ static HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTre
         result
     });
 
-pub struct Traverse {
+pub struct BreadthTraverse {
     queue: VecDeque<Handle>,
     elements_only: bool,
 }
-impl Traverse {
+impl BreadthTraverse {
     pub fn nodes(node: Handle) -> Self {
         Self {
             queue: VecDeque::from([node]),
@@ -152,7 +152,7 @@ impl Traverse {
         }
     }
 }
-impl Iterator for Traverse {
+impl Iterator for BreadthTraverse {
     type Item = Handle;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -162,6 +162,53 @@ impl Iterator for Traverse {
             }
             if !self.elements_only || matches!(node.data, NodeData::Element { .. }) {
                 return Some(node);
+            }
+        }
+
+        None
+    }
+}
+
+pub struct DepthTraverse {
+    stack: Vec<VecDeque<Handle>>,
+    elements_only: bool,
+}
+impl DepthTraverse {
+    pub fn nodes(node: Handle) -> Self {
+        Self {
+            stack: vec![VecDeque::from([node])],
+            elements_only: false,
+        }
+    }
+
+    pub fn elements(node: Handle) -> Self {
+        Self {
+            stack: vec![VecDeque::from([node])],
+            elements_only: true,
+        }
+    }
+}
+impl Iterator for DepthTraverse {
+    type Item = Handle;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while !self.stack.is_empty() {
+            while self.stack.last().is_some_and(|queue| queue.is_empty()) {
+                self.stack.pop();
+            }
+            if let Some(node) = self.stack.last_mut().and_then(|queue| queue.pop_front()) {
+                let kids = node
+                    .children
+                    .borrow()
+                    .iter()
+                    .cloned()
+                    .collect::<VecDeque<_>>();
+                if !kids.is_empty() {
+                    self.stack.push(kids);
+                }
+                if !self.elements_only || matches!(node.data, NodeData::Element { .. }) {
+                    return Some(node);
+                }
             }
         }
 
@@ -495,7 +542,7 @@ fn test_convert_idl_to_content_attribute() {
 
 pub fn text_content(node: Handle) -> eyre::Result<String> {
     let mut result = vec![];
-    for node in Traverse::nodes(node) {
+    for node in DepthTraverse::nodes(node) {
         if let NodeData::Text { contents } = &node.data {
             result.push(contents.borrow().to_str().to_owned());
         }

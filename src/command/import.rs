@@ -16,7 +16,7 @@ use crate::{
     dom::{
         html_attributes_with_embedding_urls, html_attributes_with_non_embedding_urls,
         parse_html_document, parse_html_fragment, serialize_html_fragment, serialize_node_contents,
-        text_content, AttrsRefExt, QualName, QualNameExt, TendrilExt, Traverse,
+        text_content, AttrsRefExt, BreadthTraverse, QualName, QualNameExt, TendrilExt,
     },
     migrations::run_migrations,
     path::PostsPath,
@@ -92,7 +92,7 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
     let response = client.get(url).send().await?;
     let dom = parse_html_document(&response.bytes().await?)?;
     let mut base_href = Url::parse(&url)?;
-    for node in Traverse::elements(dom.document.clone()) {
+    for node in BreadthTraverse::elements(dom.document.clone()) {
         let NodeData::Element { name, attrs, .. } = &node.data else {
             unreachable!()
         };
@@ -214,7 +214,7 @@ fn process_content(
 ) -> eyre::Result<String> {
     let dom = parse_html_fragment(content.as_bytes())?;
 
-    for node in Traverse::nodes(dom.document.clone()) {
+    for node in BreadthTraverse::nodes(dom.document.clone()) {
         match &node.data {
             NodeData::Element { name, attrs, .. } => {
                 let mut attrs = attrs.borrow_mut();
@@ -371,12 +371,13 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
 
 fn mf2_find(node: Handle, class: &str) -> Option<Handle> {
     // TODO: handle errors from has_class()
-    Traverse::elements(node.clone()).find(|node| has_class(node.clone(), class).unwrap_or(false))
+    BreadthTraverse::elements(node.clone())
+        .find(|node| has_class(node.clone(), class).unwrap_or(false))
 }
 
 fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {
     // TODO: handle errors from has_class()
-    Traverse::elements(node.clone())
+    BreadthTraverse::elements(node.clone())
         .filter(|node| has_class(node.clone(), class).unwrap_or(false))
         .collect()
 }
