@@ -551,6 +551,19 @@ pub fn text_content(node: Handle) -> eyre::Result<String> {
     Ok(result.join(""))
 }
 
+pub fn text_content_for_summaries(node: Handle) -> eyre::Result<String> {
+    let mut result = vec![];
+    for node in DepthTraverse::nodes(node) {
+        if let NodeData::Text { contents } = &node.data {
+            for word in contents.borrow().to_str().split_ascii_whitespace() {
+                result.push(word.to_owned());
+            }
+        }
+    }
+
+    Ok(result.join(" "))
+}
+
 pub fn debug_attributes_seen() -> Vec<(String, String)> {
     ATTRIBUTES_SEEN.lock().unwrap().iter().cloned().collect()
 }

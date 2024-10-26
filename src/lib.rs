@@ -67,6 +67,7 @@ pub struct ExtractedPost {
     pub meta: PostMeta,
     pub needs_attachments: BTreeSet<SitePath>,
     pub og_image: Option<String>,
+    pub og_description: String,
 }
 
 #[derive(Clone, Debug)]
@@ -76,6 +77,7 @@ pub struct Thread {
     pub meta: PostMeta,
     pub needs_attachments: BTreeSet<SitePath>,
     pub og_image: Option<String>,
+    pub og_description: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -86,6 +88,7 @@ pub struct TemplatedPost {
     pub safe_html: String,
     pub needs_attachments: BTreeSet<SitePath>,
     pub og_image: Option<String>,
+    pub og_description: String,
 }
 
 impl Thread {
@@ -220,6 +223,8 @@ impl TryFrom<TemplatedPost> for Thread {
         let og_image = last_non_transparent_share_post
             .and_then(|post| post.og_image.as_deref())
             .map(|og_image| SETTINGS.base_url_relativise(og_image));
+        let og_description =
+            last_non_transparent_share_post.map(|post| post.og_description.to_owned());
 
         let needs_attachments = posts
             .iter()
@@ -233,6 +238,7 @@ impl TryFrom<TemplatedPost> for Thread {
             meta,
             needs_attachments,
             og_image,
+            og_description,
         })
     }
 }
@@ -280,6 +286,7 @@ impl TemplatedPost {
             safe_html,
             needs_attachments: post.needs_attachments,
             og_image: post.og_image,
+            og_description: post.og_description,
         })
     }
 }

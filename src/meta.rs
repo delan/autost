@@ -7,8 +7,8 @@ use tracing::trace;
 
 use crate::{
     dom::{
-        html_attributes_with_urls, parse_html_fragment, AttrsRefExt, QualNameExt, TendrilExt,
-        Transform,
+        html_attributes_with_urls, parse_html_fragment, text_content_for_summaries, AttrsRefExt,
+        QualNameExt, TendrilExt, Transform,
     },
     path::{hard_link_if_not_exists, PostsPath, SitePath},
     Author, ExtractedPost, PostMeta,
@@ -20,6 +20,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let mut meta = PostMeta::default();
     let mut needs_attachments = BTreeSet::default();
     let mut og_image = None;
+    let og_description = text_content_for_summaries(dom.document.clone())?;
     let mut author_href = None;
     let mut author_name = None;
     let mut author_display_name = None;
@@ -121,6 +122,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
         meta,
         needs_attachments,
         og_image,
+        og_description,
     })
 }
 
