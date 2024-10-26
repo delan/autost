@@ -19,6 +19,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
 
     let mut meta = PostMeta::default();
     let mut needs_attachments = BTreeSet::default();
+    let mut og_image = None;
     let mut author_href = None;
     let mut author_name = None;
     let mut author_display_name = None;
@@ -74,15 +75,23 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                             _ => {}
                         }
                         continue;
-                    } else if let Some(attr_names) = html_attributes_with_urls().get(name) {
-                        for attr in attrs.iter() {
-                            if attr_names.contains(&attr.name) {
-                                if let Ok(url) =
-                                    SitePath::from_rendered_attachment_url(attr.value.to_str())
-                                {
-                                    trace!("found attachment url in rendered post: {url:?}");
-                                    needs_attachments.insert(url);
+                    } else {
+                        if let Some(attr_names) = html_attributes_with_urls().get(name) {
+                            for attr in attrs.iter() {
+                                if attr_names.contains(&attr.name) {
+                                    if let Ok(url) =
+                                        SitePath::from_rendered_attachment_url(attr.value.to_str())
+                                    {
+                                        trace!("found attachment url in rendered post: {url:?}");
+                                        needs_attachments.insert(url);
+                                    }
                                 }
+                            }
+                        }
+                        // use the first <img src>, if any, as the <meta> og:image.
+                        if og_image.is_none() && name == &QualName::html("img") {
+                            if let Some(src) = attrs.attr_str("src")?.map(|t| t.to_owned()) {
+                                og_image = Some(src);
                             }
                         }
                     }
@@ -111,6 +120,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
         dom,
         meta,
         needs_attachments,
+        og_image,
     })
 }
 

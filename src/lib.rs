@@ -66,6 +66,7 @@ pub struct ExtractedPost {
     pub dom: RcDom,
     pub meta: PostMeta,
     pub needs_attachments: BTreeSet<SitePath>,
+    pub og_image: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -74,6 +75,7 @@ pub struct Thread {
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
     pub needs_attachments: BTreeSet<SitePath>,
+    pub og_image: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -83,6 +85,7 @@ pub struct TemplatedPost {
     pub original_html: String,
     pub safe_html: String,
     pub needs_attachments: BTreeSet<SitePath>,
+    pub og_image: Option<String>,
 }
 
 impl Thread {
@@ -199,21 +202,24 @@ impl TryFrom<TemplatedPost> for Thread {
         // TODO: skip threads with private or logged-in-only authors?
         // TODO: gate sensitive posts behind an interaction?
 
-        // for the thread title, take the last post that is not a transparent share (which MAY have
-        // tags, but SHOULD NOT have a title and MUST NOT have a body), and use its title if any.
-        meta.title = posts
+        // for thread metadata, take the last post that is not a transparent share (which MAY have
+        // tags, but SHOULD NOT have a title and MUST NOT have a body), and use its metadata if any.
+        let last_non_transparent_share_post = posts
             .iter()
             .rev()
-            .find(|post| !post.meta.is_transparent_share)
-            .map(|post| {
-                if let Some(title) = post.meta.title.clone().filter(|t| !t.is_empty()) {
-                    title
-                } else if let Some(author) = post.meta.author.as_ref() {
-                    format!("untitled post by {}", author.display_handle)
-                } else {
-                    "untitled post".to_owned()
-                }
-            });
+            .find(|post| !post.meta.is_transparent_share);
+        meta.title = last_non_transparent_share_post.map(|post| {
+            if let Some(title) = post.meta.title.clone().filter(|t| !t.is_empty()) {
+                title
+            } else if let Some(author) = post.meta.author.as_ref() {
+                format!("untitled post by {}", author.display_handle)
+            } else {
+                "untitled post".to_owned()
+            }
+        });
+        let og_image = last_non_transparent_share_post
+            .and_then(|post| post.og_image.as_deref())
+            .map(|og_image| SETTINGS.base_url_relativise(og_image));
 
         let needs_attachments = posts
             .iter()
@@ -226,6 +232,7 @@ impl TryFrom<TemplatedPost> for Thread {
             posts,
             meta,
             needs_attachments,
+            og_image,
         })
     }
 }
@@ -272,6 +279,7 @@ impl TemplatedPost {
             original_html: unsafe_html.to_owned(),
             safe_html,
             needs_attachments: post.needs_attachments,
+            og_image: post.og_image,
         })
     }
 }
