@@ -1,1 +1,1 @@
-<meta property="og:title" content="{{ thread.overall_title }}">
+<meta property="og:title" content="{% if let Some(title) = thread.meta.title %}{{ title }}{% endif %}">

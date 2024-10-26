@@ -73,7 +73,6 @@ pub struct Thread {
     pub path: Option<PostsPath>,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
-    pub overall_title: String,
     pub needs_attachments: BTreeSet<SitePath>,
 }
 
@@ -186,7 +185,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
-        let meta = post.meta.clone();
+        let mut meta = post.meta.clone();
 
         let mut posts = post
             .meta
@@ -200,12 +199,14 @@ impl TryFrom<TemplatedPost> for Thread {
         // TODO: skip threads with private or logged-in-only authors?
         // TODO: gate sensitive posts behind an interaction?
 
-        let overall_title = posts
+        // for the thread title, take the last post that is not a transparent share (which MAY have
+        // tags, but SHOULD NOT have a title and MUST NOT have a body), and use its title if any.
+        meta.title = posts
             .iter()
             .rev()
             .find(|post| !post.meta.is_transparent_share)
-            .and_then(|post| post.meta.title.clone())
-            .unwrap_or("".to_owned());
+            .filter(|post| !post.meta.title.as_ref().is_some_and(|t| t.is_empty()))
+            .and_then(|post| post.meta.title.clone());
 
         let needs_attachments = posts
             .iter()
@@ -217,7 +218,6 @@ impl TryFrom<TemplatedPost> for Thread {
             path,
             posts,
             meta,
-            overall_title,
             needs_attachments,
         })
     }

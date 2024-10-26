@@ -285,7 +285,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     let threads_page = ThreadsPageTemplate::render_single_thread(
         &thread,
         &threads_content,
-        &format!("{} — {}", thread.overall_title, SETTINGS.site_title),
+        &SETTINGS.page_title(thread.meta.title.as_deref()),
         &None,
     )?;
     writeln!(File::create(rendered_path)?, "{}", threads_page)?;

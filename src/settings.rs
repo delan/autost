@@ -138,6 +138,13 @@ impl Settings {
         self.server_port.unwrap_or(8420)
     }
 
+    pub fn page_title(&self, title: Option<&str>) -> String {
+        match title {
+            Some(title) => format!("{} — {}", title, self.site_title),
+            None => self.site_title.clone(),
+        }
+    }
+
     pub fn tag_is_interesting(&self, tag: &str) -> bool {
         self.interesting_tags_iter()
             .find(|&interesting_tag| interesting_tag == tag)
