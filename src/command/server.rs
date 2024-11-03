@@ -200,6 +200,7 @@ pub async fn main(mut _args: impl Iterator<Item = String>) -> eyre::Result<()> {
                             Some("jpg" | "jpeg") => "image/jpeg",
                             Some("js") => "text/javascript; charset=utf-8",
                             Some("mp3") => "audio/mpeg",
+                            Some("mp4") => "video/mp4",
                             Some("png") => "image/png",
                             Some("svg") => "image/svg+xml",
                             Some("webp") => "image/webp",
