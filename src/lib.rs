@@ -273,7 +273,8 @@ impl TemplatedPost {
             .add_tag_attributes("audio", ["controls", "src"])
             .add_tag_attributes("details", ["open"])
             .add_tag_attributes("img", ["loading"])
-            .add_tags(["audio", "meta"])
+            .add_tag_attributes("video", ["controls", "src"])
+            .add_tags(["audio", "meta", "video"])
             .add_tag_attributes("meta", ["name", "content"])
             .id_prefix(Some("user-content-")) // cohost compatibility
             .clean(&extracted_html)

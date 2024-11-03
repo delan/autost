@@ -104,6 +104,10 @@ static HTML_ATTRIBUTES_WITH_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>
                 QualName::html("script"),
                 BTreeSet::from([QualName::attribute("src")]),
             ),
+            (
+                QualName::html("video"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
         ])
     });
 static HTML_ATTRIBUTES_WITH_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTreeSet<QualName>>> =
@@ -115,6 +119,10 @@ static HTML_ATTRIBUTES_WITH_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTreeSet
             ),
             (
                 QualName::html("img"),
+                BTreeSet::from([QualName::attribute("src")]),
+            ),
+            (
+                QualName::html("video"),
                 BTreeSet::from([QualName::attribute("src")]),
             ),
         ])
