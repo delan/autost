@@ -27,7 +27,7 @@ use crate::{
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
-    render_markdown, Author, PostMeta,
+    render_markdown, PostMeta,
 };
 
 pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
@@ -122,15 +122,7 @@ fn convert_single_chost(
         references: shared_post_filenames,
         title: Some(post.headline),
         published: Some(post.publishedAt),
-        author: Some(Author {
-            href: format!("https://cohost.org/{}", post.postingProject.handle),
-            name: format!(
-                "{} (@{})",
-                post.postingProject.displayName, post.postingProject.handle
-            ),
-            display_name: post.postingProject.displayName,
-            display_handle: format!("@{}", post.postingProject.handle),
-        }),
+        author: Some((&post.postingProject).into()),
         tags: post.tags,
         is_transparent_share: post.transparentShareOfPostId.is_some(),
     };

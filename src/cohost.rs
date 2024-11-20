@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::Value;
 
+use crate::Author;
+
 #[derive(Debug, Deserialize)]
 #[allow(non_snake_case)]
 pub struct PostsResponse {
@@ -211,4 +213,47 @@ fn test_attachment_url_to_id() {
         Some("44444444-4444-4444-4444-444444444444")
     );
     assert_eq!(attachment_url_to_id("https://staging.cohostcdn.org/attachment/44444444-4444-4444-4444-444444444444/file.jpg?query"), Some("44444444-4444-4444-4444-444444444444"));
+}
+
+impl From<&PostingProject> for Author {
+    fn from(project: &PostingProject) -> Self {
+        Self {
+            href: format!("https://cohost.org/{}", project.handle),
+            name: format!("{} (@{})", project.displayName, project.handle),
+            display_name: project.displayName.clone(),
+            display_handle: format!("@{}", project.handle),
+        }
+    }
+}
+
+#[test]
+fn test_author_from_posting_project() {
+    assert_eq!(
+        Author::from(&PostingProject {
+            handle: "staff".to_owned(),
+            displayName: "cohost dot org".to_owned(),
+            privacy: "[any value]".to_owned(),
+            loggedOutPostVisibility: "[any value]".to_owned(),
+        }),
+        Author {
+            href: "https://cohost.org/staff".to_owned(),
+            name: "cohost dot org (@staff)".to_owned(),
+            display_name: "cohost dot org".to_owned(),
+            display_handle: "@staff".to_owned(),
+        }
+    );
+    assert_eq!(
+        Author::from(&PostingProject {
+            handle: "VinDuv".to_owned(),
+            displayName: "".to_owned(),
+            privacy: "[any value]".to_owned(),
+            loggedOutPostVisibility: "[any value]".to_owned(),
+        }),
+        Author {
+            href: "https://cohost.org/VinDuv".to_owned(),
+            name: " (@VinDuv)".to_owned(),
+            display_name: "".to_owned(),
+            display_handle: "@VinDuv".to_owned(),
+        }
+    );
 }
