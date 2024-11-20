@@ -219,7 +219,11 @@ impl From<&PostingProject> for Author {
     fn from(project: &PostingProject) -> Self {
         Self {
             href: format!("https://cohost.org/{}", project.handle),
-            name: format!("{} (@{})", project.displayName, project.handle),
+            name: if project.displayName.is_empty() {
+                format!("@{}", project.handle)
+            } else {
+                format!("{} (@{})", project.displayName, project.handle)
+            },
             display_name: project.displayName.clone(),
             display_handle: format!("@{}", project.handle),
         }
@@ -251,7 +255,7 @@ fn test_author_from_posting_project() {
         }),
         Author {
             href: "https://cohost.org/VinDuv".to_owned(),
-            name: " (@VinDuv)".to_owned(),
+            name: "@VinDuv".to_owned(),
             display_name: "".to_owned(),
             display_handle: "@VinDuv".to_owned(),
         }
