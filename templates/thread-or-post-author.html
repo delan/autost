@@ -1,1 +1,7 @@
-<span class="p-author h-card"><a class="p-name u-url" href="{{ author.href }}">{{ author.display_name }}</a> (<a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a>)</span>
+<span class="p-author h-card">
+{%- if author.display_name.is_empty() -%}
+<a class="p-name u-url handle" href="{{ author.href }}">{{ author.display_handle }}</a>
+{%- else -%}
+<a class="p-name u-url" href="{{ author.href }}">{{ author.display_name }}</a> (<a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a>)
+{%- endif -%}
+</span>
