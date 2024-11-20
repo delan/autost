@@ -1,6 +1,6 @@
 <header>
     <div class="meta">
-        {% if let Some(author) = post_meta.author %}<span class="p-author h-card"><a class="p-name u-url" href="{{ author.href }}">{{ author.display_name }}</a> (<a href="{{ author.href }}" class="handle">{{ author.display_handle }}</a>)</span>{% endif %}
+        {% if let Some(author) = post_meta.author %}{{ ThreadOrPostAuthorTemplate::render(author)?|safe }}{% endif %}
         <span class="gap">{% if post_meta.author.is_some() && post_meta.published.is_some() %}—{% endif %}</span>
         <span>
         {% if let Some(archived) = post_meta.archived %}<a class="archived u-url" href="{{ archived }}">[archived]</a>{% endif %}

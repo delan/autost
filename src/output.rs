@@ -11,7 +11,7 @@ use crate::{
         serialize_html_document, serialize_html_fragment, TendrilExt, Transform,
     },
     path::{parse_path_relative_scheme_less_url_string, SitePath},
-    PostMeta, Thread, SETTINGS,
+    Author, PostMeta, Thread, SETTINGS,
 };
 
 #[derive(Clone, Debug, Template)]
@@ -38,6 +38,12 @@ pub struct ThreadOrPostHeaderTemplate<'template> {
     thread: &'template Thread,
     post_meta: &'template PostMeta,
     is_thread_header: bool,
+}
+
+#[derive(Clone, Debug, Template)]
+#[template(path = "thread-or-post-author.html")]
+pub struct ThreadOrPostAuthorTemplate<'template> {
+    author: &'template Author,
 }
 
 #[derive(Clone, Debug, Template)]
@@ -133,6 +139,12 @@ impl<'template> ThreadOrPostHeaderTemplate<'template> {
             }
             .render()?,
         )
+    }
+}
+
+impl<'template> ThreadOrPostAuthorTemplate<'template> {
+    pub fn render(author: &'template Author) -> eyre::Result<String> {
+        fix_relative_urls_in_html_fragment(&Self { author }.render()?)
     }
 }
 
