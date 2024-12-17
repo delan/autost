@@ -1,6 +1,8 @@
 /.direnv/
 /.envrc
 
+/result
+
 /target/
 /autost.toml
 /site/*.html

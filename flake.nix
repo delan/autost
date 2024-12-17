@@ -8,6 +8,7 @@
 
   outputs =
     {
+      self,
       nixpkgs,
       flake-utils,
       ...
@@ -16,9 +17,20 @@
       system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+
+        appliedOverlay = self.overlays.default pkgs pkgs;
       in
       {
+        packages = rec {
+          inherit (appliedOverlay) autost;
+
+          default = autost;
+        };
+
         devShell = import ./shell.nix { inherit pkgs; };
       }
-    );
+    )
+    // {
+      overlays.default = import ./nix/overlay.nix;
+    };
 }
