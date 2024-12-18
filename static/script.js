@@ -91,7 +91,7 @@ async function checkAutostServer() {
     for (const thread of document.querySelectorAll("article.thread")) {
         const actions = thread.querySelector(":scope > article.post:last-child > footer > .actions");
         const a = document.createElement("a");
-        a.href = `compose?${new URLSearchParams({ reply_to: thread.dataset.originalPath })}`;
+        a.href = `${document.body.dataset.baseUrl}compose?${new URLSearchParams({ reply_to: thread.dataset.originalPath })}`;
         a.textContent = "reply";
         a.className = "server";
         actions.prepend(a);
