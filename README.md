@@ -11,6 +11,8 @@ autost is a single program you run in your terminal (`autost`).
 
 **go to [the releases page](https://github.com/delan/autost/releases) to download or install autost!**
 
+**got nix?** you can run autost *without any extra setup* using `nix run github:delan/autost`!
+
 go to [CHANGELOG.md](CHANGELOG.md) to find out what changed in each new release.
 
 for more docs, check out [the autost book](https://delan.github.io/autost/), which you can also render locally:
@@ -171,6 +173,8 @@ if you want to tinker with autost, [install rust](https://rustup.rs), then downl
 $ git clone https://github.com/delan/autost.git
 $ cd autost
 ```
+
+if you've got nix installed, there's also a devshell you can jump into with `nix-shell` or `nix develop` that has rust included. you can also build the nix derivation for autost with `nix build`.
 
 ## roadmap
 
