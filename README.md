@@ -13,6 +13,20 @@ autost is a single program you run in your terminal (`autost`).
 
 **got nix?** you can run autost *without any extra setup* using `nix run github:delan/autost`!
 
+if nix builds are too slow, there's a binary cache available through [cachix](https://cachix.org) - you can set it up by running `nix run nixpkgs#cachix use autost`, or for nixos:
+```nix
+{
+  nix.settings = {
+    substituters = [
+      "https://autost.cachix.org"
+    ];
+    trusted-public-keys = [
+      "autost.cachix.org-1:zl/QINkEtBrk/TVeogtROIpQwQH6QjQWTPkbPNNsgpk="
+    ];
+  }
+}
+```
+
 go to [CHANGELOG.md](CHANGELOG.md) to find out what changed in each new release.
 
 for more docs, check out [the autost book](https://delan.github.io/autost/), which you can also render locally:
