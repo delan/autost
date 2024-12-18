@@ -6,8 +6,8 @@ use std::{
 
 use jane_eyre::eyre::{self, bail, OptionExt};
 use reqwest::{
-    blocking::Client,
     header::{self, HeaderMap, HeaderValue},
+    Client,
 };
 use tracing::info;
 
@@ -15,7 +15,7 @@ use crate::cohost::{
     ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse,
 };
 
-pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     let requested_project = args.next().unwrap();
     let output_path = args.next().unwrap();
     let output_path = Path::new(&output_path);
@@ -31,15 +31,19 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
 
         let edited_projects = client
             .get("https://cohost.org/api/v1/trpc/projects.listEditedProjects")
-            .send()?
-            .json::<TrpcResponse<ListEditedProjectsResponse>>()?
+            .send()
+            .await?
+            .json::<TrpcResponse<ListEditedProjectsResponse>>()
+            .await?
             .result
             .data
             .projects;
         let logged_in_project_id = client
             .get("https://cohost.org/api/v1/trpc/login.loggedIn")
-            .send()?
-            .json::<TrpcResponse<LoggedInResponse>>()?
+            .send()
+            .await?
+            .json::<TrpcResponse<LoggedInResponse>>()
+            .await?
             .result
             .data
             .projectId;
@@ -85,7 +89,7 @@ pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
         let url =
             format!("https://cohost.org/api/v1/project/{requested_project}/posts?page={page}");
         info!("GET {url}");
-        let response: PostsResponse = client.get(url).send()?.json()?;
+        let response: PostsResponse = client.get(url).send().await?.json().await?;
 
         // nItems may be zero if none of the posts on this page are currently visible,
         // but nPages will only be zero when we have run out of pages.

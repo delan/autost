@@ -28,7 +28,7 @@ async fn main() -> eyre::Result<()> {
     match command_name.as_deref() {
         Some("attach") => command::attach::main(args).await,
         Some("cohost2autost") => command::cohost2autost::main(args),
-        Some("cohost2json") => command::cohost2json::main(args),
+        Some("cohost2json") => command::cohost2json::main(args).await,
         Some("import") => command::import::main(args).await,
         Some("new") => command::new::main(args),
         Some("reimport") => command::import::reimport(args).await,
