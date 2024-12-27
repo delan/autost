@@ -12,6 +12,7 @@ use html5ever::{Attribute, QualName};
 use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde::Deserialize;
 use tracing::{info, trace, warn};
 
 use crate::{
@@ -134,8 +135,14 @@ fn convert_single_chost(
         .spans
         .iter()
         .map(|span| -> eyre::Result<(Ast, usize, usize)> {
+            let mut deserializer = serde_json::Deserializer::from_str(&span.ast);
+
+            // allow trees more than 128 levels deep. since we don’t actually use serde_stacker or
+            // a custom Drop impl, it may lead to stack overflow, but i haven’t seen this so far.
+            deserializer.disable_recursion_limit();
+
             Ok((
-                serde_json::from_str(&span.ast)?,
+                Ast::deserialize(&mut deserializer)?,
                 span.startIndex,
                 span.endIndex,
             ))
