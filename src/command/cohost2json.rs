@@ -15,9 +15,15 @@ use crate::cohost::{
     ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse,
 };
 
-pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let requested_project = args.next().unwrap();
-    let output_path = args.next().unwrap();
+#[derive(clap::Args, Debug)]
+pub struct Cohost2json {
+    project_name: String,
+    path_to_chosts: String,
+}
+
+pub async fn main(args: Cohost2json) -> eyre::Result<()> {
+    let requested_project = args.project_name;
+    let output_path = args.path_to_chosts;
     let output_path = Path::new(&output_path);
     create_dir_all(output_path)?;
 

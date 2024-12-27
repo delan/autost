@@ -1,39 +1,58 @@
-use std::env::args;
+use autost::{
+    cli_init,
+    command::{
+        self,
+        attach::Attach,
+        cohost2autost::Cohost2autost,
+        cohost2json::Cohost2json,
+        import::{Import, Reimport},
+        new::New,
+        render::Render,
+    },
+    SETTINGS,
+};
+use clap::Parser;
+use jane_eyre::eyre;
 
-use autost::{cli_init, command, SETTINGS};
-use jane_eyre::eyre::{self, bail};
+#[derive(clap::Parser, Debug)]
+enum Command {
+    Attach(Attach),
+    Cohost2autost(Cohost2autost),
+    Cohost2json(Cohost2json),
+    Import(Import),
+    New(New),
+    Reimport(Reimport),
+    Render(Render),
+    Server,
+}
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
     cli_init()?;
 
-    let mut args = args();
-    let command_name = args.nth(1);
+    let command = Command::parse();
 
-    if command_name.as_deref().map_or(false, |name| {
-        [
-            "attach",
-            "cohost2autost",
-            "import",
-            "reimport",
-            "render",
-            "server",
-        ]
-        .contains(&name)
-    }) {
+    if matches!(
+        command,
+        Command::Attach { .. }
+            | Command::Cohost2autost { .. }
+            | Command::Import { .. }
+            | Command::Reimport { .. }
+            | Command::Render { .. }
+            | Command::Server { .. }
+    ) {
         // fail fast if there are any settings errors.
         let _ = &*SETTINGS;
     }
 
-    match command_name.as_deref() {
-        Some("attach") => command::attach::main(args).await,
-        Some("cohost2autost") => command::cohost2autost::main(args),
-        Some("cohost2json") => command::cohost2json::main(args).await,
-        Some("import") => command::import::main(args).await,
-        Some("new") => command::new::main(args),
-        Some("reimport") => command::import::reimport(args).await,
-        Some("render") => command::render::main(args),
-        Some("server") => command::server::main(args).await,
-        _ => bail!("usage: autost <attach|cohost2autost|cohost2json|import|new|render|server>"),
+    match command {
+        Command::Attach(args) => command::attach::main(args).await,
+        Command::Cohost2autost(args) => command::cohost2autost::main(args),
+        Command::Cohost2json(args) => command::cohost2json::main(args).await,
+        Command::Import(args) => command::import::main(args).await,
+        Command::New(args) => command::new::main(args),
+        Command::Reimport(args) => command::import::reimport(args).await,
+        Command::Render(args) => command::render::main(args),
+        Command::Server => command::server::main().await,
     }
 }

@@ -7,8 +7,13 @@ use std::{
 use jane_eyre::eyre::{self, bail};
 use tracing::info;
 
-pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let path = args.next().unwrap_or(".".to_owned());
+#[derive(clap::Args, Debug)]
+pub struct New {
+    path: Option<String>,
+}
+
+pub fn main(args: New) -> eyre::Result<()> {
+    let path = args.path.unwrap_or(".".to_owned());
     let path = Path::new(&path);
     info!("creating new site in {path:?}");
 

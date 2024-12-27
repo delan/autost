@@ -23,10 +23,20 @@ use crate::{
     Author, PostMeta, TemplatedPost,
 };
 
-pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+#[derive(clap::Args, Debug)]
+pub struct Import {
+    url: String,
+}
+
+#[derive(clap::Args, Debug)]
+pub struct Reimport {
+    posts_path: String,
+}
+
+pub async fn main(args: Import) -> eyre::Result<()> {
     run_migrations()?;
 
-    let url = args.next().unwrap();
+    let url = args.url;
     create_dir_all(&*PostsPath::IMPORTED)?;
 
     let FetchPostResult {
@@ -64,10 +74,10 @@ pub async fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
     Ok(())
 }
 
-pub async fn reimport(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+pub async fn reimport(args: Reimport) -> eyre::Result<()> {
     run_migrations()?;
 
-    let path = args.next().unwrap();
+    let path = args.posts_path;
     let path = PostsPath::from_site_root_relative_path(&path)?;
     let post = TemplatedPost::load(&path)?;
     let url = post.meta.archived.ok_or_eyre("post is not archived")?;

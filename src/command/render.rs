@@ -17,14 +17,19 @@ use crate::{
     TemplatedPost, Thread, SETTINGS,
 };
 
-pub fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
-    let mut args = args.peekable();
+#[derive(clap::Args, Debug)]
+pub struct Render {
+    specific_post_paths: Vec<String>,
+}
 
-    if args.peek().is_some() {
-        let args = args
+pub fn main(args: Render) -> eyre::Result<()> {
+    if !args.specific_post_paths.is_empty() {
+        let specific_post_paths = args
+            .specific_post_paths
+            .into_iter()
             .map(|path| PostsPath::from_site_root_relative_path(&path))
             .collect::<eyre::Result<Vec<_>>>()?;
-        render(args)
+        render(specific_post_paths)
     } else {
         render_all()
     }

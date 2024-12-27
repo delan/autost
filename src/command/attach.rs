@@ -9,11 +9,16 @@ use crate::{
     path::AttachmentsPath,
 };
 
-pub async fn main(args: impl Iterator<Item = String>) -> eyre::Result<()> {
+#[derive(clap::Args, Debug)]
+pub struct Attach {
+    paths: Vec<String>,
+}
+
+pub async fn main(args: Attach) -> eyre::Result<()> {
     run_migrations()?;
     create_dir_all(&*AttachmentsPath::ROOT)?;
 
-    for path in args {
+    for path in args.paths {
         let attachment_path = RealAttachmentsContext.store(&Path::new(&path))?;
         info!(
             "created attachment: <{}>",

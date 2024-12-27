@@ -18,6 +18,7 @@ eula = false
 ammonia = "4.0.0"
 askama = "0.12.1"
 chrono = "0.4.38"
+clap = { version = "4.5.23", features = ["derive"] }
 comrak = "0.28.0"
 html5ever = "0.27.0"
 http = "0.2.12"

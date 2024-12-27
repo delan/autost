@@ -31,12 +31,21 @@ use crate::{
     render_markdown, PostMeta,
 };
 
-pub fn main(mut args: impl Iterator<Item = String>) -> eyre::Result<()> {
+#[derive(clap::Args, Debug)]
+pub struct Cohost2autost {
+    path_to_chosts: String,
+    specific_chost_filenames: Vec<String>,
+}
+
+pub fn main(args: Cohost2autost) -> eyre::Result<()> {
     run_migrations()?;
 
-    let input_path = args.next().unwrap();
-    let input_path = Path::new(&input_path);
-    let specific_post_filenames = args.map(OsString::from).collect::<Vec<_>>();
+    let input_path = Path::new(&args.path_to_chosts);
+    let specific_post_filenames = args
+        .specific_chost_filenames
+        .into_iter()
+        .map(OsString::from)
+        .collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
     create_dir_all(&*PostsPath::ROOT)?;
     create_dir_all(&*SitePath::ATTACHMENTS)?;
