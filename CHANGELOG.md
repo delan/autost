@@ -1,3 +1,41 @@
+# [1.1.0](https://github.com/delan/autost/releases/tag/1.1.0) (????-??-??)
+
+- **be sure to rerun `autost cohost2autost` before cohost shuts down!** why?
+  - we’ve fixed a bug that broke audio attachments in a variety of places, including `autost render`, `autost server`, `autost import`, and `autost cohost2autost`
+- **got nix?** you can now run autost *without any extra setup* with `nix run github:delan/autost`, or build autost with `nix build`, `nix develop`, or `nix-shell` ([@Sorixelle](https://github.com/Sorixelle), [#25](https://github.com/delan/autost/pull/25))
+
+in the html output...
+
+- **posts can now contain &lt;video> and &lt;details name>**
+- **posts now have [link previews](https://ogp.me)**, with title, description, and the first image if any ([#21](https://github.com/delan/autost/issues/21))
+- **&lt;pre> elements** in the top level of a post **are now scrollable**, if their contents are too wide
+- post titles are now marked as the h-entry title (.p-name), making them more accurately rebloggable
+- posts without titles now have a placeholder title, like “untitled post by @staff”
+- authors without display names are handled better ([#23](https://github.com/delan/autost/issues/23))
+
+in `autost cohost2json`...
+- no longer hangs after fetching ~120 pages of posts ([#15](https://github.com/delan/autost/issues/15))
+- no longer crashes in debug builds ([#15](https://github.com/delan/autost/issues/15))
+
+in `autost cohost2autost`...
+- **cohost emotes** like `:eggbug:` are now converted
+- **authors without display names** are handled better ([#23](https://github.com/delan/autost/issues/23))
+- now retries attachment redirect requests, since they occasionally fail ([#29](https://github.com/delan/autost/issues/29))
+- now runs faster, by walking the dom tree only once per post
+
+in `autost import`...
+- h-entry author names (.p-author .p-name), and other p-properties, can now be extracted from &lt;abbr>, &lt;link>, &lt;data>, &lt;input>, &lt;img>, and &lt;area> ([#18](https://github.com/delan/autost/issues/18))
+- fixed a bug where post titles (.p-name) were sometimes mixed up with author names (.p-author .p-name) ([#18](https://github.com/delan/autost/issues/18))
+
+in `autost server`...
+- .mp4 files are now served with the correct mime type
+- the **reply** buttons now work correctly on tag pages
+
+[TODO]
+- [add scripts for archiving cohost projects in bulk](https://github.com/delan/autost/commit/3325028f4c1022a8070422933f4293e271ffe456)
+
+thanks to [@LotteMakesStuff](https://github.com/LotteMakesStuff), [@the6p4c](https://github.com/the6p4c), [@VinDuv](https://github.com/VinDuv), and [@Sorixelle](https://github.com/Sorixelle) for their feedback!
+
 # [1.0.0](https://github.com/delan/autost/releases/tag/1.0.0) (2024-10-10)
 
 - check out the new [**autost book**](https://delan.github.io/autost/) for more detailed docs!
