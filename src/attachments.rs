@@ -168,12 +168,22 @@ fn cache_cohost_attachment(
     let client = reqwest::blocking::Client::builder()
         .redirect(Policy::none())
         .build()?;
-    let redirect = client.head(url).send()?;
 
-    let Some(url) = redirect.headers().get("location") else {
-        bail!("expected redirect but got {}: {url}", redirect.status());
+    // attachment redirect endpoint occasionally returns 406 Not Acceptable
+    let mut retries = 2;
+    let mut redirect;
+    let url = loop {
+        redirect = client.head(url).send()?;
+        let Some(url) = redirect.headers().get("location") else {
+            if retries == 0 {
+                bail!("expected redirect but got {}: {url}", redirect.status());
+            } else {
+                retries -= 1;
+                continue;
+            }
+        };
+        break url.to_str()?;
     };
-    let url = url.to_str()?;
 
     let Some((_, original_filename)) = url.rsplit_once("/") else {
         bail!("redirect target has no slashes: {url}");
