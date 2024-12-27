@@ -16,15 +16,15 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "autost";
-  version = "1.0.0";
+  version = "1.1.0";
 
   src = fs.toSource {
     root = ../.;
     fileset = autostSources;
   };
 
-  # don't forget to update this hash when Cargo.lock changes!
-  cargoHash = "sha256-ZyCSv/plsc7XS91cO85wKz3G4mKd/f52kjliajjHeuc=";
+  # don't forget to update this hash when Cargo.lock or ${version} changes!
+  cargoHash = "sha256-V2WEeEvL8TMtYKm0y4/oLSjDN9rccAcRrnTqyyuI3N4=";
 
   meta = {
     description = "cohost-compatible blog engine and feed reader";

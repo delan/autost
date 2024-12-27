@@ -1,4 +1,4 @@
-# [1.1.0](https://github.com/delan/autost/releases/tag/1.1.0) (????-??-??)
+# [1.1.0](https://github.com/delan/autost/releases/tag/1.1.0) (2024-12-27)
 
 - **be sure to rerun `autost cohost2autost` before cohost shuts down!** why?
   - we’ve fixed a bug that broke audio attachments in a variety of places, including `autost render`, `autost server`, `autost import`, and `autost cohost2autost`
