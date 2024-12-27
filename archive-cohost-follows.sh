@@ -22,5 +22,7 @@ fi
 
 < "$follows_path" jq -er '.result.data.projects[].project.handle' | sort | while read -r project; do
     >&2 echo "[*] archiving: $project"
-    ./archive-cohost-project.sh "$sites_path" "$project"
+    if ! [ -e "$sites_path/$project/cohost2autost.done" ]; then
+        ./archive-cohost-project.sh "$sites_path" "$project"
+    fi
 done
