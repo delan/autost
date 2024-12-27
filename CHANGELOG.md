@@ -3,6 +3,7 @@
 - **be sure to rerun `autost cohost2autost` before cohost shuts down!** why?
   - we’ve fixed a bug that broke audio attachments in a variety of places, including `autost render`, `autost server`, `autost import`, and `autost cohost2autost`
 - **got nix?** you can now run autost *without any extra setup* with `nix run github:delan/autost`, or build autost with `nix build`, `nix develop`, or `nix-shell` ([@Sorixelle](https://github.com/Sorixelle), [#25](https://github.com/delan/autost/pull/25))
+- you can now easily **archive the chosts of everyone you follow** (`autost cohost-archive`)
 
 in the html output...
 
@@ -20,6 +21,7 @@ in `autost cohost2json`...
 in `autost cohost2autost`...
 - **cohost emotes** like `:eggbug:` are now converted
 - **authors without display names** are handled better ([#23](https://github.com/delan/autost/issues/23))
+- now handles posts with deeply nested dom trees without crashing ([#28](https://github.com/delan/autost/issues/28))
 - now retries attachment redirect requests, since they occasionally fail ([#29](https://github.com/delan/autost/issues/29))
 - now runs faster, by walking the dom tree only once per post
 
@@ -30,9 +32,6 @@ in `autost import`...
 in `autost server`...
 - .mp4 files are now served with the correct mime type
 - the **reply** buttons now work correctly on tag pages
-
-[TODO]
-- [add scripts for archiving cohost projects in bulk](https://github.com/delan/autost/commit/3325028f4c1022a8070422933f4293e271ffe456)
 
 thanks to [@LotteMakesStuff](https://github.com/LotteMakesStuff), [@the6p4c](https://github.com/the6p4c), [@VinDuv](https://github.com/VinDuv), and [@Sorixelle](https://github.com/Sorixelle) for their feedback!
 
