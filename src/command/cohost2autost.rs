@@ -33,8 +33,8 @@ use crate::{
 
 #[derive(clap::Args, Debug)]
 pub struct Cohost2autost {
-    path_to_chosts: String,
-    specific_chost_filenames: Vec<String>,
+    pub path_to_chosts: String,
+    pub specific_chost_filenames: Vec<String>,
 }
 
 pub fn main(args: Cohost2autost) -> eyre::Result<()> {

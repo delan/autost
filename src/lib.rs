@@ -17,6 +17,7 @@ pub mod command {
     pub mod attach;
     pub mod cohost2autost;
     pub mod cohost2json;
+    pub mod cohost_archive;
     pub mod import;
     pub mod new;
     pub mod render;

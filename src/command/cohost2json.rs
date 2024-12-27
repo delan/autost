@@ -17,8 +17,8 @@ use crate::cohost::{
 
 #[derive(clap::Args, Debug)]
 pub struct Cohost2json {
-    project_name: String,
-    path_to_chosts: String,
+    pub project_name: String,
+    pub path_to_chosts: String,
 }
 
 pub async fn main(args: Cohost2json) -> eyre::Result<()> {

@@ -24,6 +24,37 @@ $ cargo run render
 $ cargo run server
 ```
 
+## how to quickly archive chosts by people you follow
+
+`autost cohost-archive` takes care of the `autost new`, `autost cohost2json`, and `autost cohost2autost` thing for you.
+
+set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**!
+
+```
+$ read -r COHOST_COOKIE; export COHOST_COOKIE
+```
+
+to archive chosts by everyone you follow:
+
+```
+$ autost cohost-archive path/to/archived
+```
+
+to archive chosts by specific projects:
+
+```
+$ autost cohost-archive path/to/archived staff catball rats
+```
+
+then start the server for a project:
+
+```
+$ cd path/to/archived/staff
+$ autost server
+```
+
+**note:** for now, the archived chosts will only be visible at <http://[::1]:8420/all.html>. this will be fixed in a future version of autost.
+
 ## how to make a new site
 
 ```

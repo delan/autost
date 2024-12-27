@@ -163,6 +163,26 @@ pub struct LoggedInResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct FollowedFeedResponse {
+    pub projects: Vec<FeedProject>,
+    pub nextCursor: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct FeedProject {
+    pub project: FollowedProject,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct FollowedProject {
+    pub projectId: usize,
+    pub handle: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 #[allow(non_snake_case)]
 pub enum Ast {
