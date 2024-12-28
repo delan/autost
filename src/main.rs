@@ -9,6 +9,7 @@ use autost::{
         import::{Import, Reimport},
         new::New,
         render::Render,
+        server::Server,
     },
     SETTINGS,
 };
@@ -25,7 +26,7 @@ enum Command {
     New(New),
     Reimport(Reimport),
     Render(Render),
-    Server,
+    Server(Server),
 }
 
 #[tokio::main]
@@ -56,6 +57,6 @@ async fn main() -> eyre::Result<()> {
         Command::New(args) => command::new::main(args),
         Command::Reimport(args) => command::import::reimport(args).await,
         Command::Render(args) => command::render::main(args),
-        Command::Server => command::server::main().await,
+        Command::Server(args) => command::server::main(args).await,
     }
 }

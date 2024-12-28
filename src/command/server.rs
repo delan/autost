@@ -29,9 +29,15 @@ use crate::{
 
 use crate::command::render::render_all;
 
+#[derive(clap::Args, Debug)]
+pub struct Server {
+    #[arg(short, long)]
+    port: Option<u16>,
+}
+
 static HTML: &'static str = "text/html; charset=utf-8";
 
-pub async fn main() -> eyre::Result<()> {
+pub async fn main(args: Server) -> eyre::Result<()> {
     render_all()?;
 
     let compose_route = warp::path!("compose")
@@ -263,9 +269,10 @@ pub async fn main() -> eyre::Result<()> {
 
     let routes = routes.recover(recover);
 
-    info!("starting server on http://[::1]:{}", SETTINGS.server_port());
+    let port = args.port.unwrap_or(SETTINGS.server_port());
+    info!("starting server on http://[::1]:{}", port);
     warp::serve(routes)
-        .run(("::1".parse::<IpAddr>()?, SETTINGS.server_port()))
+        .run(("::1".parse::<IpAddr>()?, port))
         .await;
 
     Ok(())
