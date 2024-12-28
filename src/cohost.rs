@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 use serde_json::Value;
+use tracing::warn;
 
 use crate::Author;
 
@@ -200,39 +201,98 @@ pub enum Ast {
     Text { value: String },
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Cacheable<'url> {
+    /// cohost attachment (staging.cohostcdn.org/attachment or an equivalent redirect)
+    Attachment { id: &'url str },
+    /// cohost emote, eggbug logo, or other static asset (cohost.org/static)
+    Static { filename: &'url str, url: &'url str },
+}
+
+impl<'url> Cacheable<'url> {
+    pub fn attachment(id: &'url str) -> Self {
+        Self::Attachment { id }
+    }
+
+    pub fn r#static(filename: &'url str, url: &'url str) -> Self {
+        Self::Static { filename, url }
+    }
+
+    pub fn from_url(url: &'url str) -> Option<Self> {
+        if let Some(attachment_id) = url
+            .strip_prefix("https://cohost.org/rc/attachment-redirect/")
+            .or_else(|| url.strip_prefix("https://cohost.org/api/v1/attachments/"))
+            .or_else(|| url.strip_prefix("https://staging.cohostcdn.org/attachment/"))
+            .filter(|id_plus| id_plus.len() >= 36)
+            .map(|id_plus| &id_plus[..36])
+        {
+            return Some(Self::attachment(attachment_id));
+        }
+        if let Some(static_filename) = url.strip_prefix("https://cohost.org/static/") {
+            if static_filename.is_empty() {
+                warn!(url, "skipping cohost static path without filename");
+                return None;
+            }
+            if static_filename.contains(['/', '?']) {
+                warn!(
+                    url,
+                    "skipping cohost static path with unexpected slash or query string",
+                );
+                return None;
+            }
+            return Some(Self::r#static(static_filename, url));
+        }
+
+        None
+    }
+}
+
 pub fn attachment_id_to_url(id: &str) -> String {
     format!("https://cohost.org/rc/attachment-redirect/{id}")
 }
 
-pub fn attachment_url_to_id(url: &str) -> Option<&str> {
-    url.strip_prefix("https://cohost.org/rc/attachment-redirect/")
-        .or_else(|| url.strip_prefix("https://cohost.org/api/v1/attachments/"))
-        .or_else(|| url.strip_prefix("https://staging.cohostcdn.org/attachment/"))
-        .filter(|id_plus| id_plus.len() >= 36)
-        .map(|id_plus| &id_plus[..36])
-}
-
-pub fn custom_emoji_url_to_id(url: &str) -> Option<&str> {
-    url.strip_prefix("https://cohost.org/static/")
-        .and_then(|basename| basename.rsplit_once("."))
-        .map(|(id, _extension)| id)
-}
-
 #[test]
-fn test_attachment_url_to_id() {
+fn test_cacheable() {
     assert_eq!(
-        attachment_url_to_id(
-            "https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444?query"
+        Cacheable::from_url(
+            "https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444?query",
         ),
-        Some("44444444-4444-4444-4444-444444444444")
+        Some(Cacheable::Attachment {
+            id: "44444444-4444-4444-4444-444444444444",
+        }),
     );
     assert_eq!(
-        attachment_url_to_id(
-            "https://cohost.org/api/v1/attachments/44444444-4444-4444-4444-444444444444?query"
+        Cacheable::from_url(
+            "https://cohost.org/api/v1/attachments/44444444-4444-4444-4444-444444444444?query",
         ),
-        Some("44444444-4444-4444-4444-444444444444")
+        Some(Cacheable::Attachment {
+            id: "44444444-4444-4444-4444-444444444444",
+        }),
     );
-    assert_eq!(attachment_url_to_id("https://staging.cohostcdn.org/attachment/44444444-4444-4444-4444-444444444444/file.jpg?query"), Some("44444444-4444-4444-4444-444444444444"));
+    assert_eq!(
+        Cacheable::from_url(
+            "https://staging.cohostcdn.org/attachment/44444444-4444-4444-4444-444444444444/file.jpg?query",
+        ),
+        Some(Cacheable::Attachment {
+            id: "44444444-4444-4444-4444-444444444444",
+        }),
+    );
+    assert_eq!(
+        Cacheable::from_url("https://cohost.org/static/f0c56e99113f1a0731b4.svg"),
+        Some(Cacheable::Static {
+            filename: "f0c56e99113f1a0731b4.svg",
+            url: "https://cohost.org/static/f0c56e99113f1a0731b4.svg",
+        }),
+    );
+    assert_eq!(Cacheable::from_url("https://cohost.org/static/"), None);
+    assert_eq!(
+        Cacheable::from_url("https://cohost.org/static/f0c56e99113f1a0731b4.svg?query"),
+        None
+    );
+    assert_eq!(
+        Cacheable::from_url("https://cohost.org/static/subdir/f0c56e99113f1a0731b4.svg"),
+        None
+    );
 }
 
 impl From<&PostingProject> for Author {

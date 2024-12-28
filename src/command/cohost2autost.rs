@@ -17,10 +17,7 @@ use tracing::{info, trace, warn};
 
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
-    cohost::{
-        attachment_id_to_url, attachment_url_to_id, custom_emoji_url_to_id, Ask, AskingProject,
-        Ast, Attachment, Block, Post,
-    },
+    cohost::{attachment_id_to_url, Ask, AskingProject, Ast, Attachment, Block, Cacheable, Post},
     css::{parse_inline_style, serialise_inline_style, InlineStyleToken},
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
@@ -191,7 +188,9 @@ fn convert_single_chost(
                     let template = CohostImgTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
                         thumb_src: context.cache_cohost_thumb(&attachmentId)?.site_path()?,
-                        src: context.cache_cohost_file(&attachmentId)?.site_path()?,
+                        src: context
+                            .cache_cohost_resource(&Cacheable::attachment(&attachmentId))?
+                            .site_path()?,
                         alt: altText,
                         width,
                         height,
@@ -205,7 +204,9 @@ fn convert_single_chost(
                 } => {
                     let template = CohostAudioTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
-                        src: context.cache_cohost_file(&attachmentId)?.site_path()?,
+                        src: context
+                            .cache_cohost_resource(&Cacheable::attachment(&attachmentId))?
+                            .site_path()?,
                         artist,
                         title,
                     };
@@ -369,14 +370,15 @@ fn process_chost_fragment(
                     for attr in attrs.iter_mut() {
                         if attr_names.contains(&attr.name) {
                             let old_url = attr.value.to_str().to_owned();
-                            if let Some(id) = attachment_url_to_id(&old_url) {
+                            if let Some(cacheable) = Cacheable::from_url(&old_url) {
                                 trace!(
-                                    "found cohost attachment url in <{} {}>: {old_url}",
+                                    url = old_url,
+                                    "found cohost resource url in <{} {}>",
                                     name.local,
                                     attr.name.local
                                 );
                                 attr.value = context
-                                    .cache_cohost_file(id)?
+                                    .cache_cohost_resource(&cacheable)?
                                     .site_path()?
                                     .base_relative_url()
                                     .into();
@@ -399,11 +401,12 @@ fn process_chost_fragment(
                     for token in parse_inline_style(old_style) {
                         tokens.push(match token {
                             InlineStyleToken::Url(url) => {
-                                if let Some(id) = attachment_url_to_id(&url) {
+                                if let Some(cacheable) = Cacheable::from_url(&url) {
+                                    trace!(url, "found cohost resource url in inline style");
                                     has_any_cohost_attachment_urls = true;
                                     InlineStyleToken::Url(
                                         context
-                                            .cache_cohost_file(id)?
+                                            .cache_cohost_resource(&cacheable)?
                                             .site_path()?
                                             .base_relative_url(),
                                     )
@@ -464,12 +467,12 @@ fn process_chost_fragment(
                         });
                     }
                     if let Some(url) = url {
-                        if let Some(id) = custom_emoji_url_to_id(url) {
-                            trace!("found cohost custom emoji url in <CustomEmoji url>: {url}");
+                        if let Some(cacheable) = Cacheable::from_url(url) {
+                            trace!(url, "found cohost resource url in <CustomEmoji url>");
                             attrs.borrow_mut().push(Attribute {
                                 name: QualName::attribute("src"),
                                 value: context
-                                    .cache_cohost_emoji(id, url)?
+                                    .cache_cohost_resource(&cacheable)?
                                     .site_path()?
                                     .base_relative_url()
                                     .into(),
@@ -508,18 +511,16 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         ) -> eyre::Result<AttachmentsPath> {
             unreachable!();
         }
-        fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath> {
-            Ok(AttachmentsPath::ROOT.join(&format!("{id}"))?)
+        fn cache_cohost_resource(&self, cacheable: &Cacheable) -> eyre::Result<AttachmentsPath> {
+            Ok(match cacheable {
+                Cacheable::Attachment { id } => AttachmentsPath::ROOT.join(&format!("{id}"))?,
+                Cacheable::Static { filename, .. } => {
+                    AttachmentsPath::COHOST_STATIC.join(&format!("{filename}"))?
+                }
+            })
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath> {
             Ok(AttachmentsPath::THUMBS.join(&format!("{id}"))?)
-        }
-        fn cache_cohost_emoji(
-            &self,
-            _id: &str,
-            _url: &str,
-        ) -> eyre::Result<crate::path::AttachmentsPath> {
-            unreachable!()
         }
     }
 

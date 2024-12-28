@@ -10,14 +10,16 @@ use sha2::{digest::generic_array::functional::FunctionalSequence, Digest, Sha256
 use tracing::{debug, trace, warn};
 use uuid::Uuid;
 
-use crate::{cohost::attachment_id_to_url, path::AttachmentsPath};
+use crate::{
+    cohost::{attachment_id_to_url, Cacheable},
+    path::AttachmentsPath,
+};
 
 pub trait AttachmentsContext {
     fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath>;
     fn cache_imported(&self, url: &str, post_basename: &str) -> eyre::Result<AttachmentsPath>;
-    fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath>;
+    fn cache_cohost_resource(&self, cacheable: &Cacheable) -> eyre::Result<AttachmentsPath>;
     fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath>;
-    fn cache_cohost_emoji(&self, id: &str, url: &str) -> eyre::Result<AttachmentsPath>;
 }
 
 pub struct RealAttachmentsContext;
@@ -47,14 +49,27 @@ impl AttachmentsContext for RealAttachmentsContext {
     }
 
     #[tracing::instrument(skip(self))]
-    fn cache_cohost_file(&self, id: &str) -> eyre::Result<AttachmentsPath> {
-        let url = attachment_id_to_url(id);
-        let dir = &*AttachmentsPath::ROOT;
-        let path = dir.join(id)?;
-        create_dir_all(&path)?;
-        cache_cohost_attachment(&url, &path, None)?;
+    fn cache_cohost_resource(&self, cacheable: &Cacheable) -> eyre::Result<AttachmentsPath> {
+        match cacheable {
+            Cacheable::Attachment { id } => {
+                let url = attachment_id_to_url(id);
+                let dir = &*AttachmentsPath::ROOT;
+                let path = dir.join(id)?;
+                create_dir_all(&path)?;
+                cache_cohost_attachment(&url, &path, None)?;
 
-        cached_attachment_url(id, dir)
+                cached_attachment_url(id, dir)
+            }
+
+            Cacheable::Static { filename, url } => {
+                let dir = &*AttachmentsPath::COHOST_STATIC;
+                create_dir_all(dir)?;
+                let path = dir.join(filename)?;
+                trace!(?path);
+
+                cache_other_cohost_resource(url, &path)
+            }
+        }
     }
 
     #[tracing::instrument(skip(self))]
@@ -70,16 +85,6 @@ impl AttachmentsContext for RealAttachmentsContext {
         cache_cohost_attachment(&url, &path, Some(thumb))?;
 
         cached_attachment_url(id, dir)
-    }
-
-    #[tracing::instrument(skip(self))]
-    fn cache_cohost_emoji(&self, id: &str, url: &str) -> eyre::Result<AttachmentsPath> {
-        let dir = &*AttachmentsPath::EMOJI;
-        let path = dir.join(id)?;
-        trace!(?path);
-        create_dir_all(&path)?;
-
-        cache_imported_attachment(&url, &path)
     }
 }
 
@@ -207,4 +212,24 @@ fn cache_cohost_attachment(
     File::create(&path)?.write_all(&result)?;
 
     Ok(path)
+}
+
+fn cache_other_cohost_resource(url: &str, path: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
+    // if we can open the cached file...
+    if let Ok(mut file) = File::open(path) {
+        trace!("cache hit: {url}");
+        // check if we can read the file.
+        let mut result = Vec::default();
+        file.read_to_end(&mut result)?;
+        return Ok(path.clone());
+    }
+
+    trace!("cache miss");
+    debug!("downloading resource");
+
+    let response = reqwest::blocking::get(url)?;
+    let result = response.bytes()?.to_vec();
+    File::create(path)?.write_all(&result)?;
+
+    Ok(path.clone())
 }

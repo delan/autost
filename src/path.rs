@@ -307,8 +307,14 @@ impl AttachmentsPath {
         LazyLock::new(|| Self::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument"));
     pub const THUMBS: LazyLock<Self> =
         LazyLock::new(|| Self::ROOT.join("thumbs").expect("guaranteed by argument"));
+    #[deprecated(since = "1.2.0", note = "cohost emoji are now stored in COHOST_STATIC")]
     pub const EMOJI: LazyLock<Self> =
         LazyLock::new(|| Self::ROOT.join("emoji").expect("guaranteed by argument"));
+    pub const COHOST_STATIC: LazyLock<Self> = LazyLock::new(|| {
+        Self::ROOT
+            .join("cohost-static")
+            .expect("guaranteed by argument")
+    });
 
     pub fn site_path(&self) -> eyre::Result<SitePath> {
         let mut result = SitePath::ATTACHMENTS.to_owned();
