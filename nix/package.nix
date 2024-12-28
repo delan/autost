@@ -16,7 +16,7 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "autost";
-  version = "1.1.0";
+  version = "1.2.0";
 
   src = fs.toSource {
     root = ../.;
@@ -24,7 +24,7 @@ rustPlatform.buildRustPackage {
   };
 
   # don't forget to update this hash when Cargo.lock or ${version} changes!
-  cargoHash = "sha256-5VqpJMqtNw18meBzewqa6XLSgdEiDWb+CCKeZfFlpC4=";
+  cargoHash = "sha256-lRW0FUsF53Xy1WNpnIlCmeT5TxctpReLA9CGI/B3BxU=";
 
   meta = {
     description = "cohost-compatible blog engine and feed reader";
