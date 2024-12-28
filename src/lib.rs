@@ -92,6 +92,53 @@ pub struct TemplatedPost {
     pub og_description: String,
 }
 
+impl PostMeta {
+    pub fn is_main_self_author(&self, settings: &Settings) -> bool {
+        self.author
+            .as_ref()
+            .map_or(settings.self_author.is_none(), |a| {
+                settings.is_main_self_author(a)
+            })
+    }
+}
+
+#[test]
+fn test_is_main_self_author() -> eyre::Result<()> {
+    let settings = Settings::load_example()?;
+
+    let mut settings_no_self_author = Settings::load_example()?;
+    let mut meta_no_author = PostMeta::default();
+    settings_no_self_author.self_author = None;
+    meta_no_author.author = None;
+
+    // same href as [self_author], but different name, display_name, and handle
+    let mut meta_same_href = PostMeta::default();
+    meta_same_href.author = Some(Author {
+        href: "https://example.com".to_owned(),
+        name: "".to_owned(),
+        display_name: "".to_owned(),
+        display_handle: "".to_owned(),
+    });
+
+    // different href from [self_author]
+    let mut meta_different_href = PostMeta::default();
+    meta_different_href.author = Some(Author {
+        href: "https://example.net".to_owned(),
+        name: "".to_owned(),
+        display_name: "".to_owned(),
+        display_handle: "".to_owned(),
+    });
+
+    assert!(meta_same_href.is_main_self_author(&settings));
+    assert!(!meta_different_href.is_main_self_author(&settings));
+    assert!(!meta_no_author.is_main_self_author(&settings));
+    assert!(!meta_same_href.is_main_self_author(&settings_no_self_author));
+    assert!(!meta_different_href.is_main_self_author(&settings_no_self_author));
+    assert!(meta_no_author.is_main_self_author(&settings_no_self_author));
+
+    Ok(())
+}
+
 impl Thread {
     pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()

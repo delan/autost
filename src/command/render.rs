@@ -227,7 +227,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     }
     result.collections.push("all", &path, &thread);
     let mut was_interesting = false;
-    if thread.meta.archived.is_none() && SETTINGS.self_author == thread.meta.author {
+    if thread.meta.is_main_self_author(&SETTINGS) {
         was_interesting = true;
     } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
         result.collections.push("excluded", &path, &thread);

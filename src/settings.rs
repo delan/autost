@@ -145,6 +145,19 @@ impl Settings {
         }
     }
 
+    pub fn is_main_self_author(&self, author: &Author) -> bool {
+        // compare href only, ignoring other fields
+        self.self_author
+            .as_ref()
+            .map_or(false, |a| a.href == author.href)
+    }
+
+    pub fn is_any_self_author(&self, author: &Author) -> bool {
+        // compare href only, ignoring other fields
+        self.is_main_self_author(author)
+            || self.other_self_authors.iter().any(|a| *a == author.href)
+    }
+
     pub fn tag_is_interesting(&self, tag: &str) -> bool {
         self.interesting_tags_iter()
             .find(|&interesting_tag| interesting_tag == tag)
