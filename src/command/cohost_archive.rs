@@ -64,7 +64,7 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
         logged_in_project.handle
     );
 
-    let mut project_names = if args.project_names.is_empty() {
+    let project_names = if args.project_names.is_empty() {
         info!("GET https://cohost.org/api/v1/trpc/projects.followedFeed.query?input=%7B%22sortOrder%22:%22followed-asc%22,%22limit%22:1000,%22beforeTimestamp%22:1735199148430%7D");
         let followed_feed = client
             .get("https://cohost.org/api/v1/trpc/projects.followedFeed.query?input=%7B%22sortOrder%22:%22followed-asc%22,%22limit%22:1000,%22beforeTimestamp%22:1735199148430%7D")
@@ -78,15 +78,18 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
             followed_feed.nextCursor, None,
             "too many follows (needs pagination)"
         );
-        followed_feed
+        let mut handles = followed_feed
             .projects
             .into_iter()
             .map(|p| p.project.handle)
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+        handles.sort();
+        handles.insert(0, logged_in_project.handle.clone());
+        handles
     } else {
         args.project_names
     };
-    project_names.sort();
+    info!(?project_names, "starting archive");
 
     let project_names = project_names
         .into_iter()

@@ -24,7 +24,7 @@ $ cargo run server
 
 **got nix?** you can run autost *without any extra setup* using `nix run github:delan/autost/latest`! see [§ using autost with nix](#using-autost-with-nix) for more details.
 
-## how to quickly archive chosts by people you follow
+## how to quickly archive chosts by you and everyone you follow
 
 `autost cohost-archive` takes care of the `autost new`, `autost cohost2json`, and `autost cohost2autost` thing for you.
 
@@ -34,7 +34,7 @@ set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **an
 $ read -r COHOST_COOKIE; export COHOST_COOKIE
 ```
 
-to archive chosts by everyone you follow:
+to archive chosts by you and everyone you follow:
 
 ```
 $ autost cohost-archive path/to/archived  # example (can be anywhere)
