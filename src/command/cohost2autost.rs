@@ -21,10 +21,11 @@ use crate::{
         attachment_id_to_url, attachment_url_to_id, custom_emoji_url_to_id, Ask, AskingProject,
         Ast, Attachment, Block, Post,
     },
+    css::{parse_inline_style, serialise_inline_style, InlineStyleToken},
     dom::{
         convert_idl_to_content_attribute, create_element, create_fragment, debug_attributes_seen,
         debug_not_known_good_attributes_seen, html_attributes_with_urls, parse_html_fragment,
-        serialize_html_fragment, AttrsRefExt, QualNameExt, TendrilExt, Transform,
+        serialize_html_fragment, AttrsMutExt, AttrsRefExt, QualNameExt, TendrilExt, Transform,
     },
     migrations::run_migrations,
     path::{PostsPath, SitePath},
@@ -357,8 +358,6 @@ fn process_chost_fragment(
     mut dom: RcDom,
     context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
-    let mut attachment_ids = vec![];
-
     let mut transform = Transform::new(dom.document.clone());
     while transform.next(|kids, new_kids| {
         for kid in kids {
@@ -376,7 +375,6 @@ fn process_chost_fragment(
                                     name.local,
                                     attr.name.local
                                 );
-                                attachment_ids.push(id.to_owned());
                                 attr.value = context
                                     .cache_cohost_file(id)?
                                     .site_path()?
@@ -391,6 +389,36 @@ fn process_chost_fragment(
                                 });
                             }
                         }
+                    }
+                }
+                // rewrite cohost attachment urls in inline styles.
+                if let Some(style) = attrs.attr_mut("style") {
+                    let old_style = style.value.to_str();
+                    let mut has_any_cohost_attachment_urls = false;
+                    let mut tokens = vec![];
+                    for token in parse_inline_style(old_style) {
+                        tokens.push(match token {
+                            InlineStyleToken::Url(url) => {
+                                if let Some(id) = attachment_url_to_id(&url) {
+                                    has_any_cohost_attachment_urls = true;
+                                    InlineStyleToken::Url(
+                                        context
+                                            .cache_cohost_file(id)?
+                                            .site_path()?
+                                            .base_relative_url(),
+                                    )
+                                } else {
+                                    InlineStyleToken::Url(url)
+                                }
+                            }
+                            other => other,
+                        });
+                    }
+                    let new_style = serialise_inline_style(&tokens);
+                    if has_any_cohost_attachment_urls {
+                        trace!("old style: {old_style}");
+                        trace!("new style: {new_style}");
+                        style.value = new_style.into();
                     }
                 }
                 // make all `<img>` elements lazy loaded.

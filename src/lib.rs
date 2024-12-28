@@ -26,6 +26,7 @@ pub mod command {
 
 pub mod attachments;
 pub mod cohost;
+pub mod css;
 pub mod dom;
 pub mod meta;
 pub mod migrations;

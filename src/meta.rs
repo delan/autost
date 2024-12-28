@@ -6,6 +6,7 @@ use markup5ever_rcdom::NodeData;
 use tracing::trace;
 
 use crate::{
+    css::{parse_inline_style, InlineStyleToken},
     dom::{
         html_attributes_with_urls, parse_html_fragment, text_content_for_summaries, AttrsRefExt,
         QualNameExt, TendrilExt, Transform,
@@ -83,6 +84,16 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                                     SitePath::from_rendered_attachment_url(attr.value.to_str())
                                 {
                                     trace!("found attachment url in rendered post: {url:?}");
+                                    needs_attachments.insert(url);
+                                }
+                            }
+                        }
+                    }
+                    if let Some(style) = attrs.attr_str("style")? {
+                        for token in parse_inline_style(style) {
+                            if let InlineStyleToken::Url(url) = token {
+                                if let Ok(url) = SitePath::from_rendered_attachment_url(&url) {
+                                    trace!("found attachment url in rendered post (inline styles): {url:?}");
                                     needs_attachments.insert(url);
                                 }
                             }
