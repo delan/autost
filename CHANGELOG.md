@@ -1,3 +1,25 @@
+# [1.2.0](https://github.com/delan/autost/releases/tag/1.1.1) (2024-12-28)
+
+- **be sure to rerun `autost cohost-archive` and/or `autost cohost2autost` before cohost shuts down!** why?
+  - **we now archive cohost attachments in inline styles**, like `<div style="background: url(cohostcdn...)">`
+  - attachments are fetched and rewritten when chosts (json) are converted to posts, so you will need to reconvert your chosts
+  - to make `autost cohost-archive` actually reconvert chosts, delete the `cohost2autost.done` file in each archived project
+
+in `autost cohost-archive`...
+- archived chosts are now visible on the main page, without needing to navigate to <http://[::1]:8420/all.html>
+  - **you can rerun `autost cohost-archive` to update your existing archives!** it’s smart enough to not need to redownload and reconvert the chosts, but see above for why you should reconvert anyway
+
+in `autost server`...
+- **you can now override the listening port** with `-p` (`--port`)
+
+posts by the `[self_author] href` are always considered “interesting”, but the check for this has been improved:
+- fixed a bug that prevented archived chosts with that `href` from being considered “interesting”
+- fixed a bug that prevented you from changing your `name`, `display_name`, or `handle`
+
+as a result of these changes...
+- you can now publish all of your archived chosts at once by setting your `href` to the url of your cohost page (e.g. <https://cohost.org/staff>)
+- you can now change your `name`, `display_name`, or `handle` without editing all of your old posts
+
 # [1.1.0](https://github.com/delan/autost/releases/tag/1.1.0) (2024-12-27)
 
 - **be sure to rerun `autost cohost2autost` before cohost shuts down!** why?
