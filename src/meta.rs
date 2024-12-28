@@ -28,76 +28,73 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let mut transform = Transform::new(dom.document.clone());
     while transform.next(|kids, new_kids| {
         for kid in kids {
-            match &kid.data {
-                NodeData::Element { name, attrs, .. } => {
-                    let attrs = attrs.borrow();
-                    if name == &QualName::html("meta") {
-                        let content = attrs.attr_str("content")?.map(|t| t.to_owned());
-                        match attrs.attr_str("name")? {
-                            Some("title") => {
-                                meta.title = content;
-                            }
-                            Some("published") => {
-                                meta.published = content;
-                            }
-                            Some("author_display_name") => {
-                                author_display_name = content;
-                            }
-                            Some("author_display_handle") => {
-                                author_display_handle = content;
-                            }
-                            Some("tags") => {
-                                if let Some(tag) = content {
-                                    meta.tags.push(tag);
-                                }
-                            }
-                            Some("is_transparent_share") => {
-                                meta.is_transparent_share = true;
-                            }
-                            _ => {}
+            if let NodeData::Element { name, attrs, .. } = &kid.data {
+                let attrs = attrs.borrow();
+                if name == &QualName::html("meta") {
+                    let content = attrs.attr_str("content")?.map(|t| t.to_owned());
+                    match attrs.attr_str("name")? {
+                        Some("title") => {
+                            meta.title = content;
                         }
-                        continue;
-                    } else if name == &QualName::html("link") {
-                        let href = attrs.attr_str("href")?.map(|t| t.to_owned());
-                        let name = attrs.attr_str("name")?.map(|t| t.to_owned());
-                        match attrs.attr_str("rel")? {
-                            Some("archived") => {
-                                meta.archived = href;
-                            }
-                            Some("references") => {
-                                if let Some(href) = href {
-                                    meta.references.push(PostsPath::from_references_url(&href)?);
-                                }
-                            }
-                            Some("author") => {
-                                author_href = href;
-                                author_name = name;
-                            }
-                            _ => {}
+                        Some("published") => {
+                            meta.published = content;
                         }
-                        continue;
-                    } else {
-                        if let Some(attr_names) = html_attributes_with_urls().get(name) {
-                            for attr in attrs.iter() {
-                                if attr_names.contains(&attr.name) {
-                                    if let Ok(url) =
-                                        SitePath::from_rendered_attachment_url(attr.value.to_str())
-                                    {
-                                        trace!("found attachment url in rendered post: {url:?}");
-                                        needs_attachments.insert(url);
-                                    }
-                                }
+                        Some("author_display_name") => {
+                            author_display_name = content;
+                        }
+                        Some("author_display_handle") => {
+                            author_display_handle = content;
+                        }
+                        Some("tags") => {
+                            if let Some(tag) = content {
+                                meta.tags.push(tag);
                             }
                         }
-                        // use the first <img src>, if any, as the <meta> og:image.
-                        if og_image.is_none() && name == &QualName::html("img") {
-                            if let Some(src) = attrs.attr_str("src")?.map(|t| t.to_owned()) {
-                                og_image = Some(src);
+                        Some("is_transparent_share") => {
+                            meta.is_transparent_share = true;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                } else if name == &QualName::html("link") {
+                    let href = attrs.attr_str("href")?.map(|t| t.to_owned());
+                    let name = attrs.attr_str("name")?.map(|t| t.to_owned());
+                    match attrs.attr_str("rel")? {
+                        Some("archived") => {
+                            meta.archived = href;
+                        }
+                        Some("references") => {
+                            if let Some(href) = href {
+                                meta.references.push(PostsPath::from_references_url(&href)?);
+                            }
+                        }
+                        Some("author") => {
+                            author_href = href;
+                            author_name = name;
+                        }
+                        _ => {}
+                    }
+                    continue;
+                } else {
+                    if let Some(attr_names) = html_attributes_with_urls().get(name) {
+                        for attr in attrs.iter() {
+                            if attr_names.contains(&attr.name) {
+                                if let Ok(url) =
+                                    SitePath::from_rendered_attachment_url(attr.value.to_str())
+                                {
+                                    trace!("found attachment url in rendered post: {url:?}");
+                                    needs_attachments.insert(url);
+                                }
                             }
                         }
                     }
+                    // use the first <img src>, if any, as the <meta> og:image.
+                    if og_image.is_none() && name == &QualName::html("img") {
+                        if let Some(src) = attrs.attr_str("src")?.map(|t| t.to_owned()) {
+                            og_image = Some(src);
+                        }
+                    }
                 }
-                _ => {}
             }
             new_kids.push(kid.clone());
         }
