@@ -1,9 +1,12 @@
-# [1.2.0](https://github.com/delan/autost/releases/tag/1.1.1) (2024-12-28)
+# [1.2.0](https://github.com/delan/autost/releases/tag/1.2.0) (2024-12-28)
 
 - **be sure to rerun `autost cohost-archive` and/or `autost cohost2autost` before cohost shuts down!** why?
   - **we now archive cohost attachments in inline styles**, like `<div style="background: url(cohostcdn...)">`
+  - **we now archive hotlinked cohost emotes, eggbug logos, etc**, like <https://cohost.org/static/f0c56e99113f1a0731b4.svg>
+  - **we now archive hotlinked cohost avatar and header images**, like in <https://cohost.org/srxl/post/4940861-p-style-padding-to>
   - attachments are fetched and rewritten when chosts (json) are converted to posts, so you will need to reconvert your chosts
   - to make `autost cohost-archive` actually reconvert chosts, delete the `cohost2autost.done` file in each archived project
+- **got nix?** we now have binaries cached [on cachix](https://autost.cachix.org); see the README for details
 
 in `autost cohost-archive`...
 - archived chosts are now visible on the main page, without needing to navigate to <http://[::1]:8420/all.html>
