@@ -121,11 +121,13 @@ async fn archive_cohost_project(project_name: &str) -> eyre::Result<()> {
     writeln!(autost_toml, r#"base_url = "/""#)?;
     writeln!(autost_toml, r#"external_base_url = "https://example.com/""#)?;
     writeln!(autost_toml, r#"site_title = "@{project_name}""#)?;
-    writeln!(
-        autost_toml,
-        r#"other_self_authors = ["https://cohost.org/{project_name}"]"#
-    )?;
+    writeln!(autost_toml, r#"other_self_authors = []"#)?;
     writeln!(autost_toml, r#"interesting_tags = []"#)?;
+    writeln!(autost_toml, r#"[self_author]"#)?;
+    writeln!(autost_toml, r#"href = "https://cohost.org/{project_name}""#)?;
+    writeln!(autost_toml, r#"name = """#)?;
+    writeln!(autost_toml, r#"display_name = """#)?;
+    writeln!(autost_toml, r#"display_handle = "@{project_name}""#)?;
     writeln!(autost_toml, r#"[[nav]]"#)?;
     writeln!(autost_toml, r#"href = ".""#)?;
     writeln!(autost_toml, r#"text = "posts""#)?;

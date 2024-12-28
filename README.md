@@ -37,7 +37,7 @@ $ read -r COHOST_COOKIE; export COHOST_COOKIE
 to archive chosts by everyone you follow:
 
 ```
-$ autost cohost-archive path/to/archived
+$ autost cohost-archive path/to/archived  # example (can be anywhere)
 ```
 
 to archive chosts by specific projects:
@@ -52,8 +52,6 @@ then start the server for a project:
 $ cd path/to/archived/staff
 $ autost server
 ```
-
-**note:** for now, the archived chosts will only be visible at <http://[::1]:8420/all.html>. this will be fixed in a future version of autost.
 
 ## how to make a new site
 
