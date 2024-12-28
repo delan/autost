@@ -1,0 +1,9 @@
+- update CHANGELOG.md
+- bump `[package] version` in Cargo.toml
+- update Cargo.lock: `cargo check`
+- bump `version` in package.nix
+- update `cargoHash`: `nix build`
+- `git commit -m 'version x.x.x'`
+- `git tag -am x.x.x x.x.x`
+- `git push origin main @:latest`
+- `git push --tags`

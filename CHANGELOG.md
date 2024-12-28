@@ -6,7 +6,9 @@
   - **we now archive hotlinked cohost avatar and header images**, like in <https://cohost.org/srxl/post/4940861-p-style-padding-to>
   - attachments are fetched and rewritten when chosts (json) are converted to posts, so you will need to reconvert your chosts
   - to make `autost cohost-archive` actually reconvert chosts, delete the `cohost2autost.done` file in each archived project
-- **got nix?** we now have binaries cached [on cachix](https://autost.cachix.org); see the README for details
+- **got nix?**
+  - you can now run the latest *released* version of autost with `nix run github:delan/autost/latest`
+  - you can now get prebuilt binaries [on cachix](https://autost.cachix.org); see the README for details
 
 in `autost cohost-archive`...
 - archived chosts are now visible on the main page, without needing to navigate to <http://[::1]:8420/all.html>

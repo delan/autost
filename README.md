@@ -22,7 +22,7 @@ $ cargo run render
 $ cargo run server
 ```
 
-**got nix?** you can run autost *without any extra setup* using `nix run github:delan/autost`! see [§ using autost with nix](#using-autost-with-nix) for more details.
+**got nix?** you can run autost *without any extra setup* using `nix run github:delan/autost/latest`! see [§ using autost with nix](#using-autost-with-nix) for more details.
 
 ## how to quickly archive chosts by people you follow
 
@@ -206,6 +206,14 @@ $ cd autost
 if you've got nix installed, there's also a devshell you can jump into with `nix-shell` or `nix develop` that has rust included. you can also build the nix derivation for autost with `nix build`.
 
 ## using autost with nix
+
+`nix run github:delan/autost` (without `/latest`) will get you the bleeding-edge version of autost, including changes that haven’t been released yet. you can run a specific version of autost as follows:
+
+```
+$ nix run github:delan/autost/1.1.0     # version 1.1.0
+$ nix run github:delan/autost/latest    # latest released version
+$ nix run github:delan/autost           # bleeding-edge
+```
 
 if nix builds are too slow, there's a binary cache available through [cachix](https://cachix.org). you can set it up by running `nix run nixpkgs#cachix use autost`, or for nixos:
 ```nix
