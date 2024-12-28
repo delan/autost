@@ -49,9 +49,13 @@ pub fn main(args: Cohost2autost) -> eyre::Result<()> {
     create_dir_all(&*SitePath::ATTACHMENTS)?;
     create_dir_all(&*SitePath::THUMBS)?;
 
+    let span = tracing::Span::current();
     let results = dir_entries
         .into_par_iter()
         .map(|entry| -> eyre::Result<()> {
+            // enter the main thread’s current span, if any, so that `autost cohost-archive` can
+            // prefix logs with the project_name we’re currently converting chosts for.
+            let _guard = span.enter();
             let entry = entry?;
             if !specific_post_filenames.is_empty() {
                 if !specific_post_filenames.contains(&entry.file_name()) {
