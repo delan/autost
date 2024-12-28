@@ -207,6 +207,10 @@ pub enum Cacheable<'url> {
     Attachment { id: &'url str },
     /// cohost emote, eggbug logo, or other static asset (cohost.org/static)
     Static { filename: &'url str, url: &'url str },
+    /// cohost avatar (static.cohostcdn.org/avatar)
+    Avatar { filename: &'url str, url: &'url str },
+    /// cohost header (static.cohostcdn.org/header)
+    Header { filename: &'url str, url: &'url str },
 }
 
 impl<'url> Cacheable<'url> {
@@ -216,6 +220,14 @@ impl<'url> Cacheable<'url> {
 
     pub fn r#static(filename: &'url str, url: &'url str) -> Self {
         Self::Static { filename, url }
+    }
+
+    pub fn avatar(filename: &'url str, url: &'url str) -> Self {
+        Self::Avatar { filename, url }
+    }
+
+    pub fn header(filename: &'url str, url: &'url str) -> Self {
+        Self::Header { filename, url }
     }
 
     pub fn from_url(url: &'url str) -> Option<Self> {
@@ -241,6 +253,44 @@ impl<'url> Cacheable<'url> {
                 return None;
             }
             return Some(Self::r#static(static_filename, url));
+        }
+        if let Some(avatar_filename) = url.strip_prefix("https://staging.cohostcdn.org/avatar/") {
+            if avatar_filename.is_empty() {
+                warn!(url, "skipping cohost avatar path without filename");
+                return None;
+            }
+            if avatar_filename.contains('/') {
+                warn!(url, "skipping cohost avatar path with unexpected slash");
+                return None;
+            }
+            if let Some((avatar_filename, _query_string)) = avatar_filename.split_once('?') {
+                // some chosts use avatars with query parameters to resize etc, such as
+                // <https://cohost.org/srxl/post/4940861-p-style-padding-to>.
+                // to make things simpler for us, we only bother archiving the original.
+                // if the chost relies on the intrinsic size of the resized avatar, tough luck.
+                warn!(url, "dropping query string from cohost avatar path");
+                return Some(Self::avatar(avatar_filename, url));
+            }
+            return Some(Self::avatar(avatar_filename, url));
+        }
+        if let Some(header_filename) = url.strip_prefix("https://staging.cohostcdn.org/header/") {
+            if header_filename.is_empty() {
+                warn!(url, "skipping cohost header path without filename");
+                return None;
+            }
+            if header_filename.contains('/') {
+                warn!(url, "skipping cohost header path with unexpected slash");
+                return None;
+            }
+            if let Some((header_filename, _query_string)) = header_filename.split_once('?') {
+                // some chosts use headers with query parameters to resize etc, such as
+                // <https://cohost.org/srxl/post/4940861-p-style-padding-to>.
+                // to make things simpler for us, we only bother archiving the original.
+                // if the chost relies on the intrinsic size of the resized header, tough luck.
+                warn!(url, "dropping query string from cohost header path");
+                return Some(Self::header(header_filename, url));
+            }
+            return Some(Self::header(header_filename, url));
         }
 
         None

@@ -315,6 +315,16 @@ impl AttachmentsPath {
             .join("cohost-static")
             .expect("guaranteed by argument")
     });
+    pub const COHOST_AVATAR: LazyLock<Self> = LazyLock::new(|| {
+        Self::ROOT
+            .join("cohost-avatar")
+            .expect("guaranteed by argument")
+    });
+    pub const COHOST_HEADER: LazyLock<Self> = LazyLock::new(|| {
+        Self::ROOT
+            .join("cohost-header")
+            .expect("guaranteed by argument")
+    });
 
     pub fn site_path(&self) -> eyre::Result<SitePath> {
         let mut result = SitePath::ATTACHMENTS.to_owned();

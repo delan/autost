@@ -69,6 +69,24 @@ impl AttachmentsContext for RealAttachmentsContext {
 
                 cache_other_cohost_resource(url, &path)
             }
+
+            Cacheable::Avatar { filename, url } => {
+                let dir = &*AttachmentsPath::COHOST_AVATAR;
+                create_dir_all(dir)?;
+                let path = dir.join(filename)?;
+                trace!(?path);
+
+                cache_other_cohost_resource(url, &path)
+            }
+
+            Cacheable::Header { filename, url } => {
+                let dir = &*AttachmentsPath::COHOST_HEADER;
+                create_dir_all(dir)?;
+                let path = dir.join(filename)?;
+                trace!(?path);
+
+                cache_other_cohost_resource(url, &path)
+            }
         }
     }
 

@@ -517,6 +517,12 @@ fn test_render_markdown_block() -> eyre::Result<()> {
                 Cacheable::Static { filename, .. } => {
                     AttachmentsPath::COHOST_STATIC.join(&format!("{filename}"))?
                 }
+                Cacheable::Avatar { filename, .. } => {
+                    AttachmentsPath::COHOST_AVATAR.join(&format!("{filename}"))?
+                }
+                Cacheable::Header { filename, .. } => {
+                    AttachmentsPath::COHOST_HEADER.join(&format!("{filename}"))?
+                }
             })
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath> {
