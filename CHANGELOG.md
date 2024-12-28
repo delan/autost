@@ -1,3 +1,9 @@
+# [1.2.1](https://github.com/delan/autost/releases/tag/1.2.1) (2024-12-28)
+
+couple of small improvements to `autost cohost-archive`...
+- **now archives your own chosts too**, then the people you follow, if no specific projects are given
+- **now tells you which project is currently being archived**, in the log output
+
 # [1.2.0](https://github.com/delan/autost/releases/tag/1.2.0) (2024-12-28)
 
 - **be sure to rerun `autost cohost-archive` and/or `autost cohost2autost` before cohost shuts down!** why?

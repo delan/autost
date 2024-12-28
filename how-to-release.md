@@ -5,5 +5,6 @@
 - update `cargoHash`: `nix build`
 - `git commit -m 'version x.x.x'`
 - `git tag -am x.x.x x.x.x`
-- `git push origin main @:latest`
+- `git push`
 - `git push --tags`
+- `git push -f origin @:latest`
