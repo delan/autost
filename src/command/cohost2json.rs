@@ -9,10 +9,11 @@ use reqwest::{
     header::{self, HeaderMap, HeaderValue},
     Client,
 };
+use scraper::{Html, selector::Selector};
 use tracing::info;
 
 use crate::cohost::{
-    ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse,
+    LikedPostsState, ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse
 };
 
 #[derive(clap::Args, Debug)]
@@ -109,6 +110,30 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
             info!("Writing {path:?}");
             let output_file = File::create(path)?;
             serde_json::to_writer(output_file, &post_value)?;
+        }
+    }
+
+    if env::var("COHOST_COOKIE").is_ok() {
+        for liked_page in 0.. {
+            let url = format!("https://cohost.org/rc/liked-posts?skipPosts={}", liked_page * 20);
+            info!("GET {url}");
+
+            let response = client.get(url).send().await?.text().await?;
+            let document = Html::parse_document(&response);
+
+            let node = document.select(&Selector::parse("script#__COHOST_LOADER_STATE__").unwrap()).next().unwrap();
+            let liked_store = serde_json::from_str::<LikedPostsState>(&node.inner_html())?.liked_posts_feed;
+
+            if !liked_store.paginationMode.morePagesForward {
+                break;
+            }
+
+            for post in liked_store.posts {
+                let path = output_path.join(format!("{}.json", post.postId));
+                info!("Writing {path:?}");
+                let output_file = File::create(path)?;
+                serde_json::to_writer(output_file, &post)?;
+            }
         }
     }
 
