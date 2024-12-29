@@ -1,4 +1,4 @@
-# [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
+# [1.3.0](https://github.com/delan/autost/releases/tag/1.3.0) (2024-12-29)
 
 in `autost cohost2json` and `autost cohost-archive`...
 - **you can now include your own liked chosts** with `--liked` ([@Sorixelle](https://github.com/Sorixelle), [#31](https://github.com/delan/autost/pull/31))
