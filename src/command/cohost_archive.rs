@@ -111,7 +111,7 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
 
     if args.liked && !project_names.contains(&logged_in_project.handle) {
         warn!(
-            "requested liked posts, but not the logged in project (@{}) - skipping liked posts",
+            "you requested liked chosts, but not your own logged in project (@{}); skipping liked chosts",
             logged_in_project.handle
         );
     }
