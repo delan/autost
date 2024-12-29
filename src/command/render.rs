@@ -236,7 +236,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             .collections
             .push("marked_interesting", &path, &thread);
         was_interesting = true;
-    } else {
+    } else if thread.meta.is_any_self_author(&SETTINGS) {
         for tag in thread.meta.tags.iter() {
             if SETTINGS.tag_is_interesting(tag) {
                 was_interesting = true;
@@ -266,20 +266,21 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
                 .collections
                 .push("untagged_interesting", &path, &thread);
         }
-    } else {
-        // if the thread had some input from us at publish time, that is, if the last post was
-        // authored by us with content and/or tags...
-        if thread.posts.last().is_some_and(|post| {
-            (!post.meta.is_transparent_share || !post.meta.tags.is_empty())
-                && post
-                    .meta
-                    .author
-                    .as_ref()
-                    .is_some_and(|author| SETTINGS.other_self_authors.contains(&author.href))
-        }) {
-            result.collections.push("skipped_own", &path, &thread);
+    } else if let Some(last_post) = thread.posts.last() {
+        // at this point, if the last post was ours, it was one of our archived chosts or rechosts.
+        // otherwise it was a liked chost. this may change in the future, but it’s true for now.
+        if last_post.meta.is_any_self_author(&SETTINGS) {
+            // if the thread had some input from us at publish time, that is, if the last post was
+            // authored by us with content and/or tags...
+            if !last_post.meta.is_transparent_share || !last_post.meta.tags.is_empty() {
+                result.collections.push("skipped_own", &path, &thread);
+            } else {
+                result.collections.push("skipped_other", &path, &thread);
+            }
         } else {
-            result.collections.push("skipped_other", &path, &thread);
+            // liked chosts are generally non-“interesting” archived chosts where the last post was
+            // not authored by us. unfortunately this does not include liking our own chosts :(
+            result.collections.push("liked", &path, &thread);
         }
     }
 
@@ -378,6 +379,10 @@ impl Collections {
                 (
                     "skipped_other",
                     Collection::new(None, "others’ skipped archived posts"),
+                ),
+                (
+                    "liked",
+                    Collection::new(None, "liked chosts (except liking your own chosts)"),
                 ),
             ]
             .into(),

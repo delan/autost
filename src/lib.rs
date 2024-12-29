@@ -101,6 +101,15 @@ impl PostMeta {
                 settings.is_main_self_author(a)
             })
     }
+
+    pub fn is_any_self_author(&self, settings: &Settings) -> bool {
+        let no_self_authors =
+            settings.self_author.is_none() && settings.other_self_authors.is_empty();
+
+        self.author
+            .as_ref()
+            .map_or(no_self_authors, |a| settings.is_any_self_author(a))
+    }
 }
 
 #[test]
