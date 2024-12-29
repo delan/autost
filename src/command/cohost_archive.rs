@@ -110,7 +110,10 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
         .collect::<Vec<_>>();
 
     if args.liked && !project_names.contains(&logged_in_project.handle) {
-        warn!("requested liked posts, but not the logged in project - skipping liked posts");
+        warn!(
+            "requested liked posts, but not the logged in project (@{}) - skipping liked posts",
+            logged_in_project.handle
+        );
     }
 
     for project_name in project_names {
