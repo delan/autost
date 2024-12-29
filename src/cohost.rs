@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::warn;
 
@@ -14,7 +14,7 @@ pub struct PostsResponse {
     pub items: Vec<Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct Post {
     pub postId: usize,
@@ -37,7 +37,7 @@ pub struct Post {
     pub astMap: AstMap,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct PostingProject {
     pub handle: String,
@@ -46,7 +46,7 @@ pub struct PostingProject {
     pub loggedOutPostVisibility: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
 #[allow(non_snake_case)]
 pub enum Block {
@@ -69,13 +69,13 @@ pub enum Block {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct Markdown {
     pub content: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind")]
 #[allow(non_snake_case)]
 pub enum Attachment {
@@ -101,7 +101,7 @@ pub enum Attachment {
     },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct Ask {
     pub content: String,
@@ -110,20 +110,20 @@ pub struct Ask {
     pub loggedIn: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct AskingProject {
     pub handle: String,
     pub displayName: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct AstMap {
     pub spans: Vec<Span>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[allow(non_snake_case)]
 pub struct Span {
     pub ast: String,
@@ -181,6 +181,31 @@ pub struct FeedProject {
 pub struct FollowedProject {
     pub projectId: usize,
     pub handle: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LikedPostsState {
+    #[serde(rename = "liked-posts-feed")]
+    pub liked_posts_feed: LikedPostsFeed,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct LikedPostsFeed {
+    pub posts: Vec<Post>,
+    pub paginationMode: PaginationMode,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(non_snake_case)]
+pub struct PaginationMode {
+    pub currentSkip: usize,
+    pub idealPageStride: usize,
+    pub mode: String,
+    pub morePagesForward: bool,
+    pub morePagesBackward: bool,
+    pub pageUrlFactoryName: String,
+    pub refTimestamp: usize,
 }
 
 #[derive(Debug, Deserialize)]
