@@ -1,7 +1,12 @@
 # [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
 
+in `autost cohost2json` and `autost cohost-archive`...
+- **you can now include your own liked chosts** with `--liked`
+  - if you used `autost cohost-archive`, remember to delete both `cohost2json.done` and `cohost2autost.done` on archived projects you want to update
+
 in `autost cohost2autost` and `autost cohost-archive`...
 - now handles some malformed but technically valid attachment urls on staging.cohostcdn.org
+- now handles attachment urls that 404 gracefully, by logging an error and continuing
 
 # [1.2.1](https://github.com/delan/autost/releases/tag/1.2.1) (2024-12-28)
 

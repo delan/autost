@@ -34,10 +34,16 @@ set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **an
 $ read -r COHOST_COOKIE; export COHOST_COOKIE
 ```
 
-to archive chosts by you and everyone you follow:
+to archive chosts by you and everyone you follow, but not your liked chosts:
 
 ```
 $ autost cohost-archive path/to/archived  # example (can be anywhere)
+```
+
+to archive chosts by you and everyone you follow, including your liked chosts:
+
+```
+$ autost cohost-archive path/to/archived --likes
 ```
 
 to archive chosts by specific projects:
@@ -62,7 +68,7 @@ $ cd sites/example.com
 
 ## how to dump your own chosts
 
-cohost “projects” are the things with handles like `@staff` that you can have more than one of.
+cohost “projects” are the things with handles like `@staff` that you can have more than one of. to dump chosts for a specific project:
 
 ```
 $ cd sites/example.com
@@ -73,6 +79,12 @@ you may want to dump private or logged-in-only chosts, be they your own or those
 
 ```
 $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
+```
+
+if you’re dumping chosts for the project you’re logged in as, you can include your liked chosts as follows:
+
+```
+$ autost cohost2json projectName path/to/chosts
 ```
 
 ## how to convert chosts to posts
