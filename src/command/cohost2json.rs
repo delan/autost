@@ -9,11 +9,12 @@ use reqwest::{
     header::{self, HeaderMap, HeaderValue},
     Client,
 };
-use scraper::{Html, selector::Selector};
+use scraper::{selector::Selector, Html};
 use tracing::{info, warn};
 
 use crate::cohost::{
-    LikedPostsState, ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse, TrpcResponse
+    LikedPostsState, ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse,
+    TrpcResponse,
 };
 
 #[derive(clap::Args, Debug)]
@@ -122,14 +123,21 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
         } else {
             info!("dumping liked chosts for @{}", requested_project);
             for liked_page in 0.. {
-                let url = format!("https://cohost.org/rc/liked-posts?skipPosts={}", liked_page * 20);
+                let url = format!(
+                    "https://cohost.org/rc/liked-posts?skipPosts={}",
+                    liked_page * 20
+                );
                 info!("GET {url}");
 
                 let response = client.get(url).send().await?.text().await?;
                 let document = Html::parse_document(&response);
 
-                let node = document.select(&Selector::parse("script#__COHOST_LOADER_STATE__").unwrap()).next().unwrap();
-                let liked_store = serde_json::from_str::<LikedPostsState>(&node.inner_html())?.liked_posts_feed;
+                let node = document
+                    .select(&Selector::parse("script#__COHOST_LOADER_STATE__").unwrap())
+                    .next()
+                    .unwrap();
+                let liked_store =
+                    serde_json::from_str::<LikedPostsState>(&node.inner_html())?.liked_posts_feed;
 
                 if !liked_store.paginationMode.morePagesForward {
                     break;
