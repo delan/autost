@@ -276,6 +276,12 @@ fn cache_cohost_attachment(
         bail!("redirect target has no slashes: {url}");
     };
     let original_filename = urlencoding::decode(original_filename)?;
+
+    // On Windows, `:` characters are not allowed in filenames (because it's used as a drive
+    // separator)
+    #[cfg(windows)]
+    let original_filename = original_filename.replace(":", "-");
+
     trace!("original filename: {original_filename}");
 
     // cohost attachment redirects don’t preserve query params, so if we want to add any,
