@@ -229,7 +229,10 @@ pub enum Ast {
 #[derive(Debug, PartialEq)]
 pub enum Cacheable<'url> {
     /// cohost attachment (staging.cohostcdn.org/attachment or an equivalent redirect)
-    Attachment { id: &'url str },
+    Attachment {
+        id: &'url str,
+        url: Option<&'url str>,
+    },
     /// cohost emote, eggbug logo, or other static asset (cohost.org/static)
     Static { filename: &'url str, url: &'url str },
     /// cohost avatar (static.cohostcdn.org/avatar)
@@ -239,8 +242,11 @@ pub enum Cacheable<'url> {
 }
 
 impl<'url> Cacheable<'url> {
-    pub fn attachment(id: &'url str) -> Self {
-        Self::Attachment { id }
+    pub fn attachment(id: &'url str, original_url: impl Into<Option<&'url str>>) -> Self {
+        Self::Attachment {
+            id,
+            url: original_url.into(),
+        }
     }
 
     pub fn r#static(filename: &'url str, url: &'url str) -> Self {
@@ -263,7 +269,7 @@ impl<'url> Cacheable<'url> {
             .filter(|id_plus| id_plus.len() >= 36)
             .map(|id_plus| &id_plus[..36])
         {
-            return Some(Self::attachment(attachment_id));
+            return Some(Self::attachment(attachment_id, url));
         }
         // raw attachment urls have a mandatory trailing path component for the original filename,
         // preceded by a path component for the uuid, preceded by zero or more extra garbage path
@@ -286,7 +292,7 @@ impl<'url> Cacheable<'url> {
                     .rsplit_once('/')
                     .map(|(_garbage, result)| result)
                     .unwrap_or(attachment_id_etc);
-                return Some(Self::attachment(attachment_id));
+                return Some(Self::attachment(attachment_id, url));
             }
         }
         if let Some(static_filename) = url.strip_prefix("https://cohost.org/static/") {
@@ -358,6 +364,7 @@ fn test_cacheable() {
         ),
         Some(Cacheable::Attachment {
             id: "44444444-4444-4444-4444-444444444444",
+            url: "https://cohost.org/rc/attachment-redirect/44444444-4444-4444-4444-444444444444?query".into(),
         }),
     );
     assert_eq!(
@@ -366,6 +373,8 @@ fn test_cacheable() {
         ),
         Some(Cacheable::Attachment {
             id: "44444444-4444-4444-4444-444444444444",
+            url: "https://cohost.org/api/v1/attachments/44444444-4444-4444-4444-444444444444?query"
+                .into(),
         }),
     );
     assert_eq!(
@@ -374,6 +383,7 @@ fn test_cacheable() {
         ),
         Some(Cacheable::Attachment {
             id: "44444444-4444-4444-4444-444444444444",
+            url: "https://staging.cohostcdn.org/attachment/44444444-4444-4444-4444-444444444444/file.jpg?query".into(),
         }),
     );
     assert_eq!(
@@ -382,6 +392,7 @@ fn test_cacheable() {
         ),
         Some(Cacheable::Attachment {
             id: "d99a2208-5a1d-4212-b524-1d6e3493d6f4",
+            url: "https://staging.cohostcdn.org/attachment/https://staging.cohostcdn.org/attachment/d99a2208-5a1d-4212-b524-1d6e3493d6f4/silent_hills_pt_screen_20140814_02.jpg?query".into(),
         }),
     );
     assert_eq!(

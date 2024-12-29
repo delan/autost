@@ -16,7 +16,7 @@ use serde::Deserialize;
 use tracing::{info, trace, warn};
 
 use crate::{
-    attachments::{AttachmentsContext, RealAttachmentsContext},
+    attachments::{AttachmentsContext, CachedFileResult, RealAttachmentsContext},
     cohost::{attachment_id_to_url, Ask, AskingProject, Ast, Attachment, Block, Cacheable, Post},
     css::{parse_inline_style, serialise_inline_style, InlineStyleToken},
     dom::{
@@ -193,7 +193,7 @@ fn convert_single_chost(
                         data_cohost_src: attachment_id_to_url(&attachmentId),
                         thumb_src: context.cache_cohost_thumb(&attachmentId)?.site_path()?,
                         src: context
-                            .cache_cohost_resource(&Cacheable::attachment(&attachmentId))?
+                            .cache_cohost_resource(&Cacheable::attachment(&attachmentId, None))?
                             .site_path()?,
                         alt: altText,
                         width,
@@ -209,7 +209,7 @@ fn convert_single_chost(
                     let template = CohostAudioTemplate {
                         data_cohost_src: attachment_id_to_url(&attachmentId),
                         src: context
-                            .cache_cohost_resource(&Cacheable::attachment(&attachmentId))?
+                            .cache_cohost_resource(&Cacheable::attachment(&attachmentId, None))?
                             .site_path()?,
                         artist,
                         title,
@@ -329,8 +329,8 @@ fn process_ast(root: Ast) -> RcDom {
 #[template(path = "cohost-img.html")]
 struct CohostImgTemplate {
     data_cohost_src: String,
-    thumb_src: SitePath,
-    src: SitePath,
+    thumb_src: CachedFileResult<SitePath>,
+    src: CachedFileResult<SitePath>,
     alt: Option<String>,
     width: Option<usize>,
     height: Option<usize>,
@@ -340,7 +340,7 @@ struct CohostImgTemplate {
 #[template(path = "cohost-audio.html")]
 struct CohostAudioTemplate {
     data_cohost_src: String,
-    src: SitePath,
+    src: CachedFileResult<SitePath>,
     artist: String,
     title: String,
 }
@@ -515,9 +515,12 @@ fn test_render_markdown_block() -> eyre::Result<()> {
         ) -> eyre::Result<AttachmentsPath> {
             unreachable!();
         }
-        fn cache_cohost_resource(&self, cacheable: &Cacheable) -> eyre::Result<AttachmentsPath> {
-            Ok(match cacheable {
-                Cacheable::Attachment { id } => AttachmentsPath::ROOT.join(&format!("{id}"))?,
+        fn cache_cohost_resource(
+            &self,
+            cacheable: &Cacheable,
+        ) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
+            Ok(CachedFileResult::CachedPath(match cacheable {
+                Cacheable::Attachment { id, .. } => AttachmentsPath::ROOT.join(&format!("{id}"))?,
                 Cacheable::Static { filename, .. } => {
                     AttachmentsPath::COHOST_STATIC.join(&format!("{filename}"))?
                 }
@@ -527,10 +530,12 @@ fn test_render_markdown_block() -> eyre::Result<()> {
                 Cacheable::Header { filename, .. } => {
                     AttachmentsPath::COHOST_HEADER.join(&format!("{filename}"))?
                 }
-            })
+            }))
         }
-        fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<AttachmentsPath> {
-            Ok(AttachmentsPath::THUMBS.join(&format!("{id}"))?)
+        fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
+            Ok(CachedFileResult::CachedPath(
+                AttachmentsPath::THUMBS.join(&format!("{id}"))?,
+            ))
         }
     }
 
