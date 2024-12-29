@@ -30,6 +30,7 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
     let requested_project = args.project_name;
     let output_path = args.path_to_chosts;
     let output_path = Path::new(&output_path);
+    let mut dump_liked = args.liked;
     create_dir_all(output_path)?;
 
     let client = if let Ok(connect_sid) = env::var("COHOST_COOKIE") {
@@ -88,6 +89,13 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                 "dumping chosts for @{}, which you don’t own",
                 requested_project
             );
+            if dump_liked {
+                warn!(
+                    "you requested liked chosts, but not your own logged in project (@{}); skipping liked chosts",
+                    logged_in_project.handle
+                );
+                dump_liked = false;
+            }
         }
 
         client
@@ -117,7 +125,7 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
         }
     }
 
-    if args.liked {
+    if dump_liked {
         if env::var("COHOST_COOKIE").is_err() {
             warn!("requested liked posts, but COHOST_COOKIE not provided - skipping");
         } else {
