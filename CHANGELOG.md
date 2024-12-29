@@ -1,7 +1,8 @@
 # [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
 
 in `autost cohost2json` and `autost cohost-archive`...
-- **you can now include your own liked chosts** with `--liked`
+- **you can now include your own liked chosts** with `--liked` ([@Sorixelle](https://github.com/Sorixelle), [#31](https://github.com/delan/autost/pull/31))
+  - liked chosts can be found at liked.html, e.g. <http://[::1]:8420/liked.html>
   - if you used `autost cohost-archive`, remember to delete both `cohost2json.done` and `cohost2autost.done` on archived projects you want to update
 
 in `autost cohost2autost` and `autost cohost-archive`...
@@ -24,7 +25,7 @@ couple of small improvements to `autost cohost-archive`...
   - to make `autost cohost-archive` actually reconvert chosts, delete the `cohost2autost.done` file in each archived project
 - **got nix?**
   - you can now run the latest *released* version of autost with `nix run github:delan/autost/latest`
-  - you can now get prebuilt binaries [on cachix](https://autost.cachix.org); see the README for details
+  - you can now get prebuilt binaries [on cachix](https://autost.cachix.org); see the README for details ([@Sorixelle](https://github.com/Sorixelle), [#30](https://github.com/delan/autost/pull/30))
 
 in `autost cohost-archive`...
 - archived chosts are now visible on the main page, without needing to navigate to <http://[::1]:8420/all.html>

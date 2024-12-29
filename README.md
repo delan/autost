@@ -40,7 +40,7 @@ to archive chosts by you and everyone you follow, but not your liked chosts:
 $ autost cohost-archive path/to/archived  # example (can be anywhere)
 ```
 
-to archive chosts by you and everyone you follow, including your liked chosts:
+to archive chosts by you and everyone you follow, including your liked chosts (liked.html):
 
 ```
 $ autost cohost-archive path/to/archived --likes
@@ -81,7 +81,7 @@ you may want to dump private or logged-in-only chosts, be they your own or those
 $ read -r COHOST_COOKIE; export COHOST_COOKIE  # optional
 ```
 
-if you’re dumping chosts for the project you’re logged in as, you can include your liked chosts as follows:
+if you’re dumping chosts for the project you’re logged in as, you can include your liked chosts as follows (liked.html):
 
 ```
 $ autost cohost2json projectName path/to/chosts
