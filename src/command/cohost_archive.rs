@@ -21,6 +21,9 @@ use crate::{
 pub struct CohostArchive {
     output_path: String,
     project_names: Vec<String>,
+
+    #[arg(long, help = "archive your liked posts")]
+    liked: bool,
 }
 
 pub async fn main(args: CohostArchive) -> eyre::Result<()> {
@@ -106,15 +109,21 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
         })
         .collect::<Vec<_>>();
 
+    if args.liked && !project_names.contains(&logged_in_project.handle) {
+        warn!("requested liked posts, but not the logged in project - skipping liked posts");
+    }
+
     for project_name in project_names {
-        archive_cohost_project(&project_name).await?;
+        // only try to archive likes for the logged-in project
+        let archive_likes = args.liked && project_name == logged_in_project.handle;
+        archive_cohost_project(&project_name, archive_likes).await?;
     }
 
     Ok(())
 }
 
 #[tracing::instrument(level = "error")]
-async fn archive_cohost_project(project_name: &str) -> eyre::Result<()> {
+async fn archive_cohost_project(project_name: &str, archive_likes: bool) -> eyre::Result<()> {
     info!("archiving");
     let project_path = Path::new(project_name);
     create_dir_all(project_path)?;
@@ -140,6 +149,7 @@ async fn archive_cohost_project(project_name: &str) -> eyre::Result<()> {
         crate::command::cohost2json::main(Cohost2json {
             project_name: project_name.to_owned(),
             path_to_chosts: "chosts".to_owned(),
+            liked: archive_likes,
         })
         .await?;
         File::create("cohost2json.done")?;
