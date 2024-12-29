@@ -1,3 +1,8 @@
+# [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
+
+in `autost cohost2autost` and `autost cohost-archive`...
+- now handles some malformed but technically valid attachment urls on staging.cohostcdn.org
+
 # [1.2.1](https://github.com/delan/autost/releases/tag/1.2.1) (2024-12-28)
 
 couple of small improvements to `autost cohost-archive`...

@@ -231,14 +231,38 @@ impl<'url> Cacheable<'url> {
     }
 
     pub fn from_url(url: &'url str) -> Option<Self> {
+        // attachment redirects just have the uuid in a fixed location.
         if let Some(attachment_id) = url
             .strip_prefix("https://cohost.org/rc/attachment-redirect/")
             .or_else(|| url.strip_prefix("https://cohost.org/api/v1/attachments/"))
-            .or_else(|| url.strip_prefix("https://staging.cohostcdn.org/attachment/"))
             .filter(|id_plus| id_plus.len() >= 36)
             .map(|id_plus| &id_plus[..36])
         {
             return Some(Self::attachment(attachment_id));
+        }
+        // raw attachment urls have a mandatory trailing path component for the original filename,
+        // preceded by a path component for the uuid, preceded by zero or more extra garbage path
+        // components, which the server still accepts. people have used this in real posts.
+        if let Some(attachment_id_etc) =
+            url.strip_prefix("https://staging.cohostcdn.org/attachment/")
+        {
+            // remove query string, if any
+            let attachment_id_etc = attachment_id_etc
+                .split_once('?')
+                .map(|(result, _query_string)| result)
+                .unwrap_or(attachment_id_etc);
+            // remove original filename
+            if let Some(attachment_id_etc) = attachment_id_etc
+                .rsplit_once('/')
+                .map(|(result, _original_filename)| result)
+            {
+                // remove path components preceding uuid, if any
+                let attachment_id = attachment_id_etc
+                    .rsplit_once('/')
+                    .map(|(_garbage, result)| result)
+                    .unwrap_or(attachment_id_etc);
+                return Some(Self::attachment(attachment_id));
+            }
         }
         if let Some(static_filename) = url.strip_prefix("https://cohost.org/static/") {
             if static_filename.is_empty() {
@@ -325,6 +349,14 @@ fn test_cacheable() {
         ),
         Some(Cacheable::Attachment {
             id: "44444444-4444-4444-4444-444444444444",
+        }),
+    );
+    assert_eq!(
+        Cacheable::from_url(
+            "https://staging.cohostcdn.org/attachment/https://staging.cohostcdn.org/attachment/d99a2208-5a1d-4212-b524-1d6e3493d6f4/silent_hills_pt_screen_20140814_02.jpg?query",
+        ),
+        Some(Cacheable::Attachment {
+            id: "d99a2208-5a1d-4212-b524-1d6e3493d6f4",
         }),
     );
     assert_eq!(
