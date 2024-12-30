@@ -140,10 +140,12 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                 let response = client.get(url).send().await?.text().await?;
                 let document = Html::parse_document(&response);
 
+                let selector = Selector::parse("script#__COHOST_LOADER_STATE__")
+                    .expect("guaranteed by argument");
                 let node = document
-                    .select(&Selector::parse("script#__COHOST_LOADER_STATE__").unwrap())
+                    .select(&selector)
                     .next()
-                    .unwrap();
+                    .ok_or_eyre("failed to find script#__COHOST_LOADER_STATE__")?;
                 let liked_store =
                     serde_json::from_str::<LikedPostsState>(&node.inner_html())?.liked_posts_feed;
 
