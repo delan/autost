@@ -1,3 +1,14 @@
+# [1.3.1](https://github.com/delan/autost/releases/tag/1.3.1) (2024-12-30)
+
+in `autost cohost2json` and `autost cohost-archive`...
+- **fixed a bug causing incorrect output in `--liked` mode** ([#34](https://github.com/delan/autost/issues/34))
+  - this only affects archives of your own cohost projects, not other people’s projects
+  - if you used `autost cohost2json`, please rerun both `autost cohost2json` and `autost cohost2autost` to fix your archived chosts
+  - if you used `autost cohost-archive`, please delete both `cohost2json.done` and `cohost2autost.done` on only the archived projects you need to fix, then rerun it
+
+in `autost cohost2autost` and `autost cohost-archive`...
+- no longer crashes when attachment filenames contain `:` on windows (@echowritescode, [#32](https://github.com/delan/autost/pull/32))
+
 # [1.3.0](https://github.com/delan/autost/releases/tag/1.3.0) (2024-12-29)
 
 in `autost cohost2json` and `autost cohost-archive`...
