@@ -36,7 +36,7 @@ jobs:
       - run: |
           cd sites/docs
           # cargo run render
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/delan/autost/releases/download/1.3.0/autost-installer.sh | sh
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/delan/autost/releases/download/1.3.1/autost-installer.sh | sh
           autost render
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
