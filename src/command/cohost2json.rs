@@ -10,7 +10,7 @@ use reqwest::{
     Client,
 };
 use scraper::{selector::Selector, Html};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::cohost::{
     LikedPostsState, ListEditedProjectsResponse, LoggedInResponse, Post, PostsResponse,
@@ -146,8 +146,15 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                     .select(&selector)
                     .next()
                     .ok_or_eyre("failed to find script#__COHOST_LOADER_STATE__")?;
-                let liked_store =
-                    serde_json::from_str::<LikedPostsState>(&node.inner_html())?.liked_posts_feed;
+                let texts = node.text().collect::<Vec<_>>();
+                let (text, rest) = texts
+                    .split_first()
+                    .ok_or_eyre("script element has no text nodes")?;
+                if !rest.is_empty() {
+                    error!("script element has more than one text node");
+                }
+
+                let liked_store = serde_json::from_str::<LikedPostsState>(text)?.liked_posts_feed;
 
                 if !liked_store.paginationMode.morePagesForward {
                     break;
