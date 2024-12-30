@@ -30,6 +30,10 @@ $ cargo run server
 
 set COHOST_COOKIE to the value of your “connect.sid” cookie as follows, **and switch projects in the cohost web ui**!
 
+- for bash or zsh, paste in `read -r COHOST_COOKIE; export COHOST_COOKIE`, press enter, paste in your cookie value, press enter
+- for powershell, paste in `$env:COHOST_COOKIE='eggbug'`, replace `eggbug` with your cookie value, press enter
+- for cmd (windows), paste in `set COHOST_COOKIE="eggbug"`, replace `eggbug` with your cookie value, press enter
+
 ```
 $ read -r COHOST_COOKIE; export COHOST_COOKIE
 ```
