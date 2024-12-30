@@ -138,24 +138,27 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                     liked_page * 20
                 );
 
-                let response = get_text(&client, &url).await?;
-                let document = Html::parse_document(&response);
-
-                let selector = Selector::parse("script#__COHOST_LOADER_STATE__")
-                    .expect("guaranteed by argument");
-                let node = document
-                    .select(&selector)
-                    .next()
-                    .ok_or_eyre("failed to find script#__COHOST_LOADER_STATE__")?;
-                let texts = node.text().collect::<Vec<_>>();
-                let (text, rest) = texts
-                    .split_first()
-                    .ok_or_eyre("script element has no text nodes")?;
-                if !rest.is_empty() {
-                    error!("script element has more than one text node");
-                }
-
-                let liked_store = serde_json::from_str::<LikedPostsState>(text)?.liked_posts_feed;
+                let liked_store = get_with_retries(&client, &url, |body| {
+                    let body = str::from_utf8(&body)?;
+                    let document = Html::parse_document(body);
+                    let selector = Selector::parse("script#__COHOST_LOADER_STATE__")
+                        .expect("guaranteed by argument");
+                    let node = document
+                        .select(&selector)
+                        .next()
+                        .ok_or_eyre("failed to find script#__COHOST_LOADER_STATE__")?;
+                    let texts = node.text().collect::<Vec<_>>();
+                    let (text, rest) = texts
+                        .split_first()
+                        .ok_or_eyre("script element has no text nodes")?;
+                    if !rest.is_empty() {
+                        error!("script element has more than one text node");
+                    }
+                    let liked_store =
+                        serde_json::from_str::<LikedPostsState>(text)?.liked_posts_feed;
+                    Ok(liked_store)
+                })
+                .await?;
 
                 if !liked_store.paginationMode.morePagesForward {
                     break;
@@ -172,10 +175,6 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
     }
 
     Ok(())
-}
-
-async fn get_text(client: &Client, url: &str) -> eyre::Result<String> {
-    get_with_retries(client, url, text).await
 }
 
 async fn get_json<T: DeserializeOwned>(client: &Client, url: &str) -> eyre::Result<T> {
@@ -236,10 +235,6 @@ async fn get_with_retries<T>(
 async fn get_response_once(client: &Client, url: &str) -> reqwest::Result<Response> {
     info!("GET {url}");
     client.get(url).send().await
-}
-
-fn text(body: Bytes) -> eyre::Result<String> {
-    Ok(str::from_utf8(&body)?.to_owned())
 }
 
 fn json<T: DeserializeOwned>(body: Bytes) -> eyre::Result<T> {
