@@ -10,6 +10,7 @@ use reqwest::{
     Client,
 };
 use scraper::{selector::Selector, Html};
+use serde::de::DeserializeOwned;
 use tracing::{error, info, warn};
 
 use crate::cohost::{
@@ -41,24 +42,22 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
         headers.insert(header::COOKIE, cookie_value);
         let client = Client::builder().default_headers(headers).build()?;
 
-        let edited_projects = client
-            .get("https://cohost.org/api/v1/trpc/projects.listEditedProjects")
-            .send()
-            .await?
-            .json::<TrpcResponse<ListEditedProjectsResponse>>()
-            .await?
-            .result
-            .data
-            .projects;
-        let logged_in_project_id = client
-            .get("https://cohost.org/api/v1/trpc/login.loggedIn")
-            .send()
-            .await?
-            .json::<TrpcResponse<LoggedInResponse>>()
-            .await?
-            .result
-            .data
-            .projectId;
+        let edited_projects = get_json::<TrpcResponse<ListEditedProjectsResponse>>(
+            &client,
+            "https://cohost.org/api/v1/trpc/projects.listEditedProjects",
+        )
+        .await?
+        .result
+        .data
+        .projects;
+        let logged_in_project_id = get_json::<TrpcResponse<LoggedInResponse>>(
+            &client,
+            "https://cohost.org/api/v1/trpc/login.loggedIn",
+        )
+        .await?
+        .result
+        .data
+        .projectId;
         let logged_in_project = edited_projects
             .iter()
             .find(|project| project.projectId == logged_in_project_id)
@@ -107,8 +106,7 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
     for page in 0.. {
         let url =
             format!("https://cohost.org/api/v1/project/{requested_project}/posts?page={page}");
-        info!("GET {url}");
-        let response: PostsResponse = client.get(url).send().await?.json().await?;
+        let response: PostsResponse = get_json(&client, &url).await?;
 
         // nItems may be zero if none of the posts on this page are currently visible,
         // but nPages will only be zero when we have run out of pages.
@@ -135,9 +133,8 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                     "https://cohost.org/rc/liked-posts?skipPosts={}",
                     liked_page * 20
                 );
-                info!("GET {url}");
 
-                let response = client.get(url).send().await?.text().await?;
+                let response = get_text(&client, &url).await?;
                 let document = Html::parse_document(&response);
 
                 let selector = Selector::parse("script#__COHOST_LOADER_STATE__")
@@ -171,4 +168,14 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+async fn get_json<T: DeserializeOwned>(client: &Client, url: &str) -> eyre::Result<T> {
+    info!("GET {url}");
+    Ok(client.get(url).send().await?.json().await?)
+}
+
+async fn get_text(client: &Client, url: &str) -> eyre::Result<String> {
+    info!("GET {url}");
+    Ok(client.get(url).send().await?.text().await?)
 }
