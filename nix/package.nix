@@ -24,7 +24,7 @@ rustPlatform.buildRustPackage {
   };
 
   # don't forget to update this hash when Cargo.lock or ${version} changes!
-  cargoHash = "sha256-kkzroGu5+h5g3qcjwsXsgBSF3uFaECfYmfm1hHHb1uE=";
+  cargoHash = "sha256-r4ZZ3IdM4DGeBtfx9DsBiy4vijM2UmT19G3YpnTHmzA=";
 
   meta = {
     description = "cohost-compatible blog engine and feed reader";
