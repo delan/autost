@@ -13,7 +13,7 @@ use jane_eyre::eyre::{self, bail, eyre, Context};
 use markup5ever_rcdom::{Node, NodeData, RcDom};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::Deserialize;
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 
 use crate::{
     attachments::{AttachmentsContext, CachedFileResult, RealAttachmentsContext},
@@ -57,10 +57,17 @@ pub fn main(args: Cohost2autost) -> eyre::Result<()> {
             // prefix logs with the project_name we’re currently converting chosts for.
             let _guard = span.enter();
             let entry = entry?;
+            let filename = entry.file_name();
+            let Some(filename) = filename.to_str() else {
+                error!(?filename, "unsupported filename");
+                return Ok(());
+            };
             if !specific_post_filenames.is_empty() {
                 if !specific_post_filenames.contains(&entry.file_name()) {
                     return Ok(());
                 }
+            } else if !filename.ends_with(".json") {
+                return Ok(());
             }
             convert_chost(&entry, &RealAttachmentsContext)
                 .wrap_err_with(|| eyre!("{:?}: failed to convert", entry.path()))?;
