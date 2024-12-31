@@ -2,6 +2,8 @@ use std::{
     fs::{copy, create_dir_all, read_dir, File},
     io::{Read, Write},
     path::Path,
+    thread::sleep,
+    time::Duration,
 };
 
 use jane_eyre::eyre::{self, bail, OptionExt};
@@ -237,10 +239,25 @@ fn cache_cohost_attachment(
         .redirect(Policy::none())
         .build()?;
 
-    let mut retries = 2;
+    let mut retries = 4;
+    let mut wait = Duration::from_secs(4);
     let mut redirect;
     let url = loop {
-        redirect = client.head(url).send()?;
+        let result = client.head(url).send();
+        match result {
+            Ok(response) => redirect = response,
+            Err(error) => {
+                if retries == 0 {
+                    bail!("failed to get attachment redirect (after retries): {url}: {error:?}");
+                } else {
+                    warn!(?wait, url, ?error, "retrying failed request");
+                    sleep(wait);
+                    wait *= 2;
+                    retries -= 1;
+                    continue;
+                }
+            }
+        }
         let Some(url) = redirect.headers().get("location") else {
             // error without panicking if the chost refers to a 404 Not Found.
             // retry other requests if they are not client errors (http 4xx).
@@ -265,6 +282,9 @@ fn cache_cohost_attachment(
                     redirect.status()
                 );
             } else {
+                warn!(?wait, url, status = ?redirect.status(), "retrying failed request");
+                sleep(wait);
+                wait *= 2;
                 retries -= 1;
                 continue;
             }
