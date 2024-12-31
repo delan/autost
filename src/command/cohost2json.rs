@@ -1,6 +1,7 @@
 use std::{
     env::{self},
     fs::{create_dir_all, File},
+    io::Write,
     path::Path,
     str,
 };
@@ -106,6 +107,7 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
         Client::builder().build()?
     };
 
+    let mut own_chosts = File::create(output_path.join("own_chosts.txt"))?;
     for page in 0.. {
         let url =
             format!("https://cohost.org/api/v1/project/{requested_project}/posts?page={page}");
@@ -119,10 +121,12 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
 
         for post_value in response.items {
             let post: Post = serde_json::from_value(post_value.clone())?;
-            let path = output_path.join(format!("{}.json", post.postId));
+            let filename = format!("{}.json", post.postId);
+            let path = output_path.join(&filename);
             info!("Writing {path:?}");
             let output_file = File::create(path)?;
             serde_json::to_writer(output_file, &post_value)?;
+            writeln!(own_chosts, "{filename}")?;
         }
     }
 
@@ -131,6 +135,7 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
             warn!("requested liked posts, but COHOST_COOKIE not provided - skipping");
         } else {
             info!("dumping liked chosts for @{}", requested_project);
+            let mut liked_chosts = File::create(output_path.join("liked_chosts.txt"))?;
             for liked_page in 0.. {
                 let url = format!(
                     "https://cohost.org/rc/liked-posts?skipPosts={}",
@@ -164,10 +169,12 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                 }
 
                 for post in liked_store.posts {
-                    let path = output_path.join(format!("{}.json", post.postId));
+                    let filename = format!("{}.json", post.postId);
+                    let path = output_path.join(&filename);
                     info!("Writing {path:?}");
                     let output_file = File::create(path)?;
                     serde_json::to_writer(output_file, &post)?;
+                    writeln!(liked_chosts, "{filename}")?;
                 }
             }
         }
