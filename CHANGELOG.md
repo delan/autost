@@ -1,3 +1,19 @@
+# [1.3.2](https://github.com/delan/autost/releases/tag/1.3.2) (2024-12-31)
+
+in `autost cohost-archive`...
+- now writes some details about the run to run_details.toml for futureproofing
+
+in `autost cohost2json` and `autost cohost-archive`...
+- now writes lists of chosts to own_chosts.txt and liked_chosts.txt for futureproofing
+- now retries failed requests using exponential backoff ([#33](https://github.com/delan/autost/issues/33))
+
+in `autost cohost2autost` and `autost cohost-archive`...
+- now ignores chost files not ending in .json unless explicitly given
+- now retries attachment redirect requests that fail with no response
+- now uses exponential backoff when retrying attachment redirect requests
+
+thanks to [@nex3](https://github.com/nex3) and [@docprofsky](https://github.com/docprofsky) for their feedback!
+
 # [1.3.1](https://github.com/delan/autost/releases/tag/1.3.1) (2024-12-30)
 
 in `autost cohost2json` and `autost cohost-archive`...
