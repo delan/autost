@@ -28,6 +28,7 @@ pub mod attachments;
 pub mod cohost;
 pub mod css;
 pub mod dom;
+pub mod http;
 pub mod meta;
 pub mod migrations;
 pub mod output;
