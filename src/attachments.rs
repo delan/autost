@@ -240,7 +240,18 @@ fn cache_cohost_attachment(
     let mut retries = 2;
     let mut redirect;
     let url = loop {
-        redirect = client.head(url).send()?;
+        let result = client.head(url).send();
+        match result {
+            Ok(response) => redirect = response,
+            Err(error) => {
+                if retries == 0 {
+                    bail!("failed to get attachment redirect (after retries): {url}: {error:?}");
+                } else {
+                    retries -= 1;
+                    continue;
+                }
+            }
+        }
         let Some(url) = redirect.headers().get("location") else {
             // error without panicking if the chost refers to a 404 Not Found.
             // retry other requests if they are not client errors (http 4xx).
