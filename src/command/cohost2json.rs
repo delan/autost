@@ -164,10 +164,6 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                 })
                 .await?;
 
-                if !liked_store.paginationMode.morePagesForward {
-                    break;
-                }
-
                 for post in liked_store.posts {
                     let filename = format!("{}.json", post.postId);
                     let path = output_path.join(&filename);
@@ -175,6 +171,10 @@ pub async fn main(args: Cohost2json) -> eyre::Result<()> {
                     let output_file = File::create(path)?;
                     serde_json::to_writer(output_file, &post)?;
                     writeln!(liked_chosts, "{filename}")?;
+                }
+
+                if !liked_store.paginationMode.morePagesForward {
+                    break;
                 }
             }
         }
