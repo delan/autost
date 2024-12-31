@@ -1,3 +1,25 @@
+# [1.3.2](https://github.com/delan/autost/releases/tag/1.3.2) (2024-12-31)
+
+in `autost cohost2json` and `autost cohost-archive`...
+- **fixed a bug causing `--liked` mode to skip the last page of liked chosts**
+  - in other words, up to 20 of your oldest likes were missing from your archive
+  - this only affects archives of your own cohost projects, not other people’s projects
+  - fixing your archives should be relatively fast, because most of your attachments will not need to be redownloaded
+  - if you used `autost cohost2json`, please rerun both `autost cohost2json` and `autost cohost2autost` to fix your archived chosts
+  - if you used `autost cohost-archive`, please delete both `cohost2json.done` and `cohost2autost.done` on only the archived projects you need to fix, then rerun it
+- now writes lists of chosts to own_chosts.txt and liked_chosts.txt for futureproofing
+- now retries failed requests using exponential backoff ([#33](https://github.com/delan/autost/issues/33))
+
+in `autost cohost2autost` and `autost cohost-archive`...
+- now ignores chost files not ending in .json unless explicitly given
+- now retries attachment redirect requests that fail with no response
+- now uses exponential backoff when retrying attachment redirect requests
+
+in `autost cohost-archive`...
+- now writes some details about the run to run_details.toml for futureproofing
+
+thanks to [@nex3](https://github.com/nex3) and [@docprofsky](https://github.com/docprofsky) for their feedback!
+
 # [1.3.1](https://github.com/delan/autost/releases/tag/1.3.1) (2024-12-30)
 
 in `autost cohost2json` and `autost cohost-archive`...

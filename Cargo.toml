@@ -1,6 +1,6 @@
 [package]
 name = "autost"
-version = "1.3.1"
+version = "1.3.2"
 edition = "2021"
 default-run = "autost"
 repository = "https://github.com/delan/autost"
@@ -78,3 +78,5 @@ unix-archive = ".tar.gz"
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = true
+# build and upload artifacts for pull requests
+pr-run-mode = "upload"

@@ -16,7 +16,7 @@ let
 in
 rustPlatform.buildRustPackage {
   pname = "autost";
-  version = "1.3.1";
+  version = "1.3.2";
 
   src = fs.toSource {
     root = ../.;
@@ -24,7 +24,7 @@ rustPlatform.buildRustPackage {
   };
 
   # don't forget to update this hash when Cargo.lock or ${version} changes!
-  cargoHash = "sha256-phljQEtTxMJJJbr/II+4TWJmJYMUfoZDXiKrxV8od4M=";
+  cargoHash = "sha256-3zvY6mrK8tADFcxBc89XML30cpANWF9GYzkqfkUWJXI=";
 
   # tell rust that the version should be “x.y.z-nix”
   # FIXME: nix package does not have access to git
