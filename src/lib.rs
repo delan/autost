@@ -1,9 +1,21 @@
-use std::{cmp::Ordering, collections::BTreeSet, fs::File, io::Read, sync::LazyLock};
+use std::{
+    cmp::Ordering,
+    collections::BTreeSet,
+    env,
+    fs::File,
+    io::{ErrorKind, Read, Write},
+    path::Path,
+    sync::LazyLock,
+};
 
 use askama::Template;
-use jane_eyre::eyre::{self, Context, OptionExt};
+use chrono::{SecondsFormat, Utc};
+use indexmap::{indexmap, IndexMap};
+use jane_eyre::eyre::{self, bail, Context, OptionExt};
 use markup5ever_rcdom::RcDom;
-use serde::Deserialize;
+use renamore::rename_exclusive_fallback;
+use serde::{Deserialize, Serialize};
+use toml::{toml, Value};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
@@ -44,6 +56,20 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
 
     result.context("failed to load settings").unwrap()
 });
+
+/// details about the run, to help with migrations and bug fixes.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RunDetails {
+    pub version: String,
+    pub args: Vec<String>,
+    pub start_time: String,
+    #[serde(flatten)]
+    pub rest: IndexMap<String, Value>,
+    pub ok: Option<bool>,
+}
+pub struct RunDetailsWriter {
+    file: File,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Template)]
 #[template(path = "post-meta.html")]
@@ -92,6 +118,70 @@ pub struct TemplatedPost {
     pub needs_attachments: BTreeSet<SitePath>,
     pub og_image: Option<String>,
     pub og_description: String,
+}
+
+impl Default for RunDetails {
+    fn default() -> Self {
+        let version = if let Some(git_describe) = option_env!("VERGEN_GIT_DESCRIBE") {
+            git_describe.to_owned()
+        } else if option_env!("AUTOST_IS_NIX_BUILD").is_some_and(|e| e == "1") {
+            // FIXME: nix package does not have access to git
+            // <https://github.com/NixOS/nix/issues/7201>
+            format!("{}-nix", env!("CARGO_PKG_VERSION"))
+        } else {
+            // other cases, including crates.io (hypothetically)
+            format!("{}-unknown", env!("CARGO_PKG_VERSION"))
+        };
+
+        Self {
+            version,
+            args: env::args().skip(1).collect(),
+            start_time: Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true),
+            rest: indexmap! {},
+            ok: None,
+        }
+    }
+}
+
+impl RunDetailsWriter {
+    pub fn create_in(dir: impl AsRef<Path>) -> eyre::Result<Self> {
+        let dir = dir.as_ref();
+        for i in 0.. {
+            if let Err(error) = rename_exclusive_fallback(
+                dir.join("run_details.toml"),
+                dir.join(format!("run_details.{i}.toml")),
+            ) {
+                match error.kind() {
+                    ErrorKind::NotFound => break,
+                    ErrorKind::AlreadyExists => continue,
+                    other => bail!(
+                        "failed to hard link old run_details.toml at run_details.{i}.toml: {other:?}"
+                    ),
+                }
+            } else {
+                break;
+            }
+        }
+
+        // at this point, run_details.toml should not exist, unless there are concurrent shenanigans
+        let mut file = File::create_new(dir.join("run_details.toml"))?;
+        write!(file, "{}", toml::to_string(&RunDetails::default())?)?;
+
+        Ok(Self { file })
+    }
+
+    pub fn write(&mut self, key: &str, value: impl Into<Value>) -> eyre::Result<()> {
+        let result = toml! { x = (value.into()) }.to_string();
+        let result = result
+            .strip_prefix("x = ")
+            .expect("guaranteed by definition");
+
+        Ok(write!(self.file, r#"{key} = {}"#, result)?)
+    }
+
+    pub fn ok(mut self) -> eyre::Result<()> {
+        Ok(writeln!(self.file, "ok = true")?)
+    }
 }
 
 impl PostMeta {

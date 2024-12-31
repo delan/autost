@@ -15,6 +15,7 @@ use tracing::{info, warn};
 use crate::{
     cohost::{FollowedFeedResponse, ListEditedProjectsResponse, LoggedInResponse, TrpcResponse},
     command::{cohost2autost::Cohost2autost, cohost2json::Cohost2json},
+    RunDetailsWriter,
 };
 
 #[derive(clap::Args, Debug)]
@@ -29,6 +30,7 @@ pub struct CohostArchive {
 pub async fn main(args: CohostArchive) -> eyre::Result<()> {
     create_dir_all(&args.output_path)?;
     set_current_dir(args.output_path)?;
+    let mut run_details = RunDetailsWriter::create_in(".")?;
 
     let connect_sid = env::var("COHOST_COOKIE").wrap_err("failed to get COHOST_COOKIE")?;
     info!("COHOST_COOKIE is set; output will include private or logged-in-only chosts!");
@@ -66,6 +68,15 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
         "you are currently logged in as @{}",
         logged_in_project.handle
     );
+
+    run_details.write(
+        "cohost-archive.logged_in_project.handle",
+        &*logged_in_project.handle,
+    )?;
+    run_details.write(
+        "cohost-archive.logged_in_project.projectId",
+        i64::try_from(logged_in_project.projectId)?,
+    )?;
 
     let project_names = if args.project_names.is_empty() {
         info!("GET https://cohost.org/api/v1/trpc/projects.followedFeed.query?input=%7B%22sortOrder%22:%22followed-asc%22,%22limit%22:1000,%22beforeTimestamp%22:1735199148430%7D");
@@ -122,6 +133,7 @@ pub async fn main(args: CohostArchive) -> eyre::Result<()> {
         archive_cohost_project(&project_name, archive_likes).await?;
     }
 
+    run_details.ok()?;
     Ok(())
 }
 

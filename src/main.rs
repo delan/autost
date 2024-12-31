@@ -11,10 +11,11 @@ use autost::{
         render::Render,
         server::Server,
     },
-    SETTINGS,
+    RunDetails, SETTINGS,
 };
 use clap::Parser;
 use jane_eyre::eyre;
+use tracing::info;
 
 #[derive(clap::Parser, Debug)]
 enum Command {
@@ -34,6 +35,7 @@ async fn main() -> eyre::Result<()> {
     cli_init()?;
 
     let command = Command::parse();
+    info!(run_details = ?RunDetails::default());
 
     if matches!(
         command,
