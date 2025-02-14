@@ -1,3 +1,8 @@
+# [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
+
+in `autost server`...
+- added buttons for quickly composing a post in an existing tag
+
 # [1.3.2](https://github.com/delan/autost/releases/tag/1.3.2) (2024-12-31)
 
 in `autost cohost2json` and `autost cohost-archive`...

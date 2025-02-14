@@ -16,10 +16,12 @@
     {% endif %}
     <footer><div class="tags">{% for tag in post.inner.meta.tags %}
         {#- TODO: build tag page href properly in path module -#}
+        <span class="tag">
         {%- if SETTINGS.tag_is_interesting(tag) -%}<a class="tag" href="tagged/{{ tag }}.html">{%- endif -%}
-        <span class="tag">#<span class="p-category">{{ tag }}</span></span>
+        #<span class="p-category">{{ tag }}</span>
         {%- if SETTINGS.tag_is_interesting(tag) -%}</a>{%- endif -%}
-        &#x2003;
+        <span class="actions"></span>
+        </span>&#x2003;
     {% endfor %}</div><div class="actions"></div></footer>
 </{% if simple_mode && !post.is_main_post %}blockquote{% else %}article{% endif %}>
 {% endfor %}

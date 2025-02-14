@@ -230,9 +230,11 @@ article.post > footer > .actions:not(:empty) {
     margin-left: 1em;
     align-self: flex-end;
 }
-.server {
+.server:not(#specificity) {
+    color: var(--not-black);
     background: var(--mango);
-    padding: 0.5em;
+    text-decoration: none;
+    padding: 0.25em 0.5em;
 }
 
 /* post composer */

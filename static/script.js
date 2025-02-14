@@ -96,6 +96,16 @@ async function checkAutostServer() {
         a.className = "server";
         actions.prepend(a);
     }
+
+    for (const tag of document.querySelectorAll("article.post > footer .tags > .tag")) {
+        const actions = tag.querySelector(":scope .actions");
+        const p_category = tag.querySelector(":scope .p-category");
+        const a = document.createElement("a");
+        a.href = `${document.body.dataset.baseUrl}compose?${new URLSearchParams({ tags: p_category.textContent })}`;
+        a.textContent = "+";
+        a.className = "server";
+        actions.append(a);
+    }
 }
 
 function renderTerminalError(pre) {

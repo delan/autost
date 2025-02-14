@@ -50,9 +50,19 @@ pub async fn main(args: Server) -> eyre::Result<()> {
     let compose_route = warp::path!("compose")
         .and(warp::filters::method::get())
         .and(warp::filters::query::query())
-        .and_then(|mut query: BTreeMap<String, String>| async move {
+        .and_then(|query_vec: Vec<(String, String)>| async move {
             let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+            // convert query params from ordered pairs to map of lists
+            let mut query = BTreeMap::<String, Vec<String>>::default();
+            for (key, value) in query_vec {
+                query.entry(key).or_default().push(value);
+            }
             let references = if let Some(reply_to) = query.remove("reply_to") {
+                let [ref reply_to] = reply_to[..] else {
+                    return Err(Rejection::from(InternalError(eyre!(
+                        "multiple reply_to query parameters not allowed"
+                    ))));
+                };
                 let reply_to = PostsPath::ROOT.join(&reply_to).map_err(BadRequest)?;
                 let post = TemplatedPost::load(&reply_to).map_err(InternalError)?;
                 let thread = Thread::try_from(post).map_err(InternalError)?;
@@ -70,7 +80,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 title: Some("headline".to_owned()),
                 published: Some(now),
                 author: SETTINGS.self_author.clone(),
-                tags: vec![],
+                tags: query.remove("tags").unwrap_or_default(),
                 is_transparent_share: false,
             };
             let meta = meta
