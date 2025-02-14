@@ -37,6 +37,13 @@ pub struct Server {
 
 static HTML: &'static str = "text/html; charset=utf-8";
 
+/// - site routes (all under `base_url`)
+///   - `GET <base_url>compose` (`compose_route`)
+///   - `POST <base_url>preview` (`preview_route`)
+///   - `POST <base_url>publish` (`publish_route`)
+///   - `GET <base_url><path>` (`static_route`)
+/// - `GET /` (`root_route`)
+/// - `<METHOD> <path>` (`not_found_route`)
 pub async fn main(args: Server) -> eyre::Result<()> {
     render_all()?;
 
@@ -78,7 +85,8 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(result)
         })
-        .with(header("Content-Type", HTML));
+        .with(header("Content-Type", HTML))
+        .recover(recover);
 
     // POST /preview with urlencoded body: source=...
     let preview_route = warp::path!("preview")
@@ -97,7 +105,8 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(result)
         })
-        .with(header("Content-Type", HTML));
+        .with(header("Content-Type", HTML))
+        .recover(recover);
 
     // POST /publish[?js] with urlencoded body: source=...
     let publish_route = warp::path!("publish")
@@ -155,9 +164,10 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 Ok::<_, Rejection>(response)
             },
         )
-        .with(header("Content-Type", HTML));
+        .with(header("Content-Type", HTML))
+        .recover(recover);
 
-    let default_route = warp::filters::method::get()
+    let static_route = warp::filters::method::get()
         .and(warp::filters::path::peek())
         .and_then(|peek: Peek| async move {
             let mut segments = peek.segments().peekable();
@@ -242,18 +252,20 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 .map_err(InternalError)?;
 
             Ok(response)
-        });
+        })
+        .recover(recover);
 
-    // successful responses are in their own types. error responses are in plain text.
+    // prepend base_url to all site routes.
     let mut site_routes = any().boxed();
     for component in SETTINGS.base_url_path_components() {
         site_routes = site_routes.and(path(component)).boxed();
     }
+    // successful responses are in their own types. error responses are in plain text.
     let site_routes = site_routes.and(
         compose_route
             .or(preview_route)
             .or(publish_route)
-            .or(default_route),
+            .or(static_route),
     );
 
     // if the base_url setting is not /, redirect / to base_url.
@@ -264,10 +276,17 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 .wrap_err("failed to build Uri")
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(temporary(url))
-        });
-    let routes = site_routes.or(root_route);
+        })
+        .recover(recover);
 
-    let routes = routes.recover(recover);
+    let not_found_route = any()
+        .and(warp::filters::path::peek())
+        .and_then(|peek: Peek| async move {
+            Err::<Box<dyn Reply>, Rejection>(custom(NotFound(peek.as_str().to_owned())))
+        })
+        .recover(recover);
+
+    let routes = site_routes.or(root_route).or(not_found_route);
 
     let port = args.port.unwrap_or(SETTINGS.server_port());
     info!("starting server on http://[::1]:{}", port);
@@ -301,7 +320,17 @@ struct ComposeTemplate {
     source: String,
 }
 
-async fn recover(error: Rejection) -> Result<impl Reply, std::convert::Infallible> {
+/// map all errors, other than errors due to none of the routes’ path and method filters matching,
+/// from `Err(Rejection)` to `Ok(Reply)`, so we don’t try any other routes.
+///
+/// every route needs its own `.recover(recover)` for this to work correctly.
+async fn recover(error: Rejection) -> Result<impl Reply, Rejection> {
+    // if the error was due to none of the routes’ path and method filters matching, return that
+    // error, allowing the default route to try serving a static file.
+    if error.is_not_found() {
+        return Err(error);
+    }
+    // for all other errors, convert Err(Rejection) to Ok(Reply), so we don’t try any other routes.
     Ok(if let Some(error) = error.find::<BadRequest>() {
         error!(
             ?error,
