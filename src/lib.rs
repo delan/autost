@@ -10,9 +10,11 @@ use std::{
 
 use askama::Template;
 use chrono::{SecondsFormat, Utc};
+use dom::{QualNameExt, Transform};
+use html5ever::{Attribute, QualName};
 use indexmap::{indexmap, IndexMap};
 use jane_eyre::eyre::{self, bail, Context, OptionExt};
-use markup5ever_rcdom::RcDom;
+use markup5ever_rcdom::{NodeData, RcDom};
 use renamore::rename_exclusive_fallback;
 use serde::{Deserialize, Serialize};
 use toml::{toml, Value};
@@ -411,6 +413,23 @@ impl TemplatedPost {
     pub fn filter(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
         // reader step: extract metadata.
         let post = extract_metadata(unsafe_html)?;
+
+        let mut transform = Transform::new(post.dom.document.clone());
+        while transform.next(|kids, new_kids| {
+            for kid in kids {
+                if let NodeData::Element { name, attrs, .. } = &kid.data {
+                    // reader step: make all `<img>` elements lazy loaded.
+                    if name == &QualName::html("img") {
+                        attrs.borrow_mut().push(Attribute {
+                            name: QualName::attribute("loading"),
+                            value: "lazy".into(),
+                        });
+                    }
+                }
+                new_kids.push(kid.clone());
+            }
+            Ok(())
+        })? {}
 
         // reader step: filter html.
         let extracted_html = serialize_html_fragment(post.dom)?;
