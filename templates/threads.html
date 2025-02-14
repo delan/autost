@@ -10,7 +10,9 @@
     {%~ for link in SETTINGS.nav ~%}<li><a href="{{ link.href }}">{{ link.text }}</a>{%~ endfor ~%}
     </ul>
     {% for tags in SETTINGS.interesting_tag_groups_iter() %}<ul class="tags">
-    {% for tag in tags -%}<li><a href="tagged/{{ tag }}.html">#{{ tag }}</a>{{ "\n" }}{%- endfor %}
+    {% for tag in tags -%}<li><span class="tag">
+        <a class="tag" href="tagged/{{ tag }}.html">#<span class="p-category">{{ tag }}</span></a><span class="actions"></span>
+    </span>{%- endfor %}
     </ul>{% endfor %}
     <hr>
     <ul>

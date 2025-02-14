@@ -97,7 +97,7 @@ async function checkAutostServer() {
         actions.prepend(a);
     }
 
-    for (const tag of document.querySelectorAll("article.post > footer .tags > .tag")) {
+    for (const tag of document.querySelectorAll("nav .tags > li > .tag, article.post > footer .tags > .tag")) {
         const actions = tag.querySelector(":scope .actions");
         const p_category = tag.querySelector(":scope .p-category");
         const a = document.createElement("a");
