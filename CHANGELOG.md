@@ -1,7 +1,12 @@
 # [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
 
+in `autost render`...
+- **all &lt;img> elements** are now **lazy loaded**, massively reducing the size of large threads pages
+
 in `autost server`...
-- added buttons for quickly composing a post in an existing tag
+- **now has \[+\] buttons on each tag** for quickly composing a post in an existing tag
+- now responds with http 404 and logs the path when request is outside of `base_url` ([#37](https://github.com/delan/autost/issues/37))
+- now correctly logs the details of errors that occur in the `GET /compose` route ([#38](https://github.com/delan/autost/issues/38))
 
 # [1.3.2](https://github.com/delan/autost/releases/tag/1.3.2) (2024-12-31)
 
