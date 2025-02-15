@@ -39,6 +39,9 @@ static HTML: &'static str = "text/html; charset=utf-8";
 
 /// - site routes (all under `base_url`)
 ///   - `GET <base_url>compose` (`compose_route`)
+///     - `?reply_to=<PostsPath>` (optional; zero or one)
+///     - `?tags=<str>` (optional; any number of times)
+///     - `?is_transparent_share` (optional)
 ///   - `POST <base_url>preview` (`preview_route`)
 ///   - `POST <base_url>publish` (`publish_route`)
 ///   - `GET <base_url><path>` (`static_route`)
@@ -74,20 +77,25 @@ pub async fn main(args: Server) -> eyre::Result<()> {
             } else {
                 vec![]
             };
+            let is_transparent_share = query.contains_key("is_transparent_share");
             let meta = PostMeta {
                 archived: None,
                 references,
-                title: Some("headline".to_owned()),
+                title: (!is_transparent_share).then_some("headline".to_owned()),
                 published: Some(now),
                 author: SETTINGS.self_author.clone(),
                 tags: query.remove("tags").unwrap_or_default(),
-                is_transparent_share: false,
+                is_transparent_share,
             };
             let meta = meta
                 .render()
                 .wrap_err("failed to render template")
                 .map_err(InternalError)?;
-            let source = format!("{meta}\npost body (accepts markdown!)");
+            let source = if is_transparent_share {
+                meta
+            } else {
+                format!("{meta}\n\npost body (accepts markdown!)")
+            };
             let result = ComposeTemplate { source };
             let result = result
                 .render()

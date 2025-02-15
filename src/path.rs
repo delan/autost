@@ -199,6 +199,16 @@ impl PostsPath {
         )
     }
 
+    pub fn compose_transparent_share_url(&self) -> String {
+        // references_url is already urlencoded
+        format!(
+            "http://[::1]:{}{}compose?reply_to={}&is_transparent_share",
+            SETTINGS.server_port(),
+            SETTINGS.base_url,
+            self.references_url()
+        )
+    }
+
     pub fn rendered_path(&self) -> eyre::Result<Option<SitePath>> {
         match self.kind {
             PostsKind::Post { .. } => {

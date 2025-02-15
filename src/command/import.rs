@@ -205,6 +205,10 @@ fn write_post(
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
     info!("click here to reply: {}", path.compose_reply_url());
+    info!(
+        "or transparent share: {}",
+        path.compose_transparent_share_url()
+    );
 
     Ok(())
 }
