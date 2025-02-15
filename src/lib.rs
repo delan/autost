@@ -38,6 +38,7 @@ pub mod command {
     pub mod server;
 }
 
+pub mod akkoma;
 pub mod attachments;
 pub mod cohost;
 pub mod css;

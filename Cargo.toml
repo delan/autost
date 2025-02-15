@@ -20,6 +20,7 @@ vergen-gix = "1.0.3"
 [dependencies]
 ammonia = "4.0.0"
 askama = "0.12.1"
+base64 = "0.22.1"
 bytes = "1.7.1"
 chrono = "0.4.38"
 clap = { version = "4.5.23", features = ["derive"] }

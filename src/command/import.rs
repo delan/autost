@@ -5,13 +5,17 @@ use std::{
 };
 
 use askama::Template;
+use base64::{prelude::BASE64_STANDARD, Engine};
 use html5ever::Attribute;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{Handle, NodeData};
-use tracing::{debug, info, trace};
+use reqwest::Client;
+use serde::Deserialize;
+use tracing::{debug, info, trace, warn};
 use url::Url;
 
 use crate::{
+    akkoma::{AkkomaImgTemplate, ApiInstance, ApiStatus},
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
         html_attributes_with_embedding_urls, html_attributes_with_non_embedding_urls,
@@ -41,8 +45,8 @@ pub async fn main(args: Import) -> eyre::Result<()> {
 
     let FetchPostResult {
         base_href,
-        e_content,
-        u_url,
+        content: e_content,
+        url: u_url,
         meta,
     } = fetch_post(&url).await?;
 
@@ -83,8 +87,8 @@ pub async fn reimport(args: Reimport) -> eyre::Result<()> {
     let url = post.meta.archived.ok_or_eyre("post is not archived")?;
     let FetchPostResult {
         base_href,
-        e_content,
-        u_url,
+        content: e_content,
+        url: u_url,
         meta,
     } = fetch_post(&url).await?;
     assert_eq!(url, u_url.to_string());
@@ -101,8 +105,25 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
     let client = reqwest::Client::new();
     let response = client.get(url).send().await?;
     let dom = parse_html_document(&response.bytes().await?)?;
+
+    if let Some(result) = fetch_h_entry_post(dom.document.clone(), url)? {
+        return Ok(result);
+    }
+    if let Some(result) = fetch_akkoma_post(dom.document.clone(), url, &client).await? {
+        return Ok(result);
+    }
+
+    bail!("failed to find a supported post")
+}
+
+fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchPostResult>> {
+    let Some(h_entry) = mf2_find(document.clone(), "h-entry") else {
+        return Ok(None);
+    };
+    info!("found h-entry post");
+
     let mut base_href = Url::parse(&url)?;
-    for node in BreadthTraverse::elements(dom.document.clone()) {
+    for node in BreadthTraverse::elements(document) {
         let NodeData::Element { name, attrs, .. } = &node.data else {
             unreachable!()
         };
@@ -114,7 +135,6 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
         }
     }
 
-    let h_entry = mf2_find(dom.document.clone(), "h-entry").ok_or_eyre("no .h-entry found")?;
     let e_content =
         mf2_e(h_entry.clone(), "e-content")?.ok_or_eyre(".h-entry has no .e-content")?;
     trace!(?e_content);
@@ -126,11 +146,12 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
     let p_category = mf2_find_all(h_entry.clone(), "p-category");
     trace!(?u_url, ?dt_published, ?p_name, ?p_author, ?p_category);
 
-    let u_url = u_url.ok_or_eyre(".h-entry has no .u-url")?;
+    // the canonical url is what the h-entry says it is.
+    let canonical_url = u_url.ok_or_eyre(".h-entry has no .u-url")?;
     let author = if has_class(p_author.clone(), "h-card")? {
         let card_url = mf2_u(p_author.clone(), "u-url", &base_href)?;
         let card_name = mf2_p(p_author.clone(), "p-name")?.ok_or_eyre(".h-card has no .p-name")?;
-        let url = card_url.unwrap_or(u_url.clone());
+        let url = card_url.unwrap_or(canonical_url.clone());
         Author {
             href: url.to_string(),
             name: card_name.clone(),
@@ -141,10 +162,10 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
         let p_author = mf2_p(p_author.clone(), "p-author")?
             .ok_or_eyre("failed to parse .p-author as p-property")?;
         Author {
-            href: u_url.to_string(),
+            href: canonical_url.to_string(),
             name: p_author.clone(),
             display_name: p_author.clone(),
-            display_handle: u_url.authority().to_owned(),
+            display_handle: canonical_url.authority().to_owned(),
         }
     };
     trace!(?author);
@@ -172,7 +193,7 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
     }
 
     let meta = PostMeta {
-        archived: Some(u_url.to_string()),
+        archived: Some(canonical_url.to_string()),
         references: vec![], // TODO: define a cohost-like h-entry extension for this?
         title: p_name,
         published: dt_published,
@@ -182,12 +203,99 @@ async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
     };
     debug!(?meta);
 
-    Ok(FetchPostResult {
+    Ok(Some(FetchPostResult {
         base_href,
-        e_content,
-        u_url,
+        content: e_content,
+        url: canonical_url,
         meta,
-    })
+    }))
+}
+
+async fn fetch_akkoma_post(
+    document: Handle,
+    url: &str,
+    client: &Client,
+) -> eyre::Result<Option<FetchPostResult>> {
+    // check if the page is actually an akkoma page.
+    #[derive(Deserialize)]
+    struct InitialResults {
+        #[serde(rename = "/api/v1/instance")]
+        api_v1_instance: String,
+    }
+    let Some(initial_results) = (|| -> eyre::Result<Option<InitialResults>> {
+        for node in BreadthTraverse::elements(document) {
+            let NodeData::Element { name, attrs, .. } = &node.data else {
+                unreachable!()
+            };
+            if name == &QualName::html("script") {
+                if attrs.borrow().attr_str("id")? == Some("initial-results") {
+                    return Ok(Some(serde_json::from_str(&text_content(node)?)?));
+                }
+            }
+        }
+        Ok(None)
+    })()?
+    else {
+        return Ok(None);
+    };
+    let instance = BASE64_STANDARD.decode(initial_results.api_v1_instance)?;
+    let instance = serde_json::from_slice::<ApiInstance>(&instance)?;
+    info!(?instance.uri, ?instance.version, "found akkoma instance");
+
+    // try to fetch the post via the mastodon api.
+    let instance_url = Url::parse(&instance.uri)?;
+    trace!(?instance_url);
+    let fetched_page_url = Url::parse(url)?;
+    trace!(?fetched_page_url);
+    let status_id = fetched_page_url
+        .path_segments()
+        .ok_or_eyre("bad page url")?
+        .last()
+        .ok_or_eyre("page url has no last path segment")?;
+    trace!(?status_id);
+    let api_url = instance_url.join(&format!("api/v1/statuses/{status_id}"))?;
+    info!("GET {api_url}");
+    let response = client.get(api_url).send().await?;
+    let status = response.json::<ApiStatus>().await?;
+
+    // the canonical url is what the api says it is.
+    let canonical_url = status.url;
+    let author = Author::from(&status.account);
+
+    let mut contents = vec![];
+    for attachment in status.media_attachments {
+        if attachment.r#type != "image" {
+            warn!(?attachment.r#type, "skipping unknown attachment type");
+            continue;
+        }
+        let template = AkkomaImgTemplate {
+            data_akkoma_src: attachment.preview_url.clone(),
+            href: attachment.url,
+            src: attachment.preview_url,
+            alt: attachment.description,
+        };
+        contents.push(template.render()?);
+    }
+    contents.push(status.content);
+    let content = contents.join("");
+
+    let url = Url::parse(&canonical_url)?;
+    let meta = PostMeta {
+        archived: Some(canonical_url),
+        references: vec![], // TODO: handle akkoma reply chain?
+        title: None,
+        published: Some(status.created_at),
+        author: Some(author),
+        tags: status.tags.into_iter().map(|tag| tag.name).collect(),
+        is_transparent_share: false,
+    };
+
+    Ok(Some(FetchPostResult {
+        base_href: url.clone(),
+        content: content,
+        url,
+        meta,
+    }))
 }
 
 fn write_post(
@@ -215,8 +323,8 @@ fn write_post(
 
 struct FetchPostResult {
     base_href: Url,
-    e_content: String,
-    u_url: Url,
+    content: String,
+    url: Url,
     meta: PostMeta,
 }
 
