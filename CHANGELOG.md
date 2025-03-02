@@ -1,5 +1,8 @@
 # [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
 
+in the html output...
+- posts can now contain the **‘aria-label’ attribute**
+
 in `autost import`...
 - now supports **importing post pages from [akkoma](https://akkoma.social/) instances**
 - now gives you an alternative **link to compose a transparent share** (`?is_transparent_share`)
