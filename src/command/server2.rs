@@ -3,8 +3,16 @@ use crate::{command::server::Server, SETTINGS};
 use jane_eyre::eyre;
 use rocket::{
     fs::{FileServer, Options},
-    Config,
+    get,
+    response::Redirect,
+    routes, Config,
 };
+
+// lower than FileServer, which uses rank 10 by default
+#[get("/", rank = 100)]
+fn root_route() -> Redirect {
+    Redirect::to(&SETTINGS.base_url)
+}
 
 /// - site routes (all under `base_url`)
 ///   - `GET <base_url>compose` (`compose_route`)
@@ -15,7 +23,6 @@ use rocket::{
 ///   - `POST <base_url>publish` (`publish_route`)
 ///   - `GET <base_url><path>` (`static_route`)
 /// - `GET /` (`root_route`)
-/// - `<METHOD> <path>` (`not_found_route`)
 pub async fn main(args: Server) -> eyre::Result<()> {
     let port = args.port.unwrap_or(SETTINGS.server_port());
     let _rocket = rocket::custom(Config::figment().merge(("port", port)))
@@ -28,6 +35,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 Options::Index | Options::DotFiles | Options::NormalizeDirs,
             ),
         )
+        .mount("/", routes![root_route])
         .launch()
         .await?;
 
