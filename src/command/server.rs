@@ -1,11 +1,14 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::File,
+    fs::{File, OpenOptions},
     io::{self, Read, Write},
     net::IpAddr,
     path::{Path, PathBuf},
     str::FromStr,
 };
+
+#[cfg(windows)]
+use std::os::windows::prelude::OpenOptionsExt;
 
 use askama::Template;
 use chrono::{SecondsFormat, Utc};
@@ -215,7 +218,15 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 NotFound,
             }
             fn read_file_or_index(body: &mut Vec<u8>, path: &Path) -> Result<&'static str, Error> {
-                if let Ok(mut file) = File::open(path) {
+                // "You must set [FILE_FLAG_BACKUP_SEMANTICS] to obtain a handle to a directory."
+                // <https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew>
+                #[cfg(windows)]
+                let open = OpenOptions::new().read(true).custom_flags(0x02000000 /*FILE_FLAG_BACKUP_SEMANTICS*/).open(path);
+
+                #[cfg(not(windows))]
+                let open = OpenOptions::new().read(true).open(path);
+
+                if let Ok(mut file) = open {
                     let metadata = file.metadata()
                         .wrap_err("failed to get file metadata")
                         .map_err(Error::Internal)?;
