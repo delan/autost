@@ -33,6 +33,7 @@ jane-eyre = "0.3.0"
 markup5ever_rcdom = "0.3.0"
 rayon = "1.10.0"
 renamore = "0.3.2"
+rocket = "0.5.1"
 scraper = "0.22.0"
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = { version = "1.0.128", features = ["unbounded_depth"] }

@@ -36,6 +36,7 @@ pub mod command {
     pub mod new;
     pub mod render;
     pub mod server;
+    pub mod server2;
 }
 
 pub mod akkoma;

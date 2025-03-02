@@ -28,9 +28,10 @@ enum Command {
     Reimport(Reimport),
     Render(Render),
     Server(Server),
+    Server2(Server),
 }
 
-#[tokio::main]
+#[rocket::main]
 async fn main() -> eyre::Result<()> {
     cli_init()?;
 
@@ -60,5 +61,6 @@ async fn main() -> eyre::Result<()> {
         Command::Reimport(args) => command::import::reimport(args).await,
         Command::Render(args) => command::render::main(args),
         Command::Server(args) => command::server::main(args).await,
+        Command::Server2(args) => command::server2::main(args).await,
     }
 }
