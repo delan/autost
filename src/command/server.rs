@@ -36,7 +36,7 @@ use crate::command::render::render_all;
 #[derive(clap::Args, Debug)]
 pub struct Server {
     #[arg(short, long)]
-    port: Option<u16>,
+    pub(crate) port: Option<u16>,
 }
 
 static HTML: &'static str = "text/html; charset=utf-8";

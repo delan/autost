@@ -31,7 +31,9 @@ enum Command {
     Server2(Server),
 }
 
-#[rocket::main]
+// maybe we're supposed to use rocket::main, but that requires us to
+// not use Rc<_> in downstream return types. hopefully tokio::main is ok
+#[tokio::main]
 async fn main() -> eyre::Result<()> {
     cli_init()?;
 
