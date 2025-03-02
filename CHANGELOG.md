@@ -1,9 +1,14 @@
 # [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
 
+in `autost import`...
+- now supports **importing post pages from [akkoma](https://akkoma.social/) instances**
+- now gives you an alternative **link to compose a transparent share** (`?is_transparent_share`)
+
 in `autost render`...
 - **all &lt;img> elements** are now **lazy loaded**, massively reducing the size of large threads pages
 
 in `autost server`...
+- **fixed a bug where serving index.html was broken on windows** ([@ar1a](https://github.com/ar1a), [#39](https://github.com/delan/autost/pull/39))
 - **now has \[+\] buttons on each tag** for quickly composing a post in an existing tag
 - now responds with http 404 and logs the path when request is outside of `base_url` ([#37](https://github.com/delan/autost/issues/37))
 - now correctly logs the details of errors that occur in the `GET /compose` route ([#38](https://github.com/delan/autost/issues/38))
@@ -39,7 +44,7 @@ in `autost cohost2json` and `autost cohost-archive`...
   - if you used `autost cohost-archive`, please delete both `cohost2json.done` and `cohost2autost.done` on only the archived projects you need to fix, then rerun it
 
 in `autost cohost2autost` and `autost cohost-archive`...
-- no longer crashes when attachment filenames contain `:` on windows (@echowritescode, [#32](https://github.com/delan/autost/pull/32))
+- no longer crashes when attachment filenames contain `:` on windows ([@echowritescode](https://github.com/echowritescode), [#32](https://github.com/delan/autost/pull/32))
 
 # [1.3.0](https://github.com/delan/autost/releases/tag/1.3.0) (2024-12-29)
 
