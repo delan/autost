@@ -1,4 +1,4 @@
-# [?.?.?](https://github.com/delan/autost/releases/tag/?.?.?) (????-??-??)
+# [1.4.0](https://github.com/delan/autost/releases/tag/1.4.0) (2025-03-02)
 
 in the html output...
 - posts can now contain the **‘aria-label’ attribute**
