@@ -6,6 +6,7 @@ use std::{
     str,
 };
 
+use clap::Parser as _;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
@@ -20,6 +21,7 @@ use crate::{
         TrpcResponse,
     },
     http::{get_json, get_with_retries},
+    Command,
 };
 
 #[derive(clap::Args, Debug)]
@@ -31,7 +33,15 @@ pub struct Cohost2json {
     pub liked: bool,
 }
 
-pub async fn main(args: Cohost2json) -> eyre::Result<()> {
+#[tokio::main]
+pub async fn main() -> eyre::Result<()> {
+    let Command::Cohost2json(args) = Command::parse() else {
+        unreachable!("guaranteed by subcommand call in entry point")
+    };
+    real_main(args).await
+}
+
+pub async fn real_main(args: Cohost2json) -> eyre::Result<()> {
     let requested_project = args.project_name;
     let output_path = args.path_to_chosts;
     let output_path = Path::new(&output_path);

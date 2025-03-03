@@ -1,9 +1,8 @@
-use crate::{
-    command::server::Server, path::POSTS_PATH_ROOT, PostMeta, TemplatedPost, Thread, SETTINGS,
-};
+use crate::{path::POSTS_PATH_ROOT, Command, PostMeta, TemplatedPost, Thread, SETTINGS};
 
 use askama_rocket::Template;
 use chrono::{SecondsFormat, Utc};
+use clap::Parser as _;
 use jane_eyre::eyre::Context;
 use rocket::{
     fs::{FileServer, Options},
@@ -72,7 +71,11 @@ fn root_route() -> Redirect {
 ///   - `POST <base_url>publish` (`publish_route`)
 ///   - `GET <base_url><path>` (`static_route`)
 /// - `GET /` (`root_route`)
-pub async fn main(args: Server) -> jane_eyre::eyre::Result<()> {
+#[rocket::main]
+pub async fn main() -> jane_eyre::eyre::Result<()> {
+    let Command::Server2(args) = Command::parse() else {
+        unreachable!("guaranteed by subcommand call in entry point")
+    };
     let port = args.port.unwrap_or(SETTINGS.server_port());
     let _rocket = rocket::custom(Config::figment().merge(("port", port)))
         .mount(&SETTINGS.base_url, routes![compose_route])
@@ -87,7 +90,7 @@ pub async fn main(args: Server) -> jane_eyre::eyre::Result<()> {
             ),
         )
         .launch()
-        .await?;
+        .await;
 
     Ok(())
 }

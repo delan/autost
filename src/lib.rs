@@ -10,6 +10,16 @@ use std::{
 
 use askama::Template;
 use chrono::{SecondsFormat, Utc};
+use command::{
+    attach::Attach,
+    cohost2autost::Cohost2autost,
+    cohost2json::Cohost2json,
+    cohost_archive::CohostArchive,
+    import::{Import, Reimport},
+    new::New,
+    render::Render,
+    server::Server,
+};
 use dom::{QualNameExt, Transform};
 use html5ever::{Attribute, QualName};
 use indexmap::{indexmap, IndexMap};
@@ -60,6 +70,20 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
 
     result.context("failed to load settings").unwrap()
 });
+
+#[derive(clap::Parser, Debug)]
+pub enum Command {
+    Attach(Attach),
+    Cohost2autost(Cohost2autost),
+    Cohost2json(Cohost2json),
+    CohostArchive(CohostArchive),
+    Import(Import),
+    New(New),
+    Reimport(Reimport),
+    Render(Render),
+    Server(Server),
+    Server2(Server),
+}
 
 /// details about the run, to help with migrations and bug fixes.
 #[derive(Debug, Deserialize, Serialize)]
@@ -465,12 +489,14 @@ impl TemplatedPost {
 pub fn cli_init() -> eyre::Result<()> {
     jane_eyre::install()?;
     tracing_subscriber::registry()
+        // FIXME: rocket launch logging would print nicer if
+        // it didn't have the module path etc
         .with(tracing_subscriber::fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive("autost=info".parse()?)
-                .from_env_lossy(),
-        )
+        .with(if std::env::var("RUST_LOG").is_ok() {
+            EnvFilter::builder().from_env_lossy()
+        } else {
+            "autost=info,rocket=info".parse()?
+        })
         .init();
 
     Ok(())

@@ -5,6 +5,7 @@ use std::{
     path::Path,
 };
 
+use clap::Parser as _;
 use jane_eyre::eyre::{self, Context, OptionExt};
 use reqwest::{
     header::{self, HeaderMap, HeaderValue},
@@ -15,7 +16,7 @@ use tracing::{info, warn};
 use crate::{
     cohost::{FollowedFeedResponse, ListEditedProjectsResponse, LoggedInResponse, TrpcResponse},
     command::{cohost2autost::Cohost2autost, cohost2json::Cohost2json},
-    RunDetailsWriter,
+    Command, RunDetailsWriter,
 };
 
 #[derive(clap::Args, Debug)]
@@ -27,7 +28,11 @@ pub struct CohostArchive {
     liked: bool,
 }
 
-pub async fn main(args: CohostArchive) -> eyre::Result<()> {
+#[tokio::main]
+pub async fn main() -> eyre::Result<()> {
+    let Command::CohostArchive(args) = Command::parse() else {
+        unreachable!("guaranteed by subcommand call in entry point")
+    };
     create_dir_all(&args.output_path)?;
     set_current_dir(args.output_path)?;
     let mut run_details = RunDetailsWriter::create_in(".")?;
@@ -161,7 +166,7 @@ async fn archive_cohost_project(project_name: &str, archive_likes: bool) -> eyre
 
     if !exists("cohost2json.done")? {
         info!("autost cohost2json {project_name} chosts");
-        crate::command::cohost2json::main(Cohost2json {
+        crate::command::cohost2json::real_main(Cohost2json {
             project_name: project_name.to_owned(),
             path_to_chosts: "chosts".to_owned(),
             liked: archive_likes,

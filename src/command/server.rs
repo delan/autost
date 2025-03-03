@@ -12,6 +12,7 @@ use std::os::windows::prelude::OpenOptionsExt;
 
 use askama::Template;
 use chrono::{SecondsFormat, Utc};
+use clap::Parser as _;
 use http::{Response, StatusCode, Uri};
 use jane_eyre::eyre::{self, eyre, Context, OptionExt};
 use tracing::{error, info, warn};
@@ -27,7 +28,7 @@ use warp::{
 use crate::{
     output::ThreadsContentTemplate,
     path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT, SITE_PATH_ROOT},
-    SETTINGS,
+    Command, SETTINGS,
 };
 use crate::{path::PostsPath, render_markdown, PostMeta, TemplatedPost, Thread};
 
@@ -51,7 +52,12 @@ static HTML: &'static str = "text/html; charset=utf-8";
 ///   - `GET <base_url><path>` (`static_route`)
 /// - `GET /` (`root_route`)
 /// - `<METHOD> <path>` (`not_found_route`)
-pub async fn main(args: Server) -> eyre::Result<()> {
+#[tokio::main]
+pub async fn main() -> eyre::Result<()> {
+    let Command::Server(args) = Command::parse() else {
+        unreachable!("guaranteed by subcommand call in entry point")
+    };
+
     render_all()?;
 
     let compose_route = warp::path!("compose")
