@@ -1,14 +1,18 @@
-use crate::{path::POSTS_PATH_ROOT, Command, PostMeta, TemplatedPost, Thread, SETTINGS};
+use crate::{
+    command::render::render_all, output::ThreadsContentTemplate, path::POSTS_PATH_ROOT,
+    render_markdown, Command, PostMeta, TemplatedPost, Thread, SETTINGS,
+};
 
 use askama_rocket::Template;
 use chrono::{SecondsFormat, Utc};
 use clap::Parser as _;
 use jane_eyre::eyre::Context;
 use rocket::{
+    form::Form,
     fs::{FileServer, Options},
-    get,
-    response::Redirect,
-    routes, Config,
+    get, post,
+    response::{content, Redirect},
+    routes, Config, FromForm,
 };
 use rocket_errors::eyre;
 
@@ -56,6 +60,22 @@ fn compose_route(
     Ok(ComposeTemplate { source })
 }
 
+#[derive(FromForm, Debug)]
+struct Body<'r> {
+    source: &'r str,
+}
+
+#[post("/preview", data = "<body>")]
+fn preview_route(body: Form<Body<'_>>) -> eyre::Result<content::RawHtml<String>> {
+    let unsafe_source = body.source;
+    let unsafe_html = render_markdown(unsafe_source);
+    let post = TemplatedPost::filter(&unsafe_html, None)?;
+    let thread = Thread::try_from(post)?;
+    Ok(content::RawHtml(
+        ThreadsContentTemplate::render_normal(&thread).wrap_err("failed to render template")?,
+    ))
+}
+
 // lower than FileServer, which uses rank 10 by default
 #[get("/", rank = 100)]
 fn root_route() -> Redirect {
@@ -76,9 +96,12 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
     let Command::Server2(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
     };
+
+    render_all()?;
+
     let port = args.port.unwrap_or(SETTINGS.server_port());
     let _rocket = rocket::custom(Config::figment().merge(("port", port)))
-        .mount(&SETTINGS.base_url, routes![compose_route])
+        .mount(&SETTINGS.base_url, routes![compose_route, preview_route])
         .mount("/", routes![root_route])
         .mount(
             &SETTINGS.base_url,
