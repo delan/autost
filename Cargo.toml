@@ -34,8 +34,7 @@ jane-eyre = "0.3.0"
 markup5ever_rcdom = "0.3.0"
 rayon = "1.10.0"
 renamore = "0.3.2"
-rocket = "0.5.1"
-rocket-errors = { version = "0.1.0", default-features = false, features = ["eyre"] }
+rocket = { version = "0.5.1", features = ["json"] }
 scraper = "0.22.0"
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = { version = "1.0.128", features = ["unbounded_depth"] }
@@ -54,7 +53,14 @@ xml5ever = "0.18.1"
 version = "0.12.7"
 default-features = false
 # default features, minus default-tls, plus rustls-tls + blocking + json
-features = ["rustls-tls", "blocking", "json", "charset", "http2", "macos-system-configuration"]
+features = [
+  "rustls-tls",
+  "blocking",
+  "json",
+  "charset",
+  "http2",
+  "macos-system-configuration",
+]
 
 [profile.release]
 debug = "line-tables-only"
@@ -73,7 +79,13 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew", "msi"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
+targets = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "x86_64-pc-windows-msvc",
+]
 # The archive format to use for windows builds (defaults .zip)
 windows-archive = ".tar.gz"
 # The archive format to use for non-windows builds (defaults .tar.xz)

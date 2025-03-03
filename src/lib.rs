@@ -59,6 +59,7 @@ pub mod meta;
 pub mod migrations;
 pub mod output;
 pub mod path;
+pub mod rocket_eyre;
 pub mod settings;
 
 pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {

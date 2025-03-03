@@ -275,7 +275,6 @@ dependencies = [
  "renamore",
  "reqwest",
  "rocket",
- "rocket-errors",
  "scraper",
  "serde",
  "serde_json",
@@ -2872,6 +2871,7 @@ dependencies = [
  "rocket_codegen",
  "rocket_http",
  "serde",
+ "serde_json",
  "state",
  "tempfile",
  "time",
@@ -2881,16 +2881,6 @@ dependencies = [
  "ubyte",
  "version_check",
  "yansi",
-]
-
-[[package]]
-name = "rocket-errors"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5ac1222b4578d545cc19d71a01cad41b43b383dc00c52737c2629c9c1affc0f"
-dependencies = [
- "eyre",
- "rocket",
 ]
 
 [[package]]

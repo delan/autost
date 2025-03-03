@@ -7,7 +7,7 @@ use crate::{
     command::render::render_all,
     output::ThreadsContentTemplate,
     path::{PostsPath, POSTS_PATH_ROOT},
-    render_markdown, Command, PostMeta, TemplatedPost, Thread, SETTINGS,
+    render_markdown, rocket_eyre, Command, PostMeta, TemplatedPost, Thread, SETTINGS,
 };
 
 use askama_rocket::Template;
@@ -21,7 +21,6 @@ use rocket::{
     response::{content, Redirect},
     routes, Config, FromForm, Responder,
 };
-use rocket_errors::eyre;
 
 #[derive(askama_rocket::Template)]
 #[template(path = "compose.html")]
@@ -34,7 +33,7 @@ fn compose_route(
     reply_to: Option<String>,
     tags: Vec<String>,
     is_transparent_share: Option<bool>,
-) -> eyre::Result<ComposeTemplate> {
+) -> rocket_eyre::Result<ComposeTemplate> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
     let references = if let Some(reply_to) = reply_to {
@@ -73,7 +72,7 @@ struct Body<'r> {
 }
 
 #[post("/preview", data = "<body>")]
-fn preview_route(body: Form<Body<'_>>) -> eyre::Result<content::RawHtml<String>> {
+fn preview_route(body: Form<Body<'_>>) -> rocket_eyre::Result<content::RawHtml<String>> {
     let unsafe_source = body.source;
     let unsafe_html = render_markdown(unsafe_source);
     let post = TemplatedPost::filter(&unsafe_html, None)?;
@@ -90,7 +89,7 @@ enum Content {
 }
 
 #[post("/publish?<js>", data = "<body>")]
-fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> eyre::Result<Content> {
+fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<Content> {
     let js = js.unwrap_or_default();
     let unsafe_source = body.source;
 
