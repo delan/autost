@@ -184,6 +184,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "askama_rocket"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebf814a0f98928b2ea4a0625ad7563d737ecf0707260b8360f4ad2a4b51918e6"
+dependencies = [
+ "askama",
+ "rocket",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -249,6 +259,7 @@ version = "1.4.0"
 dependencies = [
  "ammonia",
  "askama",
+ "askama_rocket",
  "base64 0.22.1",
  "bytes",
  "chrono",
@@ -264,6 +275,7 @@ dependencies = [
  "renamore",
  "reqwest",
  "rocket",
+ "rocket-errors",
  "scraper",
  "serde",
  "serde_json",
@@ -2869,6 +2881,16 @@ dependencies = [
  "ubyte",
  "version_check",
  "yansi",
+]
+
+[[package]]
+name = "rocket-errors"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5ac1222b4578d545cc19d71a01cad41b43b383dc00c52737c2629c9c1affc0f"
+dependencies = [
+ "eyre",
+ "rocket",
 ]
 
 [[package]]

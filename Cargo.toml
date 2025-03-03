@@ -19,7 +19,8 @@ vergen-gix = "1.0.3"
 
 [dependencies]
 ammonia = "4.0.0"
-askama = "0.12.1"
+askama = { version = "0.12.1", features = ["with-rocket"] }
+askama_rocket = "0.12.0"
 base64 = "0.22.1"
 bytes = "1.7.1"
 chrono = "0.4.38"
@@ -34,6 +35,7 @@ markup5ever_rcdom = "0.3.0"
 rayon = "1.10.0"
 renamore = "0.3.2"
 rocket = "0.5.1"
+rocket-errors = { version = "0.1.0", default-features = false, features = ["eyre"] }
 scraper = "0.22.0"
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = { version = "1.0.128", features = ["unbounded_depth"] }
