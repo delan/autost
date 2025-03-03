@@ -140,12 +140,14 @@ impl<Kind: PathKind> AsRef<Path> for RelativePath<Kind> {
     }
 }
 
+pub static POSTS_PATH_ROOT: LazyLock<PostsPath> =
+    LazyLock::new(|| PostsPath::new(PostsKind::ROOT.into()).expect("guaranteed by argument"));
+pub static POSTS_PATH_IMPORTED: LazyLock<PostsPath> = LazyLock::new(|| {
+    POSTS_PATH_ROOT
+        .join("imported")
+        .expect("guaranteed by argument")
+});
 impl PostsPath {
-    pub const ROOT: LazyLock<Self> =
-        LazyLock::new(|| Self::new(PostsKind::ROOT.into()).expect("guaranteed by argument"));
-    pub const IMPORTED: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("imported").expect("guaranteed by argument"));
-
     /// creates a path from `<link rel=references href>`, which is relative to
     /// the posts directory, but percent-encoded as a url.
     pub fn from_references_url(references: &str) -> eyre::Result<Self> {
@@ -156,31 +158,31 @@ impl PostsPath {
     }
 
     pub fn markdown_post_path(post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}.md"))
             .expect("guaranteed by argument")
     }
 
     pub fn generated_post_path(post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}.html"))
             .expect("guaranteed by argument")
     }
 
     pub fn references_dir(post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}"))
             .expect("guaranteed by argument")
     }
 
     pub fn references_post_path(post_id: usize, references_post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}/{references_post_id}.html"))
             .expect("guaranteed by argument")
     }
 
     pub fn imported_post_path(post_id: usize) -> Self {
-        Self::IMPORTED
+        POSTS_PATH_IMPORTED
             .join(&format!("{post_id}.html"))
             .expect("guaranteed by argument")
     }

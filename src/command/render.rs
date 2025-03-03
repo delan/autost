@@ -13,7 +13,7 @@ use crate::{
     meta::hard_link_attachments_into_site,
     migrations::run_migrations,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
-    path::{PostsPath, SitePath},
+    path::{PostsPath, SitePath, POSTS_PATH_ROOT},
     TemplatedPost, Thread, SETTINGS,
 };
 
@@ -38,8 +38,8 @@ pub fn main(args: Render) -> eyre::Result<()> {
 pub fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
-    create_dir_all(&*PostsPath::ROOT)?;
-    for entry in read_dir(&*PostsPath::ROOT)? {
+    create_dir_all(&*POSTS_PATH_ROOT)?;
+    for entry in read_dir(&*POSTS_PATH_ROOT)? {
         let entry = entry?;
         let metadata = entry.metadata()?;
         // cohost2autost creates directories for chost thread ancestors.
@@ -47,7 +47,7 @@ pub fn render_all() -> eyre::Result<()> {
             continue;
         }
 
-        let path = PostsPath::ROOT.join_dir_entry(&entry)?;
+        let path = POSTS_PATH_ROOT.join_dir_entry(&entry)?;
         post_paths.push(path);
     }
 

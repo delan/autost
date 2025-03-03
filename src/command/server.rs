@@ -24,7 +24,11 @@ use warp::{
     Filter,
 };
 
-use crate::{output::ThreadsContentTemplate, path::AttachmentsPath, SETTINGS};
+use crate::{
+    output::ThreadsContentTemplate,
+    path::{AttachmentsPath, POSTS_PATH_ROOT},
+    SETTINGS,
+};
 use crate::{
     path::{PostsPath, SitePath},
     render_markdown, PostMeta, TemplatedPost, Thread,
@@ -69,7 +73,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                         "multiple reply_to query parameters not allowed"
                     ))));
                 };
-                let reply_to = PostsPath::ROOT.join(&reply_to).map_err(BadRequest)?;
+                let reply_to = POSTS_PATH_ROOT.join(&reply_to).map_err(BadRequest)?;
                 let post = TemplatedPost::load(&reply_to).map_err(InternalError)?;
                 let thread = Thread::try_from(post).map_err(InternalError)?;
                 thread
