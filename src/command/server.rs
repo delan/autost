@@ -166,6 +166,20 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
             routes![compose_route, preview_route, publish_route],
         )
         .mount("/", routes![root_route])
+        // serve attachments out of main attachment store, in case we need to preview a post
+        // that refers to an attachment for the first time. otherwise they will 404, since
+        // render won’t have hard-linked it into the site output dir.
+        .mount(
+            format!("{}attachments/", SETTINGS.base_url),
+            FileServer::new(
+                "./attachments",
+                // DotFiles because attachments can start with a .
+                // NormalizeDirs because relative links rely on folders ending with a "/"
+                Options::Index | Options::DotFiles | Options::NormalizeDirs,
+            )
+            .rank(9),
+        )
+        // serve all other files out of `SITE_PATH_ROOT`.
         .mount(
             &SETTINGS.base_url,
             FileServer::new(
@@ -173,7 +187,8 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
                 // DotFiles because attachments can start with a .
                 // NormalizeDirs because relative links rely on folders ending with a "/"
                 Options::Index | Options::DotFiles | Options::NormalizeDirs,
-            ),
+            )
+            .rank(10),
         )
         .launch()
         .await;
