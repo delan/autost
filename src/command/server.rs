@@ -26,13 +26,10 @@ use warp::{
 
 use crate::{
     output::ThreadsContentTemplate,
-    path::{AttachmentsPath, POSTS_PATH_ROOT},
+    path::{AttachmentsPath, POSTS_PATH_ROOT, SITE_PATH_ROOT},
     SETTINGS,
 };
-use crate::{
-    path::{PostsPath, SitePath},
-    render_markdown, PostMeta, TemplatedPost, Thread,
-};
+use crate::{path::PostsPath, render_markdown, PostMeta, TemplatedPost, Thread};
 
 use crate::command::render::render_all;
 
@@ -203,7 +200,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                 segments.next();
                 (&*AttachmentsPath::ROOT).as_ref().to_owned()
             } else {
-                (&*SitePath::ROOT).as_ref().to_owned()
+                (&*SITE_PATH_ROOT).as_ref().to_owned()
             };
             for component in segments {
                 let component = urlencoding::decode(component)
@@ -305,7 +302,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
     let root_route = warp::path!()
         .and(warp::filters::method::get())
         .and_then(|| async {
-            let url = Uri::from_str(&SitePath::ROOT.internal_url())
+            let url = Uri::from_str(&SITE_PATH_ROOT.internal_url())
                 .wrap_err("failed to build Uri")
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(temporary(url))

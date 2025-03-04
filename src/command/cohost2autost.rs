@@ -25,7 +25,7 @@ use crate::{
         serialize_html_fragment, AttrsMutExt, AttrsRefExt, QualNameExt, TendrilExt, Transform,
     },
     migrations::run_migrations,
-    path::{PostsPath, SitePath, POSTS_PATH_ROOT},
+    path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ATTACHMENTS, SITE_PATH_THUMBS},
     render_markdown, PostMeta,
 };
 
@@ -46,8 +46,8 @@ pub fn main(args: Cohost2autost) -> eyre::Result<()> {
         .collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
     create_dir_all(&*POSTS_PATH_ROOT)?;
-    create_dir_all(&*SitePath::ATTACHMENTS)?;
-    create_dir_all(&*SitePath::THUMBS)?;
+    create_dir_all(&*SITE_PATH_ATTACHMENTS)?;
+    create_dir_all(&*SITE_PATH_THUMBS)?;
 
     let span = tracing::Span::current();
     let results = dir_entries

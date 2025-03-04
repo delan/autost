@@ -3,13 +3,13 @@ use std::fs::{create_dir_all, read_dir};
 use jane_eyre::eyre::{self, bail};
 use tracing::{info, trace};
 
-use crate::path::{hard_link_if_not_exists, SitePath};
+use crate::path::{hard_link_if_not_exists, SitePath, SITE_PATH_ATTACHMENTS};
 
 #[tracing::instrument]
 pub fn run_migrations() -> eyre::Result<()> {
     info!("hard linking attachments out of site/attachments");
-    create_dir_all(&*SitePath::ATTACHMENTS)?;
-    let mut dirs = vec![SitePath::ATTACHMENTS.to_owned()];
+    create_dir_all(&*SITE_PATH_ATTACHMENTS)?;
+    let mut dirs = vec![SITE_PATH_ATTACHMENTS.to_owned()];
     let mut files: Vec<SitePath> = vec![];
     while !dirs.is_empty() || !files.is_empty() {
         for site_path in files.drain(..) {

@@ -219,7 +219,7 @@ impl PostsPath {
                     .rsplit_once(".")
                     .expect("guaranteed by PostsKind::new");
                 let filename = format!("{basename}.html");
-                Ok(Some(SitePath::ROOT.join(&filename)?))
+                Ok(Some(SITE_PATH_ROOT.join(&filename)?))
             }
             PostsKind::Other => Ok(None),
         }
@@ -252,28 +252,30 @@ impl PostsPath {
     }
 }
 
+pub static SITE_PATH_ROOT: LazyLock<SitePath> =
+    LazyLock::new(|| SitePath::new(SiteKind::ROOT.into()).expect("guaranteed by argument"));
+pub static SITE_PATH_TAGGED: LazyLock<SitePath> = LazyLock::new(|| {
+    SITE_PATH_ROOT
+        .join("tagged")
+        .expect("guaranteed by argument")
+});
+pub static SITE_PATH_ATTACHMENTS: LazyLock<SitePath> = LazyLock::new(|| {
+    SITE_PATH_ROOT
+        .join("attachments")
+        .expect("guaranteed by argument")
+});
+pub static SITE_PATH_THUMBS: LazyLock<SitePath> = LazyLock::new(|| {
+    SITE_PATH_ATTACHMENTS
+        .join("thumbs")
+        .expect("guaranteed by argument")
+});
 impl SitePath {
-    pub const ROOT: LazyLock<Self> =
-        LazyLock::new(|| Self::new(SiteKind::ROOT.into()).expect("guaranteed by argument"));
-    pub const TAGGED: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("tagged").expect("guaranteed by argument"));
-    pub const ATTACHMENTS: LazyLock<Self> = LazyLock::new(|| {
-        Self::ROOT
-            .join("attachments")
-            .expect("guaranteed by argument")
-    });
-    pub const THUMBS: LazyLock<Self> = LazyLock::new(|| {
-        Self::ATTACHMENTS
-            .join("thumbs")
-            .expect("guaranteed by argument")
-    });
-
     /// creates a path from an attachment url in a rendered post, which is relative to
     /// the posts directory, but percent-encoded as a url.
     pub fn from_rendered_attachment_url(url: &str) -> eyre::Result<Self> {
         let url = urlencoding::decode(url)?;
         let path = Path::new(SiteKind::ROOT).join(&*url);
-        if !path.starts_with(&*SitePath::ATTACHMENTS) {
+        if !path.starts_with(&*SITE_PATH_ATTACHMENTS) {
             bail!("url is not an attachment path: {url}");
         }
 
@@ -339,7 +341,7 @@ impl AttachmentsPath {
     });
 
     pub fn site_path(&self) -> eyre::Result<SitePath> {
-        let mut result = SitePath::ATTACHMENTS.to_owned();
+        let mut result = SITE_PATH_ATTACHMENTS.to_owned();
         for component in self.components() {
             result = result.join(component)?;
         }
