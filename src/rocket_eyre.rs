@@ -1,11 +1,9 @@
 use jane_eyre::eyre;
 use rocket::{
     http::Status,
-    response::{self, Responder},
-    serde::json::Json,
+    response::{self, content::RawText, Responder},
     Request,
 };
-use serde::Serialize;
 use tracing::warn;
 
 // Most of this is lifted from <https://github.com/yuk1ty/rocket-errors/blob/b617f860d27d8f162e97e92311eeeba1abd38b95/src/eyre.rs>
@@ -30,16 +28,8 @@ where
 impl<'r> Responder<'r, 'static> for EyreReport {
     fn respond_to(self, request: &Request<'_>) -> response::Result<'static> {
         warn!("Error: {:?}", self.0);
-        let mut res = Json(ErrorRes {
-            error: format!("{:#}", self.0),
-        })
-        .respond_to(request)?;
+        let mut res = RawText(format!("{:?}", self.0)).respond_to(request)?;
         res.set_status(Status::InternalServerError);
         Ok(res)
     }
-}
-
-#[derive(Serialize)]
-struct ErrorRes {
-    error: String,
 }
