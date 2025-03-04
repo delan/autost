@@ -14,7 +14,10 @@ use uuid::Uuid;
 
 use crate::{
     cohost::{attachment_id_to_url, Cacheable},
-    path::{AttachmentsPath, SitePath},
+    path::{
+        AttachmentsPath, SitePath, ATTACHMENTS_PATH_COHOST_AVATAR, ATTACHMENTS_PATH_COHOST_HEADER,
+        ATTACHMENTS_PATH_COHOST_STATIC, ATTACHMENTS_PATH_ROOT, ATTACHMENTS_PATH_THUMBS,
+    },
 };
 
 #[derive(Debug)]
@@ -55,7 +58,7 @@ pub struct RealAttachmentsContext;
 impl AttachmentsContext for RealAttachmentsContext {
     #[tracing::instrument(skip(self))]
     fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath> {
-        let dir = AttachmentsPath::ROOT.join(&Uuid::new_v4().to_string())?;
+        let dir = ATTACHMENTS_PATH_ROOT.join(&Uuid::new_v4().to_string())?;
         create_dir_all(&dir)?;
         let filename = input_path.file_name().ok_or_eyre("no filename")?;
         let filename = filename.to_str().ok_or_eyre("unsupported filename")?;
@@ -70,7 +73,7 @@ impl AttachmentsContext for RealAttachmentsContext {
         let mut hash = Sha256::new();
         hash.update(url);
         let hash = hash.finalize().map(|o| format!("{o:02x}")).join("");
-        let path = AttachmentsPath::ROOT.join(&format!("imported-{post_basename}-{hash}"))?;
+        let path = ATTACHMENTS_PATH_ROOT.join(&format!("imported-{post_basename}-{hash}"))?;
         trace!(?path);
         create_dir_all(&path)?;
 
@@ -85,7 +88,7 @@ impl AttachmentsContext for RealAttachmentsContext {
         match cacheable {
             Cacheable::Attachment { id, url } => {
                 let redirect_url = attachment_id_to_url(id);
-                let dir = &*AttachmentsPath::ROOT;
+                let dir = &*ATTACHMENTS_PATH_ROOT;
                 let path = dir.join(id)?;
                 create_dir_all(&path)?;
 
@@ -101,7 +104,7 @@ impl AttachmentsContext for RealAttachmentsContext {
             }
 
             Cacheable::Static { filename, url } => {
-                let dir = &*AttachmentsPath::COHOST_STATIC;
+                let dir = &*ATTACHMENTS_PATH_COHOST_STATIC;
                 create_dir_all(dir)?;
                 let path = dir.join(filename)?;
                 trace!(?path);
@@ -110,7 +113,7 @@ impl AttachmentsContext for RealAttachmentsContext {
             }
 
             Cacheable::Avatar { filename, url } => {
-                let dir = &*AttachmentsPath::COHOST_AVATAR;
+                let dir = &*ATTACHMENTS_PATH_COHOST_AVATAR;
                 create_dir_all(dir)?;
                 let path = dir.join(filename)?;
                 trace!(?path);
@@ -119,7 +122,7 @@ impl AttachmentsContext for RealAttachmentsContext {
             }
 
             Cacheable::Header { filename, url } => {
-                let dir = &*AttachmentsPath::COHOST_HEADER;
+                let dir = &*ATTACHMENTS_PATH_COHOST_HEADER;
                 create_dir_all(dir)?;
                 let path = dir.join(filename)?;
                 trace!(?path);
@@ -136,7 +139,7 @@ impl AttachmentsContext for RealAttachmentsContext {
         }
 
         let redirect_url = attachment_id_to_url(id);
-        let dir = &*AttachmentsPath::THUMBS;
+        let dir = &*ATTACHMENTS_PATH_THUMBS;
         let path = dir.join(id)?;
         create_dir_all(&path)?;
 

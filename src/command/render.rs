@@ -13,7 +13,7 @@ use crate::{
     meta::hard_link_attachments_into_site,
     migrations::run_migrations,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
-    path::{PostsPath, SitePath},
+    path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
     TemplatedPost, Thread, SETTINGS,
 };
 
@@ -38,8 +38,8 @@ pub fn main(args: Render) -> eyre::Result<()> {
 pub fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
-    create_dir_all(&*PostsPath::ROOT)?;
-    for entry in read_dir(&*PostsPath::ROOT)? {
+    create_dir_all(&*POSTS_PATH_ROOT)?;
+    for entry in read_dir(&*POSTS_PATH_ROOT)? {
         let entry = entry?;
         let metadata = entry.metadata()?;
         // cohost2autost creates directories for chost thread ancestors.
@@ -47,7 +47,7 @@ pub fn render_all() -> eyre::Result<()> {
             continue;
         }
 
-        let path = PostsPath::ROOT.join_dir_entry(&entry)?;
+        let path = POSTS_PATH_ROOT.join_dir_entry(&entry)?;
         post_paths.push(path);
     }
 
@@ -58,8 +58,8 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     run_migrations()?;
 
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    create_dir_all(&*SitePath::ROOT)?;
-    create_dir_all(&*SitePath::TAGGED)?;
+    create_dir_all(&*SITE_PATH_ROOT)?;
+    create_dir_all(&*SITE_PATH_TAGGED)?;
 
     fn copy_static(output_path: &SitePath, file: &StaticFile) -> eyre::Result<()> {
         let StaticFile(filename, content) = file;
@@ -97,12 +97,12 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         ),
     ];
     for file in static_files.iter() {
-        copy_static(&*SitePath::ROOT, file)?;
+        copy_static(&*SITE_PATH_ROOT, file)?;
     }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let deploy_path = SitePath::ROOT.join("deploy.sh")?;
+        let deploy_path = SITE_PATH_ROOT.join("deploy.sh")?;
         let mut permissions = std::fs::metadata(&deploy_path)?.permissions();
         let mode = permissions.mode();
         permissions.set_mode(mode | 0o111);
@@ -148,12 +148,12 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     // author step: generate atom feeds.
     let atom_feed_path =
-        collections.write_atom_feed("index", &SitePath::ROOT, &now, &threads_cache)?;
+        collections.write_atom_feed("index", &SITE_PATH_ROOT, &now, &threads_cache)?;
     interesting_output_paths.insert(atom_feed_path);
 
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
     for (tag, threads) in threads_by_interesting_tag {
-        let atom_feed_path = SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?;
+        let atom_feed_path = SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?;
         let thread_refs = threads
             .iter()
             .map(|thread| &threads_cache[&thread.path].thread)
@@ -169,10 +169,10 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         let threads_page = ThreadsPageTemplate::render(
             &threads_content,
             &format!("#{tag} — {}", SETTINGS.site_title),
-            &Some(SitePath::TAGGED.join(&format!("{tag}.feed.xml"))?),
+            &Some(SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?),
         )?;
         // TODO: move this logic into path module and check for slashes
-        let threads_page_path = SitePath::TAGGED.join(&format!("{tag}.html"))?;
+        let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
         writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
         interesting_output_paths.insert(threads_page_path);
     }
@@ -195,7 +195,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         );
         // TODO: write internal collections to another dir?
         let threads_page_path =
-            collections.write_threads_page(key, &SitePath::ROOT, &threads_cache)?;
+            collections.write_threads_page(key, &SITE_PATH_ROOT, &threads_cache)?;
         if collections.is_interesting(key) {
             interesting_output_paths.insert(threads_page_path);
         }
@@ -357,7 +357,7 @@ impl Collections {
             inner: [
                 (
                     "index",
-                    Collection::new(Some(SitePath::ROOT.join("index.feed.xml")?), "posts"),
+                    Collection::new(Some(SITE_PATH_ROOT.join("index.feed.xml")?), "posts"),
                 ),
                 ("all", Collection::new(None, "all posts")),
                 (

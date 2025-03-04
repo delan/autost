@@ -140,12 +140,14 @@ impl<Kind: PathKind> AsRef<Path> for RelativePath<Kind> {
     }
 }
 
+pub static POSTS_PATH_ROOT: LazyLock<PostsPath> =
+    LazyLock::new(|| PostsPath::new(PostsKind::ROOT.into()).expect("guaranteed by argument"));
+pub static POSTS_PATH_IMPORTED: LazyLock<PostsPath> = LazyLock::new(|| {
+    POSTS_PATH_ROOT
+        .join("imported")
+        .expect("guaranteed by argument")
+});
 impl PostsPath {
-    pub const ROOT: LazyLock<Self> =
-        LazyLock::new(|| Self::new(PostsKind::ROOT.into()).expect("guaranteed by argument"));
-    pub const IMPORTED: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("imported").expect("guaranteed by argument"));
-
     /// creates a path from `<link rel=references href>`, which is relative to
     /// the posts directory, but percent-encoded as a url.
     pub fn from_references_url(references: &str) -> eyre::Result<Self> {
@@ -156,31 +158,31 @@ impl PostsPath {
     }
 
     pub fn markdown_post_path(post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}.md"))
             .expect("guaranteed by argument")
     }
 
     pub fn generated_post_path(post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}.html"))
             .expect("guaranteed by argument")
     }
 
     pub fn references_dir(post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}"))
             .expect("guaranteed by argument")
     }
 
     pub fn references_post_path(post_id: usize, references_post_id: usize) -> Self {
-        Self::ROOT
+        POSTS_PATH_ROOT
             .join(&format!("{post_id}/{references_post_id}.html"))
             .expect("guaranteed by argument")
     }
 
     pub fn imported_post_path(post_id: usize) -> Self {
-        Self::IMPORTED
+        POSTS_PATH_IMPORTED
             .join(&format!("{post_id}.html"))
             .expect("guaranteed by argument")
     }
@@ -217,7 +219,7 @@ impl PostsPath {
                     .rsplit_once(".")
                     .expect("guaranteed by PostsKind::new");
                 let filename = format!("{basename}.html");
-                Ok(Some(SitePath::ROOT.join(&filename)?))
+                Ok(Some(SITE_PATH_ROOT.join(&filename)?))
             }
             PostsKind::Other => Ok(None),
         }
@@ -250,28 +252,30 @@ impl PostsPath {
     }
 }
 
+pub static SITE_PATH_ROOT: LazyLock<SitePath> =
+    LazyLock::new(|| SitePath::new(SiteKind::ROOT.into()).expect("guaranteed by argument"));
+pub static SITE_PATH_TAGGED: LazyLock<SitePath> = LazyLock::new(|| {
+    SITE_PATH_ROOT
+        .join("tagged")
+        .expect("guaranteed by argument")
+});
+pub static SITE_PATH_ATTACHMENTS: LazyLock<SitePath> = LazyLock::new(|| {
+    SITE_PATH_ROOT
+        .join("attachments")
+        .expect("guaranteed by argument")
+});
+pub static SITE_PATH_THUMBS: LazyLock<SitePath> = LazyLock::new(|| {
+    SITE_PATH_ATTACHMENTS
+        .join("thumbs")
+        .expect("guaranteed by argument")
+});
 impl SitePath {
-    pub const ROOT: LazyLock<Self> =
-        LazyLock::new(|| Self::new(SiteKind::ROOT.into()).expect("guaranteed by argument"));
-    pub const TAGGED: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("tagged").expect("guaranteed by argument"));
-    pub const ATTACHMENTS: LazyLock<Self> = LazyLock::new(|| {
-        Self::ROOT
-            .join("attachments")
-            .expect("guaranteed by argument")
-    });
-    pub const THUMBS: LazyLock<Self> = LazyLock::new(|| {
-        Self::ATTACHMENTS
-            .join("thumbs")
-            .expect("guaranteed by argument")
-    });
-
     /// creates a path from an attachment url in a rendered post, which is relative to
     /// the posts directory, but percent-encoded as a url.
     pub fn from_rendered_attachment_url(url: &str) -> eyre::Result<Self> {
         let url = urlencoding::decode(url)?;
         let path = Path::new(SiteKind::ROOT).join(&*url);
-        if !path.starts_with(&*SitePath::ATTACHMENTS) {
+        if !path.starts_with(&*SITE_PATH_ATTACHMENTS) {
             bail!("url is not an attachment path: {url}");
         }
 
@@ -312,32 +316,38 @@ impl SitePath {
     }
 }
 
+pub const ATTACHMENTS_PATH_ROOT: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+    AttachmentsPath::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument")
+});
+pub const ATTACHMENTS_PATH_THUMBS: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+    ATTACHMENTS_PATH_ROOT
+        .join("thumbs")
+        .expect("guaranteed by argument")
+});
+#[deprecated(since = "1.2.0", note = "cohost emoji are now stored in COHOST_STATIC")]
+pub const ATTACHMENTS_PATH_EMOJI: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+    ATTACHMENTS_PATH_ROOT
+        .join("emoji")
+        .expect("guaranteed by argument")
+});
+pub const ATTACHMENTS_PATH_COHOST_STATIC: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+    ATTACHMENTS_PATH_ROOT
+        .join("cohost-static")
+        .expect("guaranteed by argument")
+});
+pub const ATTACHMENTS_PATH_COHOST_AVATAR: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+    ATTACHMENTS_PATH_ROOT
+        .join("cohost-avatar")
+        .expect("guaranteed by argument")
+});
+pub const ATTACHMENTS_PATH_COHOST_HEADER: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+    ATTACHMENTS_PATH_ROOT
+        .join("cohost-header")
+        .expect("guaranteed by argument")
+});
 impl AttachmentsPath {
-    pub const ROOT: LazyLock<Self> =
-        LazyLock::new(|| Self::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument"));
-    pub const THUMBS: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("thumbs").expect("guaranteed by argument"));
-    #[deprecated(since = "1.2.0", note = "cohost emoji are now stored in COHOST_STATIC")]
-    pub const EMOJI: LazyLock<Self> =
-        LazyLock::new(|| Self::ROOT.join("emoji").expect("guaranteed by argument"));
-    pub const COHOST_STATIC: LazyLock<Self> = LazyLock::new(|| {
-        Self::ROOT
-            .join("cohost-static")
-            .expect("guaranteed by argument")
-    });
-    pub const COHOST_AVATAR: LazyLock<Self> = LazyLock::new(|| {
-        Self::ROOT
-            .join("cohost-avatar")
-            .expect("guaranteed by argument")
-    });
-    pub const COHOST_HEADER: LazyLock<Self> = LazyLock::new(|| {
-        Self::ROOT
-            .join("cohost-header")
-            .expect("guaranteed by argument")
-    });
-
     pub fn site_path(&self) -> eyre::Result<SitePath> {
-        let mut result = SitePath::ATTACHMENTS.to_owned();
+        let mut result = SITE_PATH_ATTACHMENTS.to_owned();
         for component in self.components() {
             result = result.join(component)?;
         }

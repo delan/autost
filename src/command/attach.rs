@@ -6,7 +6,7 @@ use tracing::info;
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
     migrations::run_migrations,
-    path::AttachmentsPath,
+    path::ATTACHMENTS_PATH_ROOT,
 };
 
 #[derive(clap::Args, Debug)]
@@ -16,7 +16,7 @@ pub struct Attach {
 
 pub async fn main(args: Attach) -> eyre::Result<()> {
     run_migrations()?;
-    create_dir_all(&*AttachmentsPath::ROOT)?;
+    create_dir_all(&*ATTACHMENTS_PATH_ROOT)?;
 
     for path in args.paths {
         let attachment_path = RealAttachmentsContext.store(&Path::new(&path))?;

@@ -25,7 +25,7 @@ use crate::{
         serialize_html_fragment, AttrsMutExt, AttrsRefExt, QualNameExt, TendrilExt, Transform,
     },
     migrations::run_migrations,
-    path::{PostsPath, SitePath},
+    path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ATTACHMENTS, SITE_PATH_THUMBS},
     render_markdown, PostMeta,
 };
 
@@ -45,9 +45,9 @@ pub fn main(args: Cohost2autost) -> eyre::Result<()> {
         .map(OsString::from)
         .collect::<Vec<_>>();
     let dir_entries = read_dir(input_path)?.collect::<Vec<_>>();
-    create_dir_all(&*PostsPath::ROOT)?;
-    create_dir_all(&*SitePath::ATTACHMENTS)?;
-    create_dir_all(&*SitePath::THUMBS)?;
+    create_dir_all(&*POSTS_PATH_ROOT)?;
+    create_dir_all(&*SITE_PATH_ATTACHMENTS)?;
+    create_dir_all(&*SITE_PATH_THUMBS)?;
 
     let span = tracing::Span::current();
     let results = dir_entries
@@ -509,7 +509,10 @@ fn process_chost_fragment(
 
 #[test]
 fn test_render_markdown_block() -> eyre::Result<()> {
-    use crate::path::AttachmentsPath;
+    use crate::path::{
+        AttachmentsPath, ATTACHMENTS_PATH_COHOST_AVATAR, ATTACHMENTS_PATH_COHOST_HEADER,
+        ATTACHMENTS_PATH_COHOST_STATIC, ATTACHMENTS_PATH_ROOT, ATTACHMENTS_PATH_THUMBS,
+    };
     struct TestAttachmentsContext {}
     impl AttachmentsContext for TestAttachmentsContext {
         fn store(&self, _input_path: &Path) -> eyre::Result<AttachmentsPath> {
@@ -527,21 +530,21 @@ fn test_render_markdown_block() -> eyre::Result<()> {
             cacheable: &Cacheable,
         ) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(match cacheable {
-                Cacheable::Attachment { id, .. } => AttachmentsPath::ROOT.join(&format!("{id}"))?,
+                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(&format!("{id}"))?,
                 Cacheable::Static { filename, .. } => {
-                    AttachmentsPath::COHOST_STATIC.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_STATIC.join(&format!("{filename}"))?
                 }
                 Cacheable::Avatar { filename, .. } => {
-                    AttachmentsPath::COHOST_AVATAR.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_AVATAR.join(&format!("{filename}"))?
                 }
                 Cacheable::Header { filename, .. } => {
-                    AttachmentsPath::COHOST_HEADER.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_HEADER.join(&format!("{filename}"))?
                 }
             }))
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(
-                AttachmentsPath::THUMBS.join(&format!("{id}"))?,
+                ATTACHMENTS_PATH_THUMBS.join(&format!("{id}"))?,
             ))
         }
     }

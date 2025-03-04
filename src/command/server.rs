@@ -24,11 +24,12 @@ use warp::{
     Filter,
 };
 
-use crate::{output::ThreadsContentTemplate, path::AttachmentsPath, SETTINGS};
 use crate::{
-    path::{PostsPath, SitePath},
-    render_markdown, PostMeta, TemplatedPost, Thread,
+    output::ThreadsContentTemplate,
+    path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT, SITE_PATH_ROOT},
+    SETTINGS,
 };
+use crate::{path::PostsPath, render_markdown, PostMeta, TemplatedPost, Thread};
 
 use crate::command::render::render_all;
 
@@ -69,7 +70,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
                         "multiple reply_to query parameters not allowed"
                     ))));
                 };
-                let reply_to = PostsPath::ROOT.join(&reply_to).map_err(BadRequest)?;
+                let reply_to = POSTS_PATH_ROOT.join(&reply_to).map_err(BadRequest)?;
                 let post = TemplatedPost::load(&reply_to).map_err(InternalError)?;
                 let thread = Thread::try_from(post).map_err(InternalError)?;
                 thread
@@ -197,9 +198,9 @@ pub async fn main(args: Server) -> eyre::Result<()> {
             // render won’t have hard-linked it into the site output dir.
             let mut path: PathBuf = if segments.peek() == Some(&"attachments") {
                 segments.next();
-                (&*AttachmentsPath::ROOT).as_ref().to_owned()
+                (&*ATTACHMENTS_PATH_ROOT).as_ref().to_owned()
             } else {
-                (&*SitePath::ROOT).as_ref().to_owned()
+                (&*SITE_PATH_ROOT).as_ref().to_owned()
             };
             for component in segments {
                 let component = urlencoding::decode(component)
@@ -301,7 +302,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
     let root_route = warp::path!()
         .and(warp::filters::method::get())
         .and_then(|| async {
-            let url = Uri::from_str(&SitePath::ROOT.internal_url())
+            let url = Uri::from_str(&SITE_PATH_ROOT.internal_url())
                 .wrap_err("failed to build Uri")
                 .map_err(InternalError)?;
             Ok::<_, Rejection>(temporary(url))

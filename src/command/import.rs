@@ -23,7 +23,7 @@ use crate::{
         text_content, AttrsRefExt, BreadthTraverse, QualName, QualNameExt, TendrilExt,
     },
     migrations::run_migrations,
-    path::PostsPath,
+    path::{PostsPath, POSTS_PATH_IMPORTED},
     Author, PostMeta, TemplatedPost,
 };
 
@@ -41,7 +41,7 @@ pub async fn main(args: Import) -> eyre::Result<()> {
     run_migrations()?;
 
     let url = args.url;
-    create_dir_all(&*PostsPath::IMPORTED)?;
+    create_dir_all(&*POSTS_PATH_IMPORTED)?;
 
     let FetchPostResult {
         base_href,
