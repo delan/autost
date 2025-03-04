@@ -46,7 +46,6 @@ pub mod command {
     pub mod new;
     pub mod render;
     pub mod server;
-    pub mod server2;
 }
 
 pub mod akkoma;
@@ -83,7 +82,6 @@ pub enum Command {
     Reimport(Reimport),
     Render(Render),
     Server(Server),
-    Server2(Server),
 }
 
 /// details about the run, to help with migrations and bug fixes.

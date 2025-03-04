@@ -36,6 +36,5 @@ fn main() -> eyre::Result<()> {
         Command::Reimport(_) => command::import::reimport::main(),
         Command::Render(args) => command::render::main(args),
         Command::Server(_) => command::server::main(),
-        Command::Server2(_) => command::server2::main(),
     }
 }
