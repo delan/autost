@@ -7,7 +7,9 @@ use crate::{
     command::render::render_all,
     output::ThreadsContentTemplate,
     path::{PostsPath, POSTS_PATH_ROOT},
-    render_markdown, rocket_eyre, Command, PostMeta, TemplatedPost, Thread, SETTINGS,
+    render_markdown,
+    rocket_eyre::{self, EyreReport},
+    Command, PostMeta, TemplatedPost, Thread, SETTINGS,
 };
 
 use askama_rocket::Template;
@@ -37,7 +39,9 @@ fn compose_route(
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
     let references = if let Some(reply_to) = reply_to {
-        let reply_to = POSTS_PATH_ROOT.join(&reply_to)?;
+        let reply_to = POSTS_PATH_ROOT
+            .join(&reply_to)
+            .map_err(EyreReport::BadRequest)?;
         let post = TemplatedPost::load(&reply_to)?;
         let thread = Thread::try_from(post)?;
         thread.posts.into_iter().flat_map(|x| x.path).collect()
