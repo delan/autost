@@ -26,7 +26,7 @@ use warp::{
 
 use crate::{
     output::ThreadsContentTemplate,
-    path::{AttachmentsPath, POSTS_PATH_ROOT, SITE_PATH_ROOT},
+    path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT, SITE_PATH_ROOT},
     SETTINGS,
 };
 use crate::{path::PostsPath, render_markdown, PostMeta, TemplatedPost, Thread};
@@ -198,7 +198,7 @@ pub async fn main(args: Server) -> eyre::Result<()> {
             // render won’t have hard-linked it into the site output dir.
             let mut path: PathBuf = if segments.peek() == Some(&"attachments") {
                 segments.next();
-                (&*AttachmentsPath::ROOT).as_ref().to_owned()
+                (&*ATTACHMENTS_PATH_ROOT).as_ref().to_owned()
             } else {
                 (&*SITE_PATH_ROOT).as_ref().to_owned()
             };

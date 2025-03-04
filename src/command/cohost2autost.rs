@@ -509,7 +509,10 @@ fn process_chost_fragment(
 
 #[test]
 fn test_render_markdown_block() -> eyre::Result<()> {
-    use crate::path::AttachmentsPath;
+    use crate::path::{
+        AttachmentsPath, ATTACHMENTS_PATH_COHOST_AVATAR, ATTACHMENTS_PATH_COHOST_HEADER,
+        ATTACHMENTS_PATH_COHOST_STATIC, ATTACHMENTS_PATH_ROOT, ATTACHMENTS_PATH_THUMBS,
+    };
     struct TestAttachmentsContext {}
     impl AttachmentsContext for TestAttachmentsContext {
         fn store(&self, _input_path: &Path) -> eyre::Result<AttachmentsPath> {
@@ -527,21 +530,21 @@ fn test_render_markdown_block() -> eyre::Result<()> {
             cacheable: &Cacheable,
         ) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(match cacheable {
-                Cacheable::Attachment { id, .. } => AttachmentsPath::ROOT.join(&format!("{id}"))?,
+                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(&format!("{id}"))?,
                 Cacheable::Static { filename, .. } => {
-                    AttachmentsPath::COHOST_STATIC.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_STATIC.join(&format!("{filename}"))?
                 }
                 Cacheable::Avatar { filename, .. } => {
-                    AttachmentsPath::COHOST_AVATAR.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_AVATAR.join(&format!("{filename}"))?
                 }
                 Cacheable::Header { filename, .. } => {
-                    AttachmentsPath::COHOST_HEADER.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_HEADER.join(&format!("{filename}"))?
                 }
             }))
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(
-                AttachmentsPath::THUMBS.join(&format!("{id}"))?,
+                ATTACHMENTS_PATH_THUMBS.join(&format!("{id}"))?,
             ))
         }
     }
