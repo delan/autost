@@ -76,36 +76,36 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         _ => {}
                     }
                     continue;
-                } else {
-                    if let Some(attr_names) = html_attributes_with_urls().get(name) {
-                        for attr in attrs.iter() {
-                            if attr_names.contains(&attr.name) {
-                                if let Ok(url) =
-                                    SitePath::from_rendered_attachment_url(attr.value.to_str())
-                                {
-                                    trace!("found attachment url in rendered post: {url:?}");
-                                    needs_attachments.insert(url);
-                                }
+                } 
+                if let Some(attr_names) = html_attributes_with_urls().get(name) {
+                    for attr in attrs.iter() {
+                        if attr_names.contains(&attr.name) {
+                            if let Ok(url) =
+                            SitePath::from_rendered_attachment_url(attr.value.to_str())
+                            {
+                                trace!("found attachment url in rendered post: {url:?}");
+                                needs_attachments.insert(url);
                             }
-                        }
-                    }
-                    if let Some(style) = attrs.attr_str("style")? {
-                        for token in parse_inline_style(style) {
-                            if let InlineStyleToken::Url(url) = token {
-                                if let Ok(url) = SitePath::from_rendered_attachment_url(&url) {
-                                    trace!("found attachment url in rendered post (inline styles): {url:?}");
-                                    needs_attachments.insert(url);
-                                }
-                            }
-                        }
-                    }
-                    // use the first <img src>, if any, as the <meta> og:image.
-                    if og_image.is_none() && name == &QualName::html("img") {
-                        if let Some(src) = attrs.attr_str("src")?.map(std::borrow::ToOwned::to_owned) {
-                            og_image = Some(src);
                         }
                     }
                 }
+                if let Some(style) = attrs.attr_str("style")? {
+                    for token in parse_inline_style(style) {
+                        if let InlineStyleToken::Url(url) = token {
+                            if let Ok(url) = SitePath::from_rendered_attachment_url(&url) {
+                                trace!("found attachment url in rendered post (inline styles): {url:?}");
+                                needs_attachments.insert(url);
+                            }
+                        }
+                    }
+                }
+                // use the first <img src>, if any, as the <meta> og:image.
+                if og_image.is_none() && name == &QualName::html("img") {
+                    if let Some(src) = attrs.attr_str("src")?.map(std::borrow::ToOwned::to_owned) {
+                        og_image = Some(src);
+                    }
+                }
+
             }
             new_kids.push(kid.clone());
         }
