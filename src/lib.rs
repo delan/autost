@@ -23,7 +23,7 @@ use command::{
 use dom::{QualNameExt, Transform};
 use html5ever::{Attribute, QualName};
 use indexmap::{indexmap, IndexMap};
-use jane_eyre::eyre::{self, bail, Context, OptionExt};
+use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{NodeData, RcDom};
 use renamore::rename_exclusive_fallback;
 use serde::{Deserialize, Serialize};
@@ -68,7 +68,7 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
     #[cfg(not(test))]
     let result = Settings::load_default();
 
-    result.context("failed to load settings").unwrap()
+    result.expect("failed to load settings")
 });
 
 #[derive(clap::Parser, Debug)]
@@ -149,16 +149,19 @@ pub struct TemplatedPost {
 
 impl Default for RunDetails {
     fn default() -> Self {
-        let version = if let Some(git_describe) = option_env!("VERGEN_GIT_DESCRIBE") {
-            git_describe.to_owned()
-        } else if option_env!("AUTOST_IS_NIX_BUILD").is_some_and(|e| e == "1") {
-            // FIXME: nix package does not have access to git
-            // <https://github.com/NixOS/nix/issues/7201>
-            format!("{}-nix", env!("CARGO_PKG_VERSION"))
-        } else {
-            // other cases, including crates.io (hypothetically)
-            format!("{}-unknown", env!("CARGO_PKG_VERSION"))
-        };
+        let version = option_env!("VERGEN_GIT_DESCRIBE").map_or_else(
+            || {
+                if option_env!("AUTOST_IS_NIX_BUILD").is_some_and(|e| e == "1") {
+                    // FIXME: nix package does not have access to git
+                    // <https://github.com/NixOS/nix/issues/7201>
+                    format!("{}-nix", env!("CARGO_PKG_VERSION"))
+                } else {
+                    // other cases, including crates.io (hypothetically)
+                    format!("{}-unknown", env!("CARGO_PKG_VERSION"))
+                }
+            },
+            std::borrow::ToOwned::to_owned,
+        );
 
         Self {
             version,
@@ -185,9 +188,8 @@ impl RunDetailsWriter {
                         "failed to hard link old run_details.toml at run_details.{i}.toml: {other:?}"
                     ),
                 }
-            } else {
-                break;
             }
+            break;
         }
 
         // at this point, run_details.toml should not exist, unless there are concurrent shenanigans
@@ -242,22 +244,26 @@ fn test_is_main_self_author() -> eyre::Result<()> {
     meta_no_author.author = None;
 
     // same href as [self_author], but different name, display_name, and handle
-    let mut meta_same_href = PostMeta::default();
-    meta_same_href.author = Some(Author {
-        href: "https://example.com".to_owned(),
-        name: String::new(),
-        display_name: String::new(),
-        display_handle: String::new(),
-    });
+    let meta_same_href = PostMeta {
+        author: Some(Author {
+            href: "https://example.com".to_owned(),
+            name: String::new(),
+            display_name: String::new(),
+            display_handle: String::new(),
+        }),
+        ..PostMeta::default()
+    };
 
     // different href from [self_author]
-    let mut meta_different_href = PostMeta::default();
-    meta_different_href.author = Some(Author {
-        href: "https://example.net".to_owned(),
-        name: String::new(),
-        display_name: String::new(),
-        display_handle: String::new(),
-    });
+    let meta_different_href = PostMeta {
+        author: Some(Author {
+            href: "https://example.net".to_owned(),
+            name: String::new(),
+            display_name: String::new(),
+            display_handle: String::new(),
+        }),
+        ..PostMeta::default()
+    };
 
     assert!(meta_same_href.is_main_self_author(&settings));
     assert!(!meta_different_href.is_main_self_author(&settings));
@@ -358,6 +364,7 @@ impl TryFrom<TemplatedPost> for Thread {
 
     fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
         let path = post.path.clone();
+        #[allow(clippy::needless_collect)]
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
             .iter()
@@ -388,13 +395,19 @@ impl TryFrom<TemplatedPost> for Thread {
             .rev()
             .find(|post| !post.meta.is_transparent_share);
         meta.title = last_non_transparent_share_post.map(|post| {
-            if let Some(title) = post.meta.title.clone().filter(|t| !t.is_empty()) {
-                title
-            } else if let Some(author) = post.meta.author.as_ref() {
-                format!("untitled post by {}", author.display_handle)
-            } else {
-                "untitled post".to_owned()
-            }
+            post.meta
+                .title
+                .clone()
+                .filter(|t| !t.is_empty())
+                .map_or_else(
+                    || {
+                        post.meta.author.as_ref().map_or_else(
+                            || "untitled post".to_owned(),
+                            |author| format!("untitled post by {}", author.display_handle),
+                        )
+                    },
+                    |title| title,
+                )
         });
         let og_image = last_non_transparent_share_post
             .and_then(|post| post.og_image.as_deref())
