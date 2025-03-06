@@ -82,3 +82,13 @@ install-path = "CARGO_HOME"
 install-updater = true
 # build and upload artifacts for pull requests
 pr-run-mode = "upload"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+enum_glob_use = "deny"
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+missing_errors_doc = "allow"
