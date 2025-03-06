@@ -311,13 +311,14 @@ fn cache_cohost_attachment(
     // cohost attachment redirects don’t preserve query params, so if we want to add any,
     // we need to add them to the destination of the redirect.
     // FIXME: this will silently misbehave if the endpoint introduces a second redirect!
-    let url = if let Some(transform) = transform_redirect_target {
-        let transformed_url = transform(url);
-        trace!("transformed redirect target: {transformed_url}");
-        transformed_url
-    } else {
-        url.to_owned()
-    };
+    let url = transform_redirect_target.map_or_else(
+        || url.to_owned(),
+        |transform| {
+            let transformed_url = transform(url);
+            trace!("transformed redirect target: {transformed_url}");
+            transformed_url
+        },
+    );
 
     let path = path.join(original_filename.as_ref())?;
     let result = reqwest::blocking::get(url)?.bytes()?.to_vec();
