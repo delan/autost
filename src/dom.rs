@@ -9,6 +9,7 @@ use std::{
 use html5ever::{
     interface::{ElementFlags, TreeSink},
     local_name, namespace_url, ns,
+    serialize::SerializeOpts,
     tendril::{StrTendril, TendrilSink},
     tree_builder::TreeBuilderOpts,
     Attribute, LocalName, Namespace, ParseOpts,
@@ -277,13 +278,8 @@ pub trait AttrsMutExt: AttrsRefExt {
 }
 impl AttrsMutExt for Vec<Attribute> {
     fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute> {
-        for attr in self.iter_mut() {
-            if attr.name == QualName::attribute(name) {
-                return Some(attr);
-            }
-        }
-
-        None
+        self.iter_mut()
+            .find(|attr| attr.name == QualName::attribute(name))
     }
 }
 impl AttrsRefExt for Vec<Attribute> {
@@ -404,7 +400,7 @@ pub fn serialize_node_contents(node: Handle) -> eyre::Result<String> {
     let mut result = Vec::default();
     let node: SerializableHandle = node.into();
     // default SerializeOpts has `traversal_scope: ChildrenOnly(None)`.
-    html5ever::serialize(&mut result, &node, Default::default())?;
+    html5ever::serialize(&mut result, &node, SerializeOpts::default())?;
     let result = String::from_utf8(result)?;
 
     Ok(result)
@@ -462,7 +458,7 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
     // our known-good list.
     ATTRIBUTES_SEEN
         .lock()
-        .unwrap()
+        .expect("should be lockable")
         .insert((tag_name.to_owned(), result.to_owned()));
     if !KNOWN_GOOD_ATTRIBUTES.contains(&(None, result))
         && !KNOWN_GOOD_ATTRIBUTES.contains(&(Some(tag_name), result))
@@ -470,7 +466,7 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
         warn!("saw attribute not on known-good-attributes list! check if output is correct for: <{tag_name} {result}>");
         NOT_KNOWN_GOOD_ATTRIBUTES_SEEN
             .lock()
-            .unwrap()
+            .expect("should be lockable")
             .insert((tag_name.to_owned(), result.to_owned()));
     }
 
@@ -478,7 +474,6 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
 }
 
 #[test]
-
 fn test_rename_idl_to_content_attribute() {
     assert_eq!(
         rename_idl_to_content_attribute("div", "tabIndex"),
@@ -585,13 +580,18 @@ pub fn text_content_for_summaries(node: Handle) -> eyre::Result<String> {
 }
 
 pub fn debug_attributes_seen() -> Vec<(String, String)> {
-    ATTRIBUTES_SEEN.lock().unwrap().iter().cloned().collect()
+    ATTRIBUTES_SEEN
+        .lock()
+        .expect("should be lockable")
+        .iter()
+        .cloned()
+        .collect()
 }
 
 pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
     NOT_KNOWN_GOOD_ATTRIBUTES_SEEN
         .lock()
-        .unwrap()
+        .expect("should be lockable")
         .iter()
         .cloned()
         .collect()
