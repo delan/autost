@@ -406,7 +406,7 @@ fn process_content(
         }
     }
 
-    serialize_html_fragment(dom)
+    serialize_html_fragment(&dom)
 }
 
 fn mf2_e(node: Handle, class: &str) -> eyre::Result<Option<String>> {

@@ -157,7 +157,7 @@ pub fn hard_link_attachments_into_site<'paths>(
 fn test_extract_metadata() -> eyre::Result<()> {
     use crate::dom::serialize_html_fragment;
     let post = extract_metadata(r#"<meta name="title" content="foo">bar"#)?;
-    assert_eq!(serialize_html_fragment(post.dom)?, "bar");
+    assert_eq!(serialize_html_fragment(&post.dom)?, "bar");
     assert_eq!(post.meta.title.as_deref(), Some("foo"));
 
     Ok(())

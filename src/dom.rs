@@ -382,7 +382,7 @@ pub fn serialize_html_document(dom: RcDom) -> eyre::Result<String> {
     serialize_node_contents(dom.document)
 }
 
-pub fn serialize_html_fragment(dom: RcDom) -> eyre::Result<String> {
+pub fn serialize_html_fragment(dom: &RcDom) -> eyre::Result<String> {
     // html5ever::parse_fragment builds a tree with the input wrapped in an <html> element.
     // this is consistent with how the web platform dom requires exactly one root element.
     let children = dom.document.children.borrow();
@@ -413,26 +413,26 @@ pub fn serialize_node_contents(node: Handle) -> eyre::Result<String> {
 #[test]
 fn test_serialize() -> eyre::Result<()> {
     assert_eq!(
-        serialize_html_fragment(RcDom::default()).map_err(|_| ()),
+        serialize_html_fragment(&RcDom::default()).map_err(|_| ()),
         Err(())
     );
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize_html_fragment(dom)?, "");
+    assert_eq!(serialize_html_fragment(&dom)?, "");
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize_html_fragment(dom).map_err(|_| ()), Err(()));
+    assert_eq!(serialize_html_fragment(&dom).map_err(|_| ()), Err(()));
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "p");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize_html_fragment(dom).map_err(|_| ()), Err(()));
+    assert_eq!(serialize_html_fragment(&dom).map_err(|_| ()), Err(()));
 
     Ok(())
 }

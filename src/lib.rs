@@ -457,7 +457,7 @@ impl TemplatedPost {
         })? {}
 
         // reader step: filter html.
-        let extracted_html = serialize_html_fragment(post.dom)?;
+        let extracted_html = serialize_html_fragment(&post.dom)?;
         let safe_html = ammonia::Builder::default()
             .add_generic_attributes(["style", "id", "aria-label"])
             .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost

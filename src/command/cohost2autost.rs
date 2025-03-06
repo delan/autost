@@ -495,7 +495,7 @@ fn process_chost_fragment(
         Ok(())
     })? {}
 
-    serialize_html_fragment(dom)
+    serialize_html_fragment(&dom)
 }
 
 #[test]

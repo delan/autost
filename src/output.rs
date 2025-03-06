@@ -180,7 +180,7 @@ fn fix_relative_urls_in_html_fragment(html: &str) -> eyre::Result<String> {
     let dom = parse_html_fragment(html.as_bytes())?;
     let dom = fix_relative_urls(dom)?;
 
-    serialize_html_fragment(dom)
+    serialize_html_fragment(&dom)
 }
 
 fn fix_relative_urls(dom: RcDom) -> eyre::Result<RcDom> {
