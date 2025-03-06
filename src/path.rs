@@ -59,18 +59,34 @@ impl PathKind for PostsKind {
             .collect::<eyre::Result<Vec<_>>>()?;
 
         Ok(match components[..] {
-            [c] if c.ends_with(".html") => Self::Post {
-                is_markdown: false,
-                in_imported_dir: false,
-            },
-            [c] if c.ends_with(".md") => Self::Post {
-                is_markdown: true,
-                in_imported_dir: false,
-            },
-            ["imported", c] if c.ends_with(".html") => Self::Post {
-                is_markdown: false,
-                in_imported_dir: true,
-            },
+            [c] if std::path::Path::new(c)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("html")) =>
+            {
+                Self::Post {
+                    is_markdown: false,
+                    in_imported_dir: false,
+                }
+            }
+            [c] if std::path::Path::new(c)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md")) =>
+            {
+                Self::Post {
+                    is_markdown: true,
+                    in_imported_dir: false,
+                }
+            }
+            ["imported", c]
+                if std::path::Path::new(c)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html")) =>
+            {
+                Self::Post {
+                    is_markdown: false,
+                    in_imported_dir: true,
+                }
+            }
             _ => Self::Other,
         })
     }
@@ -478,6 +494,14 @@ pub fn hard_link_if_not_exists(
 /// <https://url.spec.whatwg.org/#path-relative-scheme-less-url-string>
 #[must_use]
 pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
+    #[derive(Debug)]
+    enum State {
+        SchemeStart,
+        Scheme,
+        NoScheme,
+        Relative,
+        RelativeSlash,
+    }
     // is it a “relative-URL string”? (case “Otherwise”)
     // <https://url.spec.whatwg.org/#relative-url-string>
     if Url::parse(url) == Err(url::ParseError::RelativeUrlWithoutBase) {
@@ -500,15 +524,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
         let url = url.replace(['\x09', '\x0A', '\x0D'], "");
 
         // “Let *state* be *state override* if given, or [scheme start state] otherwise.”
-        #[derive(Debug)]
-        enum State {
-            SchemeStartState,
-            Scheme,
-            NoScheme,
-            Relative,
-            RelativeSlash,
-        }
-        let mut state = State::SchemeStartState;
+        let mut state = State::SchemeStart;
 
         // “Let *pointer* be a [pointer] for *input*.”
         let mut pointer = &url[..];
@@ -522,7 +538,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
             let c = pointer.chars().next();
 
             match state {
-                State::SchemeStartState => {
+                State::SchemeStart => {
                     if c.is_some_and(|c| c.is_ascii_alphabetic()) {
                         state = State::Scheme;
                     } else {
@@ -555,9 +571,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                     continue; // skip pointer increase
                 }
                 State::Relative => {
-                    if c.is_some_and(|c| c == '/') {
-                        state = State::RelativeSlash;
-                    } else if c.is_some_and(|c| c == '\\') {
+                    if c.is_some_and(|c| c == '/') || c.is_some_and(|c| c == '\\') {
                         state = State::RelativeSlash;
                     } else {
                         // “Set [...], url’s path to a clone of base’s path, [...].”
