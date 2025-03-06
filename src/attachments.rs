@@ -36,7 +36,8 @@ impl CachedFileResult<AttachmentsPath> {
 }
 
 impl CachedFileResult<SitePath> {
-    #[must_use] pub fn base_relative_url(&self) -> String {
+    #[must_use]
+    pub fn base_relative_url(&self) -> String {
         match self {
             Self::CachedPath(inner) => inner.base_relative_url(),
             Self::UncachedUrl(url) => url.to_owned(),

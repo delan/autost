@@ -201,10 +201,18 @@ impl Iterator for DepthTraverse {
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.stack.is_empty() {
-            while self.stack.last().is_some_and(std::collections::VecDeque::is_empty) {
+            while self
+                .stack
+                .last()
+                .is_some_and(std::collections::VecDeque::is_empty)
+            {
                 self.stack.pop();
             }
-            if let Some(node) = self.stack.last_mut().and_then(std::collections::VecDeque::pop_front) {
+            if let Some(node) = self
+                .stack
+                .last_mut()
+                .and_then(std::collections::VecDeque::pop_front)
+            {
                 let kids = node
                     .children
                     .borrow()
@@ -313,11 +321,13 @@ pub trait TendrilExt: Borrow<[u8]> {
 impl TendrilExt for StrTendril {}
 
 pub trait QualNameExt {
-    #[must_use] fn html(name: &str) -> QualName {
+    #[must_use]
+    fn html(name: &str) -> QualName {
         QualName::new(None, ns!(html), LocalName::from(name))
     }
 
-    #[must_use] fn atom(name: &str) -> QualName {
+    #[must_use]
+    fn atom(name: &str) -> QualName {
         QualName::new(
             None,
             Namespace::from("http://www.w3.org/2005/Atom"),
@@ -325,7 +335,8 @@ pub trait QualNameExt {
         )
     }
 
-    #[must_use] fn attribute(name: &str) -> QualName {
+    #[must_use]
+    fn attribute(name: &str) -> QualName {
         // per html5ever::Attribute docs:
         // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
         // attributes this way, but the tree builder will adjust certain attribute names inside foreign
@@ -427,7 +438,8 @@ fn test_serialize() -> eyre::Result<()> {
 }
 
 /// create a [`RcDom`] whose document has exactly one child, a wrapper <html> element.
-#[must_use] pub fn create_fragment() -> (RcDom, Handle) {
+#[must_use]
+pub fn create_fragment() -> (RcDom, Handle) {
     let mut dom = RcDom::default();
     let root = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(root.clone());
@@ -585,15 +597,18 @@ pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
         .collect()
 }
 
-#[must_use] pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
+#[must_use]
+pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_URLS
 }
 
-#[must_use] pub fn html_attributes_with_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
+#[must_use]
+pub fn html_attributes_with_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_EMBEDDING_URLS
 }
 
-#[must_use] pub fn html_attributes_with_non_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>>
+#[must_use]
+pub fn html_attributes_with_non_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>>
 {
     &HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS
 }

@@ -171,8 +171,8 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
             display_handle: url.authority().to_owned(),
         }
     } else {
-        let p_author = mf2_p(p_author, "p-author")?
-            .ok_or_eyre("failed to parse .p-author as p-property")?;
+        let p_author =
+            mf2_p(p_author, "p-author")?.ok_or_eyre("failed to parse .p-author as p-property")?;
         Author {
             href: canonical_url.to_string(),
             name: p_author.clone(),
@@ -237,7 +237,9 @@ async fn fetch_akkoma_post(
             let NodeData::Element { name, attrs, .. } = &node.data else {
                 unreachable!()
             };
-            if name == &QualName::html("script") && attrs.borrow().attr_str("id")? == Some("initial-results") {
+            if name == &QualName::html("script")
+                && attrs.borrow().attr_str("id")? == Some("initial-results")
+            {
                 return Ok(Some(serde_json::from_str(&text_content(node)?)?));
             }
         }
@@ -365,10 +367,7 @@ fn process_content(
                             .base_relative_url()
                             .into();
                         extra_attrs.push(Attribute {
-                            name: QualName::attribute(&format!(
-                                "data-import-{}",
-                                attr.name.local
-                            )),
+                            name: QualName::attribute(&format!("data-import-{}", attr.name.local)),
                             value: old_url.into(),
                         });
                     }
@@ -391,10 +390,7 @@ fn process_content(
                         );
                         attr.value = new_url.to_string().into();
                         extra_attrs.push(Attribute {
-                            name: QualName::attribute(&format!(
-                                "data-import-{}",
-                                attr.name.local
-                            )),
+                            name: QualName::attribute(&format!("data-import-{}", attr.name.local)),
                             value: old_url.into(),
                         });
                     }
@@ -498,8 +494,7 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
 
 fn mf2_find(node: Handle, class: &str) -> Option<Handle> {
     // TODO: handle errors from has_class()
-    BreadthTraverse::elements(node)
-        .find(|node| has_class(node.clone(), class).unwrap_or(false))
+    BreadthTraverse::elements(node).find(|node| has_class(node.clone(), class).unwrap_or(false))
 }
 
 fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {

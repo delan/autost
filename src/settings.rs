@@ -126,7 +126,8 @@ impl Settings {
         }
     }
 
-    #[must_use] pub fn base_url_relativise(&self, url: &str) -> String {
+    #[must_use]
+    pub fn base_url_relativise(&self, url: &str) -> String {
         if let Some(url) = parse_path_relative_scheme_less_url_string(url) {
             format!("{}{}", self.base_url, url)
         } else {
@@ -134,31 +135,36 @@ impl Settings {
         }
     }
 
-    #[must_use] pub fn server_port(&self) -> u16 {
+    #[must_use]
+    pub fn server_port(&self) -> u16 {
         self.server_port.unwrap_or(8420)
     }
 
-    #[must_use] pub fn page_title(&self, title: Option<&str>) -> String {
+    #[must_use]
+    pub fn page_title(&self, title: Option<&str>) -> String {
         match title {
             Some(title) => format!("{} — {}", title, self.site_title),
             None => self.site_title.clone(),
         }
     }
 
-    #[must_use] pub fn is_main_self_author(&self, author: &Author) -> bool {
+    #[must_use]
+    pub fn is_main_self_author(&self, author: &Author) -> bool {
         // compare href only, ignoring other fields
         self.self_author
             .as_ref()
             .map_or(false, |a| a.href == author.href)
     }
 
-    #[must_use] pub fn is_any_self_author(&self, author: &Author) -> bool {
+    #[must_use]
+    pub fn is_any_self_author(&self, author: &Author) -> bool {
         // compare href only, ignoring other fields
         self.is_main_self_author(author)
             || self.other_self_authors.iter().any(|a| *a == author.href)
     }
 
-    #[must_use] pub fn tag_is_interesting(&self, tag: &str) -> bool {
+    #[must_use]
+    pub fn tag_is_interesting(&self, tag: &str) -> bool {
         self.interesting_tags_iter()
             .any(|interesting_tag| interesting_tag == tag)
     }
@@ -171,21 +177,24 @@ impl Settings {
         self.interesting_tags.iter().map(|tag| &**tag)
     }
 
-    #[must_use] pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
+    #[must_use]
+    pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
         self.interesting_archived_threads_list
             .as_ref()
             .zip(thread.meta.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
-    #[must_use] pub fn thread_is_on_excluded_archived_list(&self, thread: &Thread) -> bool {
+    #[must_use]
+    pub fn thread_is_on_excluded_archived_list(&self, thread: &Thread) -> bool {
         self.excluded_archived_threads_list
             .as_ref()
             .zip(thread.meta.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
-    #[must_use] pub fn extra_archived_thread_tags(&self, post: &TemplatedPost) -> &[String] {
+    #[must_use]
+    pub fn extra_archived_thread_tags(&self, post: &TemplatedPost) -> &[String] {
         self.archived_thread_tags
             .as_ref()
             .zip(post.meta.archived.as_ref())
@@ -193,7 +202,8 @@ impl Settings {
             .map_or(&[], |result| &**result)
     }
 
-    #[must_use] pub fn resolve_tags(&self, tags: Vec<String>) -> Vec<String> {
+    #[must_use]
+    pub fn resolve_tags(&self, tags: Vec<String>) -> Vec<String> {
         let mut seen = BTreeSet::default();
         let mut result = tags;
         let mut old_len = 0;
@@ -244,7 +254,8 @@ impl Settings {
         &[]
     }
 
-    #[must_use] pub fn path_to_static(&self) -> Option<PathBuf> {
+    #[must_use]
+    pub fn path_to_static(&self) -> Option<PathBuf> {
         #[allow(deprecated)]
         if let Some(path_to_autost) = self.path_to_autost.as_deref() {
             return Some(Path::new(path_to_autost).join("static"));

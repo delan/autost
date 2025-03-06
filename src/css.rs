@@ -10,14 +10,16 @@ pub enum InlineStyleToken {
     Other(String),
 }
 
-#[must_use] pub fn parse_inline_style(style: &str) -> Vec<InlineStyleToken> {
+#[must_use]
+pub fn parse_inline_style(style: &str) -> Vec<InlineStyleToken> {
     let mut input = ParserInput::new(style);
     let mut parser = Parser::new(&mut input);
 
     parse(&mut parser)
 }
 
-#[must_use] pub fn serialise_inline_style(tokens: &[InlineStyleToken]) -> String {
+#[must_use]
+pub fn serialise_inline_style(tokens: &[InlineStyleToken]) -> String {
     tokens
         .iter()
         .map(|t| match t {

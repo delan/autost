@@ -255,7 +255,11 @@ fn convert_single_chost(
             }
             Block::AttachmentRow { attachments } => {
                 for block in attachments {
-                    if let Block::Attachment { attachment } = block { handle_attachment(attachment)? } else { warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}") }
+                    if let Block::Attachment { attachment } = block {
+                        handle_attachment(attachment)?
+                    } else {
+                        warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}")
+                    }
                 }
             }
             Block::Unknown { fields } => {
@@ -275,11 +279,7 @@ fn process_ast(root: Ast) -> RcDom {
     while let Some((node, parent)) = ast_queue.pop_front() {
         match node {
             Ast::Root { children } => {
-                ast_queue.extend(
-                    children
-                        .into_iter()
-                        .map(|node| (node, parent.clone())),
-                );
+                ast_queue.extend(children.into_iter().map(|node| (node, parent.clone())));
             }
             Ast::Element {
                 tagName,
@@ -309,11 +309,7 @@ fn process_ast(root: Ast) -> RcDom {
                 });
 
                 parent.children.borrow_mut().push(element.clone());
-                ast_queue.extend(
-                    children
-                        .into_iter()
-                        .map(|node| (node, element.clone())),
-                );
+                ast_queue.extend(children.into_iter().map(|node| (node, element.clone())));
             }
             Ast::Text { value } => {
                 let text = Node::new(NodeData::Text {

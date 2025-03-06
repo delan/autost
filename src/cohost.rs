@@ -249,15 +249,18 @@ impl<'url> Cacheable<'url> {
         }
     }
 
-    #[must_use] pub const fn r#static(filename: &'url str, url: &'url str) -> Self {
+    #[must_use]
+    pub const fn r#static(filename: &'url str, url: &'url str) -> Self {
         Self::Static { filename, url }
     }
 
-    #[must_use] pub const fn avatar(filename: &'url str, url: &'url str) -> Self {
+    #[must_use]
+    pub const fn avatar(filename: &'url str, url: &'url str) -> Self {
         Self::Avatar { filename, url }
     }
 
-    #[must_use] pub const fn header(filename: &'url str, url: &'url str) -> Self {
+    #[must_use]
+    pub const fn header(filename: &'url str, url: &'url str) -> Self {
         Self::Header { filename, url }
     }
 
@@ -350,7 +353,8 @@ impl<'url> Cacheable<'url> {
     }
 }
 
-#[must_use] pub fn attachment_id_to_url(id: &str) -> String {
+#[must_use]
+pub fn attachment_id_to_url(id: &str) -> String {
     format!("https://cohost.org/rc/attachment-redirect/{id}")
 }
 

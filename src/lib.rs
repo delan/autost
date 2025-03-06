@@ -212,7 +212,8 @@ impl RunDetailsWriter {
 }
 
 impl PostMeta {
-    #[must_use] pub fn is_main_self_author(&self, settings: &Settings) -> bool {
+    #[must_use]
+    pub fn is_main_self_author(&self, settings: &Settings) -> bool {
         self.author
             .as_ref()
             .map_or(settings.self_author.is_none(), |a| {
@@ -220,7 +221,8 @@ impl PostMeta {
             })
     }
 
-    #[must_use] pub fn is_any_self_author(&self, settings: &Settings) -> bool {
+    #[must_use]
+    pub fn is_any_self_author(&self, settings: &Settings) -> bool {
         let no_self_authors =
             settings.self_author.is_none() && settings.other_self_authors.is_empty();
 
@@ -268,7 +270,8 @@ fn test_is_main_self_author() -> eyre::Result<()> {
 }
 
 impl Thread {
-    #[must_use] pub fn reverse_chronological(p: &Self, q: &Self) -> Ordering {
+    #[must_use]
+    pub fn reverse_chronological(p: &Self, q: &Self) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()
     }
 
@@ -361,10 +364,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .filter(|tag| !post.meta.tags.contains(tag))
             .map(std::borrow::ToOwned::to_owned)
             .collect::<Vec<_>>();
-        let combined_tags = extra_tags
-            .into_iter()
-            .chain(post.meta.tags)
-            .collect();
+        let combined_tags = extra_tags.into_iter().chain(post.meta.tags).collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
         let mut meta = post.meta.clone();
@@ -511,13 +511,13 @@ pub fn cli_init() -> eyre::Result<()> {
 ///   (this was not the case for older chosts, as reflected in their `.astMap`)
 /// - blank lines in `<details>` close the element in some situations?
 /// - spaced numbered lists yield separate `<ol start>` instead of `<li><p>`
-#[must_use] pub fn render_markdown(markdown: &str) -> String {
+#[must_use]
+pub fn render_markdown(markdown: &str) -> String {
     let mut options = comrak::Options::default();
     options.render.unsafe_ = true;
     options.extension.table = true;
     options.extension.autolink = true;
     options.render.hardbreaks = true;
-    
 
     comrak::markdown_to_html(markdown, &options)
 }
