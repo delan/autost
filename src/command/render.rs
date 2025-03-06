@@ -96,8 +96,8 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             include_bytes!("../../static/Atkinson-Hyperlegible-BoldItalic-102.woff2"),
         ),
     ];
-    for file in static_files.iter() {
-        copy_static(&*SITE_PATH_ROOT, file)?;
+    for file in &static_files {
+        copy_static(&SITE_PATH_ROOT, file)?;
     }
     #[cfg(unix)]
     {
@@ -163,7 +163,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             &format!("{} — {tag}", SETTINGS.site_title),
             &now,
         )?;
-        writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
+        writeln!(File::create(&atom_feed_path)?, "{atom_feed}",)?;
         interesting_output_paths.insert(atom_feed_path);
         let threads_content = render_cached_threads_content(&threads_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
@@ -173,7 +173,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         )?;
         // TODO: move this logic into path module and check for slashes
         let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
+        writeln!(File::create(&threads_page_path)?, "{threads_page}")?;
         interesting_output_paths.insert(threads_page_path);
     }
 
@@ -204,8 +204,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     let interesting_output_paths = interesting_output_paths
         .into_iter()
         .map(|path| format!("{}\n", path.rsync_deploy_line()))
-        .collect::<Vec<_>>()
-        .join("");
+        .collect::<String>();
     if let Some(path) = &SETTINGS.interesting_output_filenames_list_path {
         File::create(path)?.write_all(interesting_output_paths.as_bytes())?;
     }
@@ -222,7 +221,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     };
     let thread = Thread::try_from(post)?;
     hard_link_attachments_into_site(thread.needs_attachments())?;
-    for tag in thread.meta.tags.iter() {
+    for tag in &thread.meta.tags {
         *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
     }
     result.collections.push("all", &path, &thread);
@@ -237,7 +236,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             .push("marked_interesting", &path, &thread);
         was_interesting = true;
     } else if thread.meta.is_any_self_author(&SETTINGS) {
-        for tag in thread.meta.tags.iter() {
+        for tag in &thread.meta.tags {
             if SETTINGS.tag_is_interesting(tag) {
                 was_interesting = true;
                 break;
@@ -249,7 +248,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             .interesting_output_paths
             .insert(rendered_path.clone());
         result.collections.push("index", &path, &thread);
-        for tag in thread.meta.tags.iter() {
+        for tag in &thread.meta.tags {
             if SETTINGS.tag_is_interesting(tag) {
                 result
                     .threads_by_interesting_tag
@@ -294,7 +293,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         &SETTINGS.page_title(thread.meta.title.as_deref()),
         &None,
     )?;
-    writeln!(File::create(rendered_path)?, "{}", threads_page)?;
+    writeln!(File::create(rendered_path)?, "{threads_page}")?;
 
     let result = CacheableRenderResult {
         render_result: result,
@@ -406,7 +405,7 @@ impl Collections {
     }
 
     fn keys(&self) -> impl Iterator<Item = &str> {
-        self.inner.keys().map(|key| *key)
+        self.inner.keys().copied()
     }
 
     fn len(&self, key: &str) -> usize {
@@ -463,7 +462,7 @@ impl Collection {
         }
     }
 
-    fn is_interesting(&self) -> bool {
+    const fn is_interesting(&self) -> bool {
         // this definition may change in the future.
         self.feed_href.is_some()
     }

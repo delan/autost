@@ -134,7 +134,7 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
     };
     info!("found h-entry post");
 
-    let mut base_href = Url::parse(&url)?;
+    let mut base_href = Url::parse(url)?;
     for node in BreadthTraverse::elements(document) {
         let NodeData::Element { name, attrs, .. } = &node.data else {
             unreachable!()
@@ -162,21 +162,21 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
     let canonical_url = u_url.ok_or_eyre(".h-entry has no .u-url")?;
     let author = if has_class(p_author.clone(), "h-card")? {
         let card_url = mf2_u(p_author.clone(), "u-url", &base_href)?;
-        let card_name = mf2_p(p_author.clone(), "p-name")?.ok_or_eyre(".h-card has no .p-name")?;
+        let card_name = mf2_p(p_author, "p-name")?.ok_or_eyre(".h-card has no .p-name")?;
         let url = card_url.unwrap_or(canonical_url.clone());
         Author {
             href: url.to_string(),
             name: card_name.clone(),
-            display_name: card_name.clone(),
+            display_name: card_name,
             display_handle: url.authority().to_owned(),
         }
     } else {
-        let p_author = mf2_p(p_author.clone(), "p-author")?
+        let p_author = mf2_p(p_author, "p-author")?
             .ok_or_eyre("failed to parse .p-author as p-property")?;
         Author {
             href: canonical_url.to_string(),
             name: p_author.clone(),
-            display_name: p_author.clone(),
+            display_name: p_author,
             display_handle: canonical_url.authority().to_owned(),
         }
     };
@@ -191,10 +191,8 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
         while let Some(weak) = node.parent.take() {
             let parent = weak.upgrade().expect("dangling weak pointer");
             node.parent.set(Some(weak));
-            if has_class(parent.clone(), "h-entry")? {
-                if !Rc::ptr_eq(&parent, &h_entry) {
-                    continue 'category;
-                }
+            if has_class(parent.clone(), "h-entry")? && !Rc::ptr_eq(&parent, &h_entry) {
+                continue 'category;
             }
             node = parent;
         }
@@ -239,10 +237,8 @@ async fn fetch_akkoma_post(
             let NodeData::Element { name, attrs, .. } = &node.data else {
                 unreachable!()
             };
-            if name == &QualName::html("script") {
-                if attrs.borrow().attr_str("id")? == Some("initial-results") {
-                    return Ok(Some(serde_json::from_str(&text_content(node)?)?));
-                }
+            if name == &QualName::html("script") && attrs.borrow().attr_str("id")? == Some("initial-results") {
+                return Ok(Some(serde_json::from_str(&text_content(node)?)?));
             }
         }
         Ok(None)
@@ -304,7 +300,7 @@ async fn fetch_akkoma_post(
 
     Ok(Some(FetchPostResult {
         base_href: url.clone(),
-        content: content,
+        content,
         url,
         meta,
     }))
@@ -349,75 +345,72 @@ fn process_content(
     let dom = parse_html_fragment(content.as_bytes())?;
 
     for node in BreadthTraverse::nodes(dom.document.clone()) {
-        match &node.data {
-            NodeData::Element { name, attrs, .. } => {
-                let mut attrs = attrs.borrow_mut();
-                let mut extra_attrs = vec![];
-                if let Some(attr_names) = html_attributes_with_embedding_urls().get(name) {
-                    for attr in attrs.iter_mut() {
-                        if attr_names.contains(&attr.name) {
-                            // rewrite attachment urls to relative cached paths.
-                            let old_url = attr.value.to_str().to_owned();
-                            let fetch_url = base_href.join(&old_url)?;
-                            trace!(
-                                "found attachment url in <{} {}>: {old_url}",
-                                name.local,
+        if let NodeData::Element { name, attrs, .. } = &node.data {
+            let mut attrs = attrs.borrow_mut();
+            let mut extra_attrs = vec![];
+            if let Some(attr_names) = html_attributes_with_embedding_urls().get(name) {
+                for attr in attrs.iter_mut() {
+                    if attr_names.contains(&attr.name) {
+                        // rewrite attachment urls to relative cached paths.
+                        let old_url = attr.value.to_str().to_owned();
+                        let fetch_url = base_href.join(&old_url)?;
+                        trace!(
+                            "found attachment url in <{} {}>: {old_url}",
+                            name.local,
+                            attr.name.local
+                        );
+                        attr.value = context
+                            .cache_imported(fetch_url.as_ref(), post_basename)?
+                            .site_path()?
+                            .base_relative_url()
+                            .into();
+                        extra_attrs.push(Attribute {
+                            name: QualName::attribute(&format!(
+                                "data-import-{}",
                                 attr.name.local
-                            );
-                            attr.value = context
-                                .cache_imported(&fetch_url.to_string(), post_basename)?
-                                .site_path()?
-                                .base_relative_url()
-                                .into();
-                            extra_attrs.push(Attribute {
-                                name: QualName::attribute(&format!(
-                                    "data-import-{}",
-                                    attr.name.local
-                                )),
-                                value: old_url.into(),
-                            });
-                        }
+                            )),
+                            value: old_url.into(),
+                        });
                     }
                 }
-                if let Some(attr_names) = html_attributes_with_non_embedding_urls().get(name) {
-                    for attr in attrs.iter_mut() {
-                        if attr_names.contains(&attr.name) {
-                            // rewrite urls in links to bake in the `base_href`.
-                            let old_url = attr.value.to_str().to_owned();
-                            let new_url = if old_url.starts_with("#") {
-                                format!("#user-content-{}", &old_url[1..])
-                            } else {
-                                base_href.join(&old_url)?.to_string()
-                            };
-                            trace!(
-                                "rewriting <{} {}>: {old_url:?} -> {new_url:?}",
-                                name.local,
-                                attr.name.local,
-                            );
-                            attr.value = new_url.to_string().into();
-                            extra_attrs.push(Attribute {
-                                name: QualName::attribute(&format!(
-                                    "data-import-{}",
-                                    attr.name.local
-                                )),
-                                value: old_url.into(),
-                            });
-                        }
-                    }
-                }
-                if name == &QualName::html("img") {
-                    extra_attrs.push(Attribute {
-                        name: QualName::attribute("loading"),
-                        value: "lazy".into(),
-                    });
-                }
-                attrs.extend(extra_attrs);
             }
-            _ => {}
+            if let Some(attr_names) = html_attributes_with_non_embedding_urls().get(name) {
+                for attr in attrs.iter_mut() {
+                    if attr_names.contains(&attr.name) {
+                        // rewrite urls in links to bake in the `base_href`.
+                        let old_url = attr.value.to_str().to_owned();
+                        let new_url = if old_url.starts_with('#') {
+                            format!("#user-content-{}", &old_url[1..])
+                        } else {
+                            base_href.join(&old_url)?.to_string()
+                        };
+                        trace!(
+                            "rewriting <{} {}>: {old_url:?} -> {new_url:?}",
+                            name.local,
+                            attr.name.local,
+                        );
+                        attr.value = new_url.to_string().into();
+                        extra_attrs.push(Attribute {
+                            name: QualName::attribute(&format!(
+                                "data-import-{}",
+                                attr.name.local
+                            )),
+                            value: old_url.into(),
+                        });
+                    }
+                }
+            }
+            if name == &QualName::html("img") {
+                extra_attrs.push(Attribute {
+                    name: QualName::attribute("loading"),
+                    value: "lazy".into(),
+                });
+            }
+            attrs.extend(extra_attrs);
         }
     }
 
-    Ok(serialize_html_fragment(dom)?)
+    serialize_html_fragment(dom)
 }
 
 fn mf2_e(node: Handle, class: &str) -> eyre::Result<Option<String>> {
@@ -468,7 +461,7 @@ fn mf2_p(node: Handle, class: &str) -> eyre::Result<Option<String>> {
 
 fn mf2_u(node: Handle, class: &str, base_href: &Url) -> eyre::Result<Option<Url>> {
     // TODO: handle other cases in <https://microformats.org/wiki/microformats2-parsing#parsing_a_u-_property>
-    let Some(element) = mf2_find(node.clone(), class) else {
+    let Some(element) = mf2_find(node, class) else {
         return Ok(None);
     };
     let attrs = if let NodeData::Element { attrs, .. } = &element.data {
@@ -488,7 +481,7 @@ fn mf2_u(node: Handle, class: &str, base_href: &Url) -> eyre::Result<Option<Url>
 
 fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
     // TODO: handle other cases in <https://microformats.org/wiki/microformats2-parsing#parsing_a_dt-_property>
-    let Some(element) = mf2_find(node.clone(), class) else {
+    let Some(element) = mf2_find(node, class) else {
         return Ok(None);
     };
     let NodeData::Element { attrs, .. } = &element.data else {
@@ -497,7 +490,7 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
     let result = attrs
         .borrow()
         .attr_str("datetime")?
-        .map(|datetime| datetime.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
         .ok_or_eyre(".dt-class has no [datetime]")?;
 
     Ok(Some(result))
@@ -505,13 +498,13 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
 
 fn mf2_find(node: Handle, class: &str) -> Option<Handle> {
     // TODO: handle errors from has_class()
-    BreadthTraverse::elements(node.clone())
+    BreadthTraverse::elements(node)
         .find(|node| has_class(node.clone(), class).unwrap_or(false))
 }
 
 fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {
     // TODO: handle errors from has_class()
-    BreadthTraverse::elements(node.clone())
+    BreadthTraverse::elements(node)
         .filter(|node| has_class(node.clone(), class).unwrap_or(false))
         .collect()
 }
@@ -519,7 +512,7 @@ fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {
 fn has_class(node: Handle, class: &str) -> eyre::Result<bool> {
     if let NodeData::Element { attrs, .. } = &node.data {
         if let Some(node_class) = attrs.borrow().attr_str("class")? {
-            if node_class.split(" ").find(|&c| c == class).is_some() {
+            if node_class.split(' ').any(|c| c == class) {
                 return Ok(true);
             }
         }

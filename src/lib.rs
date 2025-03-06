@@ -98,7 +98,7 @@ pub struct RunDetailsWriter {
     file: File,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Template)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Template)]
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
     pub archived: Option<String>,
@@ -110,7 +110,7 @@ pub struct PostMeta {
     pub is_transparent_share: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Author {
     pub href: String,
     pub name: String,
@@ -203,7 +203,7 @@ impl RunDetailsWriter {
             .strip_prefix("x = ")
             .expect("guaranteed by definition");
 
-        Ok(write!(self.file, r#"{key} = {}"#, result)?)
+        Ok(write!(self.file, r#"{key} = {result}"#)?)
     }
 
     pub fn ok(mut self) -> eyre::Result<()> {
@@ -212,7 +212,7 @@ impl RunDetailsWriter {
 }
 
 impl PostMeta {
-    pub fn is_main_self_author(&self, settings: &Settings) -> bool {
+    #[must_use] pub fn is_main_self_author(&self, settings: &Settings) -> bool {
         self.author
             .as_ref()
             .map_or(settings.self_author.is_none(), |a| {
@@ -220,7 +220,7 @@ impl PostMeta {
             })
     }
 
-    pub fn is_any_self_author(&self, settings: &Settings) -> bool {
+    #[must_use] pub fn is_any_self_author(&self, settings: &Settings) -> bool {
         let no_self_authors =
             settings.self_author.is_none() && settings.other_self_authors.is_empty();
 
@@ -243,18 +243,18 @@ fn test_is_main_self_author() -> eyre::Result<()> {
     let mut meta_same_href = PostMeta::default();
     meta_same_href.author = Some(Author {
         href: "https://example.com".to_owned(),
-        name: "".to_owned(),
-        display_name: "".to_owned(),
-        display_handle: "".to_owned(),
+        name: String::new(),
+        display_name: String::new(),
+        display_handle: String::new(),
     });
 
     // different href from [self_author]
     let mut meta_different_href = PostMeta::default();
     meta_different_href.author = Some(Author {
         href: "https://example.net".to_owned(),
-        name: "".to_owned(),
-        display_name: "".to_owned(),
-        display_handle: "".to_owned(),
+        name: String::new(),
+        display_name: String::new(),
+        display_handle: String::new(),
     });
 
     assert!(meta_same_href.is_main_self_author(&settings));
@@ -268,12 +268,12 @@ fn test_is_main_self_author() -> eyre::Result<()> {
 }
 
 impl Thread {
-    pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
+    #[must_use] pub fn reverse_chronological(p: &Self, q: &Self) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()
     }
 
     pub fn url_for_original_path(&self) -> eyre::Result<Option<String>> {
-        let result = self.path.as_ref().map(|path| path.references_url());
+        let result = self.path.as_ref().map(path::RelativePath::references_url);
 
         Ok(result)
     }
@@ -282,7 +282,7 @@ impl Thread {
         let result = self
             .path
             .as_ref()
-            .map(|path| path.rendered_path())
+            .map(path::RelativePath::rendered_path)
             .transpose()?
             .flatten()
             .map(|path| path.internal_url());
@@ -294,7 +294,7 @@ impl Thread {
         let result = self
             .path
             .as_ref()
-            .map(|path| path.rendered_path())
+            .map(path::RelativePath::rendered_path)
             .transpose()?
             .flatten()
             .map(|path| path.external_url());
@@ -306,7 +306,7 @@ impl Thread {
         let result = self
             .path
             .as_ref()
-            .map(|path| path.rendered_path())
+            .map(path::RelativePath::rendered_path)
             .transpose()?
             .flatten()
             .map(|path| path.atom_feed_entry_id());
@@ -357,13 +357,13 @@ impl TryFrom<TemplatedPost> for Thread {
         let path = post.path.clone();
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
-            .into_iter()
+            .iter()
             .filter(|tag| !post.meta.tags.contains(tag))
-            .map(|tag| tag.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .collect::<Vec<_>>();
         let combined_tags = extra_tags
             .into_iter()
-            .chain(post.meta.tags.into_iter())
+            .chain(post.meta.tags)
             .collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
@@ -373,7 +373,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .meta
             .references
             .iter()
-            .map(|path| TemplatedPost::load(path))
+            .map(TemplatedPost::load)
             .collect::<Result<Vec<_>, _>>()?;
         posts.push(post);
 
@@ -400,15 +400,15 @@ impl TryFrom<TemplatedPost> for Thread {
             .and_then(|post| post.og_image.as_deref())
             .map(|og_image| SETTINGS.base_url_relativise(og_image));
         let og_description =
-            last_non_transparent_share_post.map(|post| post.og_description.to_owned());
+            last_non_transparent_share_post.map(|post| post.og_description.clone());
 
         let needs_attachments = posts
             .iter()
             .flat_map(|post| post.needs_attachments.iter())
-            .map(|attachment_path| attachment_path.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .collect();
 
-        Ok(Thread {
+        Ok(Self {
             path,
             posts,
             meta,
@@ -473,7 +473,7 @@ impl TemplatedPost {
             .clean(&extracted_html)
             .to_string();
 
-        Ok(TemplatedPost {
+        Ok(Self {
             path,
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
@@ -511,15 +511,15 @@ pub fn cli_init() -> eyre::Result<()> {
 ///   (this was not the case for older chosts, as reflected in their `.astMap`)
 /// - blank lines in `<details>` close the element in some situations?
 /// - spaced numbered lists yield separate `<ol start>` instead of `<li><p>`
-pub fn render_markdown(markdown: &str) -> String {
+#[must_use] pub fn render_markdown(markdown: &str) -> String {
     let mut options = comrak::Options::default();
     options.render.unsafe_ = true;
     options.extension.table = true;
     options.extension.autolink = true;
     options.render.hardbreaks = true;
-    let unsafe_html = comrak::markdown_to_html(&markdown, &options);
+    
 
-    unsafe_html
+    comrak::markdown_to_html(markdown, &options)
 }
 
 #[test]

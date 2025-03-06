@@ -93,7 +93,7 @@ fn test_author_from_api_account() {
     assert_eq!(
         Author::from(&ApiAccount {
             url: "https://posting.isincredibly.gay/users/ruby".to_owned(),
-            display_name: "".to_owned(),
+            display_name: String::new(),
             username: "ruby".to_owned(),
             acct: "ruby".to_owned(),
             fqn: "ruby@posting.isincredibly.gay".to_owned(),
@@ -101,7 +101,7 @@ fn test_author_from_api_account() {
         Author {
             href: "https://posting.isincredibly.gay/users/ruby".to_owned(),
             name: "@ruby@posting.isincredibly.gay".to_owned(),
-            display_name: "".to_owned(),
+            display_name: String::new(),
             display_handle: "@ruby@posting.isincredibly.gay".to_owned(),
         }
     );

@@ -226,7 +226,7 @@ pub enum Ast {
     Text { value: String },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Cacheable<'url> {
     /// cohost attachment (staging.cohostcdn.org/attachment or an equivalent redirect)
     Attachment {
@@ -249,15 +249,15 @@ impl<'url> Cacheable<'url> {
         }
     }
 
-    pub fn r#static(filename: &'url str, url: &'url str) -> Self {
+    #[must_use] pub const fn r#static(filename: &'url str, url: &'url str) -> Self {
         Self::Static { filename, url }
     }
 
-    pub fn avatar(filename: &'url str, url: &'url str) -> Self {
+    #[must_use] pub const fn avatar(filename: &'url str, url: &'url str) -> Self {
         Self::Avatar { filename, url }
     }
 
-    pub fn header(filename: &'url str, url: &'url str) -> Self {
+    #[must_use] pub const fn header(filename: &'url str, url: &'url str) -> Self {
         Self::Header { filename, url }
     }
 
@@ -280,8 +280,7 @@ impl<'url> Cacheable<'url> {
             // remove query string, if any
             let attachment_id_etc = attachment_id_etc
                 .split_once('?')
-                .map(|(result, _query_string)| result)
-                .unwrap_or(attachment_id_etc);
+                .map_or(attachment_id_etc, |(result, _query_string)| result);
             // remove original filename
             if let Some(attachment_id_etc) = attachment_id_etc
                 .rsplit_once('/')
@@ -290,8 +289,7 @@ impl<'url> Cacheable<'url> {
                 // remove path components preceding uuid, if any
                 let attachment_id = attachment_id_etc
                     .rsplit_once('/')
-                    .map(|(_garbage, result)| result)
-                    .unwrap_or(attachment_id_etc);
+                    .map_or(attachment_id_etc, |(_garbage, result)| result);
                 return Some(Self::attachment(attachment_id, url));
             }
         }
@@ -352,7 +350,7 @@ impl<'url> Cacheable<'url> {
     }
 }
 
-pub fn attachment_id_to_url(id: &str) -> String {
+#[must_use] pub fn attachment_id_to_url(id: &str) -> String {
     format!("https://cohost.org/rc/attachment-redirect/{id}")
 }
 
@@ -447,14 +445,14 @@ fn test_author_from_posting_project() {
     assert_eq!(
         Author::from(&PostingProject {
             handle: "VinDuv".to_owned(),
-            displayName: "".to_owned(),
+            displayName: String::new(),
             privacy: "[any value]".to_owned(),
             loggedOutPostVisibility: "[any value]".to_owned(),
         }),
         Author {
             href: "https://cohost.org/VinDuv".to_owned(),
             name: "@VinDuv".to_owned(),
-            display_name: "".to_owned(),
+            display_name: String::new(),
             display_handle: "@VinDuv".to_owned(),
         }
     );

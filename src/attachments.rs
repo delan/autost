@@ -36,10 +36,10 @@ impl CachedFileResult<AttachmentsPath> {
 }
 
 impl CachedFileResult<SitePath> {
-    pub fn base_relative_url(&self) -> String {
+    #[must_use] pub fn base_relative_url(&self) -> String {
         match self {
-            CachedFileResult::CachedPath(inner) => inner.base_relative_url(),
-            CachedFileResult::UncachedUrl(url) => url.to_owned(),
+            Self::CachedPath(inner) => inner.base_relative_url(),
+            Self::UncachedUrl(url) => url.to_owned(),
         }
     }
 }
@@ -160,12 +160,12 @@ fn cached_attachment_url(id: &str, dir: &AttachmentsPath) -> eyre::Result<Attach
         bail!("directory is empty: {path:?}");
     };
 
-    Ok(path.join_dir_entry(&entry?)?)
+    path.join_dir_entry(&entry?)
 }
 
 fn cache_imported_attachment(url: &str, path: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
     // if the attachment id directory exists...
-    if let Ok(mut entries) = read_dir(&path) {
+    if let Ok(mut entries) = read_dir(path) {
         // and the directory contains a file...
         if let Some(entry) = entries.next() {
             // and we can open the file...
@@ -295,7 +295,7 @@ fn cache_cohost_attachment(
         break url.to_str()?;
     };
 
-    let Some((_, original_filename)) = url.rsplit_once("/") else {
+    let Some((_, original_filename)) = url.rsplit_once('/') else {
         bail!("redirect target has no slashes: {url}");
     };
     let original_filename = urlencoding::decode(original_filename)?;

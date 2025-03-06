@@ -134,7 +134,7 @@ static HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTre
             let attr_names = result
                 .get_mut(other_name)
                 .expect("guaranteed by constant values");
-            for other_attr_name in other_attr_names.iter() {
+            for other_attr_name in other_attr_names {
                 attr_names.remove(other_attr_name);
             }
         }
@@ -201,10 +201,10 @@ impl Iterator for DepthTraverse {
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.stack.is_empty() {
-            while self.stack.last().is_some_and(|queue| queue.is_empty()) {
+            while self.stack.last().is_some_and(std::collections::VecDeque::is_empty) {
                 self.stack.pop();
             }
-            if let Some(node) = self.stack.last_mut().and_then(|queue| queue.pop_front()) {
+            if let Some(node) = self.stack.last_mut().and_then(std::collections::VecDeque::pop_front) {
                 let kids = node
                     .children
                     .borrow()
@@ -237,7 +237,7 @@ impl Transform {
         if let Some(node) = self.0.pop_front() {
             let mut new_kids = vec![];
             f(&node.children.borrow(), &mut new_kids)?;
-            for kid in new_kids.iter() {
+            for kid in &new_kids {
                 self.0.push_back(kid.clone());
             }
             node.children.replace(new_kids);
@@ -280,7 +280,7 @@ impl AttrsMutExt for Vec<Attribute> {
 }
 impl AttrsRefExt for Vec<Attribute> {
     fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
-        for attr in self.iter() {
+        for attr in self {
             if attr.name == QualName::attribute(name) {
                 return Ok(Some(attr.value.to_str()));
             }
@@ -313,11 +313,11 @@ pub trait TendrilExt: Borrow<[u8]> {
 impl TendrilExt for StrTendril {}
 
 pub trait QualNameExt {
-    fn html(name: &str) -> QualName {
+    #[must_use] fn html(name: &str) -> QualName {
         QualName::new(None, ns!(html), LocalName::from(name))
     }
 
-    fn atom(name: &str) -> QualName {
+    #[must_use] fn atom(name: &str) -> QualName {
         QualName::new(
             None,
             Namespace::from("http://www.w3.org/2005/Atom"),
@@ -325,7 +325,7 @@ pub trait QualNameExt {
         )
     }
 
-    fn attribute(name: &str) -> QualName {
+    #[must_use] fn attribute(name: &str) -> QualName {
         // per html5ever::Attribute docs:
         // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
         // attributes this way, but the tree builder will adjust certain attribute names inside foreign
@@ -368,7 +368,7 @@ pub fn parse_xml(mut input: &[u8]) -> eyre::Result<RcDom> {
 }
 
 pub fn serialize_html_document(dom: RcDom) -> eyre::Result<String> {
-    serialize_node_contents(dom.document.clone())
+    serialize_node_contents(dom.document)
 }
 
 pub fn serialize_html_fragment(dom: RcDom) -> eyre::Result<String> {
@@ -391,7 +391,7 @@ pub fn serialize_html_fragment(dom: RcDom) -> eyre::Result<String> {
 
 pub fn serialize_node_contents(node: Handle) -> eyre::Result<String> {
     let mut result = Vec::default();
-    let node: SerializableHandle = node.clone().into();
+    let node: SerializableHandle = node.into();
     // default SerializeOpts has `traversal_scope: ChildrenOnly(None)`.
     html5ever::serialize(&mut result, &node, Default::default())?;
     let result = String::from_utf8(result)?;
@@ -427,7 +427,7 @@ fn test_serialize() -> eyre::Result<()> {
 }
 
 /// create a [`RcDom`] whose document has exactly one child, a wrapper <html> element.
-pub fn create_fragment() -> (RcDom, Handle) {
+#[must_use] pub fn create_fragment() -> (RcDom, Handle) {
     let mut dom = RcDom::default();
     let root = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(root.clone());
@@ -585,15 +585,15 @@ pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
         .collect()
 }
 
-pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
+#[must_use] pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_URLS
 }
 
-pub fn html_attributes_with_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
+#[must_use] pub fn html_attributes_with_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_EMBEDDING_URLS
 }
 
-pub fn html_attributes_with_non_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>>
+#[must_use] pub fn html_attributes_with_non_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>>
 {
     &HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS
 }

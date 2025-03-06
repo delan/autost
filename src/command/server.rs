@@ -48,7 +48,7 @@ fn compose_route(
             .map_err(EyreReport::BadRequest)?;
         let post = TemplatedPost::load(&reply_to)?;
         let thread = Thread::try_from(post)?;
-        thread.posts.into_iter().flat_map(|x| x.path).collect()
+        thread.posts.into_iter().filter_map(|x| x.path).collect()
     } else {
         vec![]
     };
@@ -107,7 +107,7 @@ fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<
     let _thread = Thread::try_from(post)?;
 
     // cohost post ids are all less than 10000000.
-    let (mut file, path) = (10000000..)
+    let (mut file, path) = (10_000_000..)
         .map(|id| {
             let path = PostsPath::markdown_post_path(id);
             File::create_new(&path).map(|file| (file, path))

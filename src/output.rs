@@ -18,7 +18,7 @@ use crate::{
 #[template(path = "threads.html")]
 pub struct ThreadsPageTemplate<'template> {
     thread_page_meta: Option<&'template str>,
-    /// not `threads: Vec<Thread>`, to encourage us to cache ThreadsContentTemplate output between
+    /// not `threads: Vec<Thread>`, to encourage us to cache `ThreadsContentTemplate` output between
     /// individual thread pages and combined collection pages.
     threads_content: &'template str,
     page_title: &'template str,

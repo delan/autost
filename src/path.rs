@@ -187,7 +187,7 @@ impl PostsPath {
             .expect("guaranteed by argument")
     }
 
-    pub fn references_url(&self) -> String {
+    #[must_use] pub fn references_url(&self) -> String {
         self.relative_url()
     }
 
@@ -216,7 +216,7 @@ impl PostsPath {
             PostsKind::Post { .. } => {
                 let (basename, _) = self
                     .filename()
-                    .rsplit_once(".")
+                    .rsplit_once('.')
                     .expect("guaranteed by PostsKind::new");
                 let filename = format!("{basename}.html");
                 Ok(Some(SITE_PATH_ROOT.join(&filename)?))
@@ -225,7 +225,7 @@ impl PostsPath {
         }
     }
 
-    pub fn is_markdown_post(&self) -> bool {
+    #[must_use] pub const fn is_markdown_post(&self) -> bool {
         matches!(
             self.kind,
             PostsKind::Post {
@@ -235,7 +235,7 @@ impl PostsPath {
         )
     }
 
-    pub fn basename(&self) -> Option<&str> {
+    #[must_use] pub fn basename(&self) -> Option<&str> {
         if let PostsKind::Post {
             in_imported_dir: true,
             ..
@@ -243,7 +243,7 @@ impl PostsPath {
         {
             let (basename, _) = self
                 .filename()
-                .rsplit_once(".")
+                .rsplit_once('.')
                 .expect("guaranteed by PostsKind::new");
             return Some(basename);
         }
@@ -283,24 +283,24 @@ impl SitePath {
     }
 
     /// use this only in post authoring contexts, like the output of importers.
-    pub fn base_relative_url(&self) -> String {
+    #[must_use] pub fn base_relative_url(&self) -> String {
         self.relative_url()
     }
 
-    pub fn internal_url(&self) -> String {
+    #[must_use] pub fn internal_url(&self) -> String {
         format!("{}{}", SETTINGS.base_url, self.relative_url())
     }
 
-    pub fn external_url(&self) -> String {
+    #[must_use] pub fn external_url(&self) -> String {
         format!("{}{}", SETTINGS.external_base_url, self.relative_url())
     }
 
-    pub fn atom_feed_entry_id(&self) -> String {
+    #[must_use] pub fn atom_feed_entry_id(&self) -> String {
         // TODO: this violates the atom spec (#6)
         self.relative_url()
     }
 
-    pub fn rsync_deploy_line(&self) -> String {
+    #[must_use] pub fn rsync_deploy_line(&self) -> String {
         self.relative_path()
     }
 
@@ -468,7 +468,7 @@ pub fn hard_link_if_not_exists(
 /// - `foo:/bar` → false
 ///
 /// <https://url.spec.whatwg.org/#path-relative-scheme-less-url-string>
-pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
+#[must_use] pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
     // is it a “relative-URL string”? (case “Otherwise”)
     // <https://url.spec.whatwg.org/#relative-url-string>
     if Url::parse(url) == Err(url::ParseError::RelativeUrlWithoutBase) {
@@ -488,7 +488,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
         let url = url.strip_suffix(|c| c <= '\x20').unwrap_or(url);
 
         // “Remove all [ASCII tab or newline] from *input*.”
-        let url = url.replace(|c| c == '\x09' || c == '\x0A' || c == '\x0D', "");
+        let url = url.replace(['\x09', '\x0A', '\x0D'], "");
 
         // “Let *state* be *state override* if given, or [scheme start state] otherwise.”
         #[derive(Debug)]
