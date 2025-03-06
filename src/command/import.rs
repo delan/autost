@@ -78,7 +78,7 @@ pub async fn main() -> eyre::Result<()> {
     }
 
     let (path, file) = result.ok_or_eyre("too many posts :(")?;
-    write_post(file, meta, e_content, base_href, path)?;
+    write_post(file, &meta, &e_content, &base_href, &path)?;
 
     Ok(())
 }
@@ -106,7 +106,7 @@ pub mod reimport {
 
         info!("updating existing post: {path:?}");
         let file = File::create(&path)?;
-        write_post(file, meta, e_content, base_href, path)?;
+        write_post(file, &meta, &e_content, &base_href, &path)?;
 
         Ok(())
     }
@@ -160,10 +160,10 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
 
     // the canonical url is what the h-entry says it is.
     let canonical_url = u_url.ok_or_eyre(".h-entry has no .u-url")?;
-    let author = if has_class(p_author.clone(), "h-card")? {
+    let author = if has_class(&p_author, "h-card")? {
         let card_url = mf2_u(p_author.clone(), "u-url", &base_href)?;
         let card_name = mf2_p(p_author, "p-name")?.ok_or_eyre(".h-card has no .p-name")?;
-        let url = card_url.unwrap_or(canonical_url.clone());
+        let url = card_url.unwrap_or_else(|| canonical_url.clone());
         Author {
             href: url.to_string(),
             name: card_name.clone(),
@@ -191,7 +191,7 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
         while let Some(weak) = node.parent.take() {
             let parent = weak.upgrade().expect("dangling weak pointer");
             node.parent.set(Some(weak));
-            if has_class(parent.clone(), "h-entry")? && !Rc::ptr_eq(&parent, &h_entry) {
+            if has_class(&parent, "h-entry")? && !Rc::ptr_eq(&parent, &h_entry) {
                 continue 'category;
             }
             node = parent;
@@ -310,10 +310,10 @@ async fn fetch_akkoma_post(
 
 fn write_post(
     mut file: File,
-    meta: PostMeta,
-    e_content: String,
-    base_href: Url,
-    path: PostsPath,
+    meta: &PostMeta,
+    e_content: &str,
+    base_href: &Url,
+    path: &PostsPath,
 ) -> eyre::Result<()> {
     info!("writing {path:?}");
     file.write_all(meta.render()?.as_bytes())?;
@@ -342,7 +342,7 @@ fn process_content(
     content: &str,
     post_basename: &str,
     base_href: &Url,
-    context: &dyn AttachmentsContext,
+    ctx: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
     let dom = parse_html_fragment(content.as_bytes())?;
 
@@ -361,7 +361,7 @@ fn process_content(
                             name.local,
                             attr.name.local
                         );
-                        attr.value = context
+                        attr.value = ctx
                             .cache_imported(fetch_url.as_ref(), post_basename)?
                             .site_path()?
                             .base_relative_url()
@@ -494,17 +494,17 @@ fn mf2_dt(node: Handle, class: &str) -> eyre::Result<Option<String>> {
 
 fn mf2_find(node: Handle, class: &str) -> Option<Handle> {
     // TODO: handle errors from has_class()
-    BreadthTraverse::elements(node).find(|node| has_class(node.clone(), class).unwrap_or(false))
+    BreadthTraverse::elements(node).find(|node| has_class(node, class).unwrap_or(false))
 }
 
 fn mf2_find_all(node: Handle, class: &str) -> Vec<Handle> {
     // TODO: handle errors from has_class()
     BreadthTraverse::elements(node)
-        .filter(|node| has_class(node.clone(), class).unwrap_or(false))
+        .filter(|node| has_class(node, class).unwrap_or(false))
         .collect()
 }
 
-fn has_class(node: Handle, class: &str) -> eyre::Result<bool> {
+fn has_class(node: &Handle, class: &str) -> eyre::Result<bool> {
     if let NodeData::Element { attrs, .. } = &node.data {
         if let Some(node_class) = attrs.borrow().attr_str("class")? {
             if node_class.split(' ').any(|c| c == class) {
