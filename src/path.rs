@@ -10,12 +10,16 @@ use url::Url;
 
 use crate::SETTINGS;
 
+#[allow(clippy::module_name_repetitions)]
 pub type PostsPath = RelativePath<PostsKind>;
+#[allow(clippy::module_name_repetitions)]
 pub type SitePath = RelativePath<SiteKind>;
+#[allow(clippy::module_name_repetitions)]
 pub type AttachmentsPath = RelativePath<AttachmentsKind>;
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[allow(private_bounds)]
+#[allow(clippy::module_name_repetitions)]
 pub struct RelativePath<Kind: PathKind> {
     inner: PathBuf,
     kind: Kind,

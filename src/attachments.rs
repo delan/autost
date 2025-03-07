@@ -45,6 +45,7 @@ impl CachedFileResult<SitePath> {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub trait AttachmentsContext {
     fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath>;
     fn cache_imported(&self, url: &str, post_basename: &str) -> eyre::Result<AttachmentsPath>;
