@@ -93,3 +93,5 @@ nursery = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
+too_many_lines = "warn"
+future_not_send = "warn"
