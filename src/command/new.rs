@@ -13,12 +13,12 @@ pub struct New {
 }
 
 pub fn main(args: New) -> eyre::Result<()> {
-    let path = args.path.unwrap_or(".".to_owned());
+    let path = args.path.unwrap_or_else(|| ".".to_owned());
     let path = Path::new(&path);
     info!("creating new site in {path:?}");
 
     create_dir_all(path)?;
-    for entry in read_dir(path)? {
+    if let Some(entry) = read_dir(path)?.next() {
         bail!("directory is not empty: {:?}", entry?.path());
     }
     let mut settings = File::create_new(path.join("autost.toml"))?;
