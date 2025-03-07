@@ -12,6 +12,7 @@ pub fn run_migrations() -> eyre::Result<()> {
     let mut dirs = vec![SITE_PATH_ATTACHMENTS.to_owned()];
     let mut files: Vec<SitePath> = vec![];
     while !dirs.is_empty() || !files.is_empty() {
+        #[allow(clippy::iter_with_drain)]
         for site_path in files.drain(..) {
             trace!(?site_path);
             let Some(attachments_path) = site_path.attachments_path()? else {
