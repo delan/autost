@@ -319,7 +319,7 @@ fn write_post(
     file.write_all(meta.render()?.as_bytes())?;
     file.write_all(b"\n\n")?;
     let basename = path.basename().ok_or_eyre("path has no basename")?;
-    let unsafe_html = process_content(&e_content, basename, &base_href, &RealAttachmentsContext)?;
+    let unsafe_html = process_content(e_content, basename, base_href, &RealAttachmentsContext)?;
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
     info!("click here to reply: {}", path.compose_reply_url());
@@ -378,8 +378,8 @@ fn process_content(
                     if attr_names.contains(&attr.name) {
                         // rewrite urls in links to bake in the `base_href`.
                         let old_url = attr.value.to_str().to_owned();
-                        let new_url = if old_url.starts_with('#') {
-                            format!("#user-content-{}", &old_url[1..])
+                        let new_url = if let Some(end) = old_url.strip_prefix('#') {
+                            format!("#user-content-{end}")
                         } else {
                             base_href.join(&old_url)?.to_string()
                         };
