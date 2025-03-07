@@ -316,31 +316,31 @@ impl SitePath {
     }
 }
 
-pub const ATTACHMENTS_PATH_ROOT: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+pub static ATTACHMENTS_PATH_ROOT: LazyLock<AttachmentsPath> = LazyLock::new(|| {
     AttachmentsPath::new(AttachmentsKind::ROOT.into()).expect("guaranteed by argument")
 });
-pub const ATTACHMENTS_PATH_THUMBS: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+pub static ATTACHMENTS_PATH_THUMBS: LazyLock<AttachmentsPath> = LazyLock::new(|| {
     ATTACHMENTS_PATH_ROOT
         .join("thumbs")
         .expect("guaranteed by argument")
 });
 #[deprecated(since = "1.2.0", note = "cohost emoji are now stored in COHOST_STATIC")]
-pub const ATTACHMENTS_PATH_EMOJI: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+pub static ATTACHMENTS_PATH_EMOJI: LazyLock<AttachmentsPath> = LazyLock::new(|| {
     ATTACHMENTS_PATH_ROOT
         .join("emoji")
         .expect("guaranteed by argument")
 });
-pub const ATTACHMENTS_PATH_COHOST_STATIC: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+pub static ATTACHMENTS_PATH_COHOST_STATIC: LazyLock<AttachmentsPath> = LazyLock::new(|| {
     ATTACHMENTS_PATH_ROOT
         .join("cohost-static")
         .expect("guaranteed by argument")
 });
-pub const ATTACHMENTS_PATH_COHOST_AVATAR: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+pub static ATTACHMENTS_PATH_COHOST_AVATAR: LazyLock<AttachmentsPath> = LazyLock::new(|| {
     ATTACHMENTS_PATH_ROOT
         .join("cohost-avatar")
         .expect("guaranteed by argument")
 });
-pub const ATTACHMENTS_PATH_COHOST_HEADER: LazyLock<AttachmentsPath> = LazyLock::new(|| {
+pub static ATTACHMENTS_PATH_COHOST_HEADER: LazyLock<AttachmentsPath> = LazyLock::new(|| {
     ATTACHMENTS_PATH_ROOT
         .join("cohost-header")
         .expect("guaranteed by argument")
