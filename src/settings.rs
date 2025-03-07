@@ -60,18 +60,18 @@ impl Settings {
     pub fn load(path: impl AsRef<Path>) -> eyre::Result<Self> {
         let mut result = String::default();
         File::open(path)?.read_to_string(&mut result)?;
-        let mut result: Settings = toml::from_str(&result)?;
+        let mut result: Self = toml::from_str(&result)?;
 
-        if !result.base_url.starts_with("/") {
+        if !result.base_url.starts_with('/') {
             bail!("base_url setting must start with slash!");
         }
         if result.base_url.starts_with("//") {
             bail!("base_url setting must not start with two slashes!");
         }
-        if !result.base_url.ends_with("/") {
+        if !result.base_url.ends_with('/') {
             bail!("base_url setting must end with slash!");
         }
-        if !result.external_base_url.ends_with("/") {
+        if !result.external_base_url.ends_with('/') {
             bail!("external_base_url setting must end with slash!");
         }
         if let Some(path) = result.archived_thread_tags_path.as_ref() {
@@ -80,8 +80,8 @@ impl Settings {
                 .collect::<Result<Vec<_>, _>>()?;
             let entries = entries
                 .iter()
-                .filter_map(|entry| entry.split_once(" "))
-                .map(|(archived, tags)| (archived, tags.split(",")))
+                .filter_map(|entry| entry.split_once(' '))
+                .map(|(archived, tags)| (archived, tags.split(',')))
                 .map(|(archived, tags)| {
                     (
                         archived.to_owned(),
@@ -119,32 +119,33 @@ impl Settings {
         debug_assert_eq!(self.base_url.as_bytes()[self.base_url.len() - 1], b'/');
         if self.base_url.len() > 1 {
             self.base_url[0..(self.base_url.len() - 1)]
-                .split("/")
+                .split('/')
                 .skip(1)
         } else {
-            "".split("/").skip(1)
+            "".split('/').skip(1)
         }
     }
 
+    #[must_use]
     pub fn base_url_relativise(&self, url: &str) -> String {
-        if let Some(url) = parse_path_relative_scheme_less_url_string(url) {
-            format!("{}{}", self.base_url, url)
-        } else {
-            url.to_owned()
-        }
+        parse_path_relative_scheme_less_url_string(url)
+            .map_or_else(|| url.to_owned(), |url| format!("{}{}", self.base_url, url))
     }
 
+    #[must_use]
     pub fn server_port(&self) -> u16 {
         self.server_port.unwrap_or(8420)
     }
 
+    #[must_use]
     pub fn page_title(&self, title: Option<&str>) -> String {
-        match title {
-            Some(title) => format!("{} — {}", title, self.site_title),
-            None => self.site_title.clone(),
-        }
+        title.map_or_else(
+            || self.site_title.clone(),
+            |title| format!("{} — {}", title, self.site_title),
+        )
     }
 
+    #[must_use]
     pub fn is_main_self_author(&self, author: &Author) -> bool {
         // compare href only, ignoring other fields
         self.self_author
@@ -152,16 +153,17 @@ impl Settings {
             .map_or(false, |a| a.href == author.href)
     }
 
+    #[must_use]
     pub fn is_any_self_author(&self, author: &Author) -> bool {
         // compare href only, ignoring other fields
         self.is_main_self_author(author)
             || self.other_self_authors.iter().any(|a| *a == author.href)
     }
 
+    #[must_use]
     pub fn tag_is_interesting(&self, tag: &str) -> bool {
         self.interesting_tags_iter()
-            .find(|&interesting_tag| interesting_tag == tag)
-            .is_some()
+            .any(|interesting_tag| interesting_tag == tag)
     }
 
     pub fn interesting_tags_iter(&self) -> impl Iterator<Item = &str> {
@@ -172,6 +174,7 @@ impl Settings {
         self.interesting_tags.iter().map(|tag| &**tag)
     }
 
+    #[must_use]
     pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
         self.interesting_archived_threads_list
             .as_ref()
@@ -179,6 +182,7 @@ impl Settings {
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
+    #[must_use]
     pub fn thread_is_on_excluded_archived_list(&self, thread: &Thread) -> bool {
         self.excluded_archived_threads_list
             .as_ref()
@@ -186,15 +190,16 @@ impl Settings {
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
+    #[must_use]
     pub fn extra_archived_thread_tags(&self, post: &TemplatedPost) -> &[String] {
         self.archived_thread_tags
             .as_ref()
             .zip(post.meta.archived.as_ref())
             .and_then(|(tags, archived)| tags.get(archived))
-            .map(|result| &**result)
-            .unwrap_or(&[])
+            .map_or(&[], |result| &**result)
     }
 
+    #[must_use]
     pub fn resolve_tags(&self, tags: Vec<String>) -> Vec<String> {
         let mut seen = BTreeSet::default();
         let mut result = tags;
@@ -246,6 +251,7 @@ impl Settings {
         &[]
     }
 
+    #[must_use]
     pub fn path_to_static(&self) -> Option<PathBuf> {
         #[allow(deprecated)]
         if let Some(path_to_autost) = self.path_to_autost.as_deref() {
@@ -305,7 +311,7 @@ fn test_base_url_path_components() -> eyre::Result<()> {
         Vec::<&str>::default()
     );
 
-    settings.base_url = "/posts/".to_owned();
+    "/posts/".clone_into(&mut settings.base_url);
     assert_eq!(
         settings.base_url_path_components().collect::<Vec<_>>(),
         ["posts"]

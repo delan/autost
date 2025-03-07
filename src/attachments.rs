@@ -36,14 +36,16 @@ impl CachedFileResult<AttachmentsPath> {
 }
 
 impl CachedFileResult<SitePath> {
+    #[must_use]
     pub fn base_relative_url(&self) -> String {
         match self {
-            CachedFileResult::CachedPath(inner) => inner.base_relative_url(),
-            CachedFileResult::UncachedUrl(url) => url.to_owned(),
+            Self::CachedPath(inner) => inner.base_relative_url(),
+            Self::UncachedUrl(url) => url.to_owned(),
         }
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub trait AttachmentsContext {
     fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath>;
     fn cache_imported(&self, url: &str, post_basename: &str) -> eyre::Result<AttachmentsPath>;
@@ -160,12 +162,12 @@ fn cached_attachment_url(id: &str, dir: &AttachmentsPath) -> eyre::Result<Attach
         bail!("directory is empty: {path:?}");
     };
 
-    Ok(path.join_dir_entry(&entry?)?)
+    path.join_dir_entry(&entry?)
 }
 
 fn cache_imported_attachment(url: &str, path: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
     // if the attachment id directory exists...
-    if let Ok(mut entries) = read_dir(&path) {
+    if let Ok(mut entries) = read_dir(path) {
         // and the directory contains a file...
         if let Some(entry) = entries.next() {
             // and we can open the file...
@@ -295,7 +297,7 @@ fn cache_cohost_attachment(
         break url.to_str()?;
     };
 
-    let Some((_, original_filename)) = url.rsplit_once("/") else {
+    let Some((_, original_filename)) = url.rsplit_once('/') else {
         bail!("redirect target has no slashes: {url}");
     };
     let original_filename = urlencoding::decode(original_filename)?;
@@ -310,13 +312,14 @@ fn cache_cohost_attachment(
     // cohost attachment redirects don’t preserve query params, so if we want to add any,
     // we need to add them to the destination of the redirect.
     // FIXME: this will silently misbehave if the endpoint introduces a second redirect!
-    let url = if let Some(transform) = transform_redirect_target {
-        let transformed_url = transform(url);
-        trace!("transformed redirect target: {transformed_url}");
-        transformed_url
-    } else {
-        url.to_owned()
-    };
+    let url = transform_redirect_target.map_or_else(
+        || url.to_owned(),
+        |transform| {
+            let transformed_url = transform(url);
+            trace!("transformed redirect target: {transformed_url}");
+            transformed_url
+        },
+    );
 
     let path = path.join(original_filename.as_ref())?;
     let result = reqwest::blocking::get(url)?.bytes()?.to_vec();

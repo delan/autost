@@ -23,18 +23,19 @@ pub struct Render {
 }
 
 pub fn main(args: Render) -> eyre::Result<()> {
-    if !args.specific_post_paths.is_empty() {
+    if args.specific_post_paths.is_empty() {
+        render_all()
+    } else {
         let specific_post_paths = args
             .specific_post_paths
             .into_iter()
             .map(|path| PostsPath::from_site_root_relative_path(&path))
             .collect::<eyre::Result<Vec<_>>>()?;
-        render(specific_post_paths)
-    } else {
-        render_all()
+        render(&specific_post_paths)
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
@@ -51,16 +52,10 @@ pub fn render_all() -> eyre::Result<()> {
         post_paths.push(path);
     }
 
-    render(post_paths)
+    render(&post_paths)
 }
 
-pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
-    run_migrations()?;
-
-    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    create_dir_all(&*SITE_PATH_ROOT)?;
-    create_dir_all(&*SITE_PATH_TAGGED)?;
-
+pub fn render(post_paths: &[PostsPath]) -> eyre::Result<()> {
     fn copy_static(output_path: &SitePath, file: &StaticFile) -> eyre::Result<()> {
         let StaticFile(filename, content) = file;
         if let Some(static_path) = SETTINGS.path_to_static() {
@@ -71,6 +66,12 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         Ok(())
     }
     struct StaticFile(&'static str, &'static [u8]);
+    run_migrations()?;
+
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    create_dir_all(&*SITE_PATH_ROOT)?;
+    create_dir_all(&*SITE_PATH_TAGGED)?;
+
     let static_files = [
         StaticFile("deploy.sh", include_bytes!("../../static/deploy.sh")),
         StaticFile("style.css", include_bytes!("../../static/style.css")),
@@ -96,8 +97,8 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             include_bytes!("../../static/Atkinson-Hyperlegible-BoldItalic-102.woff2"),
         ),
     ];
-    for file in static_files.iter() {
-        copy_static(&*SITE_PATH_ROOT, file)?;
+    for file in &static_files {
+        copy_static(&SITE_PATH_ROOT, file)?;
     }
     #[cfg(unix)]
     {
@@ -163,7 +164,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             &format!("{} — {tag}", SETTINGS.site_title),
             &now,
         )?;
-        writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
+        writeln!(File::create(&atom_feed_path)?, "{atom_feed}",)?;
         interesting_output_paths.insert(atom_feed_path);
         let threads_content = render_cached_threads_content(&threads_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
@@ -173,7 +174,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         )?;
         // TODO: move this logic into path module and check for slashes
         let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
+        writeln!(File::create(&threads_page_path)?, "{threads_page}")?;
         interesting_output_paths.insert(threads_page_path);
     }
 
@@ -203,41 +204,41 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     let interesting_output_paths = interesting_output_paths
         .into_iter()
-        .map(|path| format!("{}\n", path.rsync_deploy_line()))
+        .map(|path| path.rsync_deploy_line())
         .collect::<Vec<_>>()
-        .join("");
+        .join("\n");
+
     if let Some(path) = &SETTINGS.interesting_output_filenames_list_path {
-        File::create(path)?.write_all(interesting_output_paths.as_bytes())?;
+        let mut file = File::create(path)?;
+        writeln!(file, "{interesting_output_paths}")?;
     }
 
     Ok(())
 }
 
-fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
+fn render_single_post(path: &PostsPath) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
-    let post = TemplatedPost::load(&path)?;
+    let post = TemplatedPost::load(path)?;
     let Some(rendered_path) = path.rendered_path()? else {
         bail!("post has no rendered path");
     };
     let thread = Thread::try_from(post)?;
     hard_link_attachments_into_site(thread.needs_attachments())?;
-    for tag in thread.meta.tags.iter() {
+    for tag in &thread.meta.tags {
         *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
     }
-    result.collections.push("all", &path, &thread);
+    result.collections.push("all", path, &thread);
     let mut was_interesting = false;
     if thread.meta.is_main_self_author(&SETTINGS) {
         was_interesting = true;
     } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
-        result.collections.push("excluded", &path, &thread);
+        result.collections.push("excluded", path, &thread);
     } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
-        result
-            .collections
-            .push("marked_interesting", &path, &thread);
+        result.collections.push("marked_interesting", path, &thread);
         was_interesting = true;
     } else if thread.meta.is_any_self_author(&SETTINGS) {
-        for tag in thread.meta.tags.iter() {
+        for tag in &thread.meta.tags {
             if SETTINGS.tag_is_interesting(tag) {
                 was_interesting = true;
                 break;
@@ -248,8 +249,8 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         result
             .interesting_output_paths
             .insert(rendered_path.clone());
-        result.collections.push("index", &path, &thread);
-        for tag in thread.meta.tags.iter() {
+        result.collections.push("index", path, &thread);
+        for tag in &thread.meta.tags {
             if SETTINGS.tag_is_interesting(tag) {
                 result
                     .threads_by_interesting_tag
@@ -264,7 +265,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         if thread.meta.tags.is_empty() {
             result
                 .collections
-                .push("untagged_interesting", &path, &thread);
+                .push("untagged_interesting", path, &thread);
         }
     } else if let Some(last_post) = thread.posts.last() {
         // at this point, if the last post was ours, it was one of our archived chosts or rechosts.
@@ -273,14 +274,14 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             // if the thread had some input from us at publish time, that is, if the last post was
             // authored by us with content and/or tags...
             if !last_post.meta.is_transparent_share || !last_post.meta.tags.is_empty() {
-                result.collections.push("skipped_own", &path, &thread);
+                result.collections.push("skipped_own", path, &thread);
             } else {
-                result.collections.push("skipped_other", &path, &thread);
+                result.collections.push("skipped_other", path, &thread);
             }
         } else {
             // liked chosts are generally non-“interesting” archived chosts where the last post was
             // not authored by us. unfortunately this does not include liking our own chosts :(
-            result.collections.push("liked", &path, &thread);
+            result.collections.push("liked", path, &thread);
         }
     }
 
@@ -294,7 +295,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         &SETTINGS.page_title(thread.meta.title.as_deref()),
         &None,
     )?;
-    writeln!(File::create(rendered_path)?, "{}", threads_page)?;
+    writeln!(File::create(rendered_path)?, "{threads_page}")?;
 
     let result = CacheableRenderResult {
         render_result: result,
@@ -343,10 +344,10 @@ struct ThreadInCollection {
 impl RenderResult {
     fn default() -> eyre::Result<Self> {
         Ok(Self {
-            tags: Default::default(),
+            tags: HashMap::default(),
             collections: Collections::default()?,
-            interesting_output_paths: Default::default(),
-            threads_by_interesting_tag: Default::default(),
+            interesting_output_paths: BTreeSet::default(),
+            threads_by_interesting_tag: HashMap::default(),
         })
     }
 }
@@ -406,7 +407,7 @@ impl Collections {
     }
 
     fn keys(&self) -> impl Iterator<Item = &str> {
-        self.inner.keys().map(|key| *key)
+        self.inner.keys().copied()
     }
 
     fn len(&self, key: &str) -> usize {
@@ -463,7 +464,7 @@ impl Collection {
         }
     }
 
-    fn is_interesting(&self) -> bool {
+    const fn is_interesting(&self) -> bool {
         // this definition may change in the future.
         self.feed_href.is_some()
     }

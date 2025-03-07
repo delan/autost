@@ -85,16 +85,16 @@ pub async fn real_main(args: Cohost2json) -> eyre::Result<()> {
             .iter()
             .find(|project| project.handle == requested_project)
         {
-            if requested_project.projectId != logged_in_project_id {
+            if requested_project.projectId == logged_in_project_id {
+                info!(
+                    "dumping chosts for @{}, which you own and are logged in as",
+                    requested_project.handle
+                );
+            } else {
                 bail!(
                     "you wanted to dump chosts for @{}, but you are logged in as @{}",
                     requested_project.handle,
                     logged_in_project.handle,
-                );
-            } else {
-                info!(
-                    "dumping chosts for @{}, which you own and are logged in as",
-                    requested_project.handle
                 );
             }
         } else {

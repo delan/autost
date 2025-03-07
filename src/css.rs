@@ -10,6 +10,7 @@ pub enum InlineStyleToken {
     Other(String),
 }
 
+#[must_use]
 pub fn parse_inline_style(style: &str) -> Vec<InlineStyleToken> {
     let mut input = ParserInput::new(style);
     let mut parser = Parser::new(&mut input);
@@ -17,6 +18,7 @@ pub fn parse_inline_style(style: &str) -> Vec<InlineStyleToken> {
     parse(&mut parser)
 }
 
+#[must_use]
 pub fn serialise_inline_style(tokens: &[InlineStyleToken]) -> String {
     tokens
         .iter()
@@ -25,11 +27,10 @@ pub fn serialise_inline_style(tokens: &[InlineStyleToken]) -> String {
             InlineStyleToken::String(string) => serialise_string_value(string),
             InlineStyleToken::Other(other) => other.to_owned(),
         })
-        .collect::<Vec<_>>()
-        .join("")
+        .collect::<String>()
 }
 
-fn parse<'i>(parser: &'i mut Parser) -> Vec<InlineStyleToken> {
+fn parse(parser: &mut Parser) -> Vec<InlineStyleToken> {
     let mut result = vec![];
     loop {
         let token = match parser.next_including_whitespace_and_comments() {
@@ -69,7 +70,7 @@ fn parse<'i>(parser: &'i mut Parser) -> Vec<InlineStyleToken> {
             match &token {
                 Token::UnquotedUrl(url) => result.push(InlineStyleToken::Url((**url).to_owned())),
                 Token::QuotedString(value) => {
-                    result.push(InlineStyleToken::String((**value).to_owned()))
+                    result.push(InlineStyleToken::String((**value).to_owned()));
                 }
                 other => result.push(InlineStyleToken::Other(other.to_css_string())),
             }
@@ -86,8 +87,9 @@ fn parse<'i>(parser: &'i mut Parser) -> Vec<InlineStyleToken> {
                 result.extend(nested_result);
             }
             match &token {
-                Token::Function(..) => result.push(InlineStyleToken::Other(")".to_owned())),
-                Token::ParenthesisBlock => result.push(InlineStyleToken::Other(")".to_owned())),
+                Token::ParenthesisBlock | Token::Function(..) => {
+                    result.push(InlineStyleToken::Other(")".to_owned()));
+                }
                 Token::SquareBracketBlock => result.push(InlineStyleToken::Other("]".to_owned())),
                 Token::CurlyBracketBlock => result.push(InlineStyleToken::Other("}".to_owned())),
                 _ => {}
@@ -107,9 +109,9 @@ fn serialise_string_value(string: &str) -> String {
     format!(
         "'{}'",
         string
-            .replace(r#"\"#, r#"\\"#)
-            .replace("'", r#"\'"#)
-            .replace("\n", r#"\A "#)
+            .replace('\\', r"\\")
+            .replace('\'', r"\'")
+            .replace('\n', r"\A ")
     )
 }
 
@@ -123,5 +125,5 @@ fn test_round_trip_inline_style() {
 
 #[test]
 fn test_serialise_string_value() {
-    assert_eq!(serialise_string_value(r#"http://test"#), r#"'http://test'"#);
+    assert_eq!(serialise_string_value(r"http://test"), r"'http://test'");
 }

@@ -23,7 +23,7 @@ use command::{
 use dom::{QualNameExt, Transform};
 use html5ever::{Attribute, QualName};
 use indexmap::{indexmap, IndexMap};
-use jane_eyre::eyre::{self, bail, Context, OptionExt};
+use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{NodeData, RcDom};
 use renamore::rename_exclusive_fallback;
 use serde::{Deserialize, Serialize};
@@ -68,7 +68,7 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
     #[cfg(not(test))]
     let result = Settings::load_default();
 
-    result.context("failed to load settings").unwrap()
+    result.expect("failed to load settings")
 });
 
 #[derive(clap::Parser, Debug)]
@@ -98,7 +98,7 @@ pub struct RunDetailsWriter {
     file: File,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Template)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Template)]
 #[template(path = "post-meta.html")]
 pub struct PostMeta {
     pub archived: Option<String>,
@@ -110,7 +110,7 @@ pub struct PostMeta {
     pub is_transparent_share: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Author {
     pub href: String,
     pub name: String,
@@ -149,16 +149,19 @@ pub struct TemplatedPost {
 
 impl Default for RunDetails {
     fn default() -> Self {
-        let version = if let Some(git_describe) = option_env!("VERGEN_GIT_DESCRIBE") {
-            git_describe.to_owned()
-        } else if option_env!("AUTOST_IS_NIX_BUILD").is_some_and(|e| e == "1") {
-            // FIXME: nix package does not have access to git
-            // <https://github.com/NixOS/nix/issues/7201>
-            format!("{}-nix", env!("CARGO_PKG_VERSION"))
-        } else {
-            // other cases, including crates.io (hypothetically)
-            format!("{}-unknown", env!("CARGO_PKG_VERSION"))
-        };
+        let version = option_env!("VERGEN_GIT_DESCRIBE").map_or_else(
+            || {
+                if option_env!("AUTOST_IS_NIX_BUILD").is_some_and(|e| e == "1") {
+                    // FIXME: nix package does not have access to git
+                    // <https://github.com/NixOS/nix/issues/7201>
+                    format!("{}-nix", env!("CARGO_PKG_VERSION"))
+                } else {
+                    // other cases, including crates.io (hypothetically)
+                    format!("{}-unknown", env!("CARGO_PKG_VERSION"))
+                }
+            },
+            std::borrow::ToOwned::to_owned,
+        );
 
         Self {
             version,
@@ -185,9 +188,8 @@ impl RunDetailsWriter {
                         "failed to hard link old run_details.toml at run_details.{i}.toml: {other:?}"
                     ),
                 }
-            } else {
-                break;
             }
+            break;
         }
 
         // at this point, run_details.toml should not exist, unless there are concurrent shenanigans
@@ -203,7 +205,7 @@ impl RunDetailsWriter {
             .strip_prefix("x = ")
             .expect("guaranteed by definition");
 
-        Ok(write!(self.file, r#"{key} = {}"#, result)?)
+        Ok(write!(self.file, r#"{key} = {result}"#)?)
     }
 
     pub fn ok(mut self) -> eyre::Result<()> {
@@ -212,6 +214,7 @@ impl RunDetailsWriter {
 }
 
 impl PostMeta {
+    #[must_use]
     pub fn is_main_self_author(&self, settings: &Settings) -> bool {
         self.author
             .as_ref()
@@ -220,6 +223,7 @@ impl PostMeta {
             })
     }
 
+    #[must_use]
     pub fn is_any_self_author(&self, settings: &Settings) -> bool {
         let no_self_authors =
             settings.self_author.is_none() && settings.other_self_authors.is_empty();
@@ -240,22 +244,26 @@ fn test_is_main_self_author() -> eyre::Result<()> {
     meta_no_author.author = None;
 
     // same href as [self_author], but different name, display_name, and handle
-    let mut meta_same_href = PostMeta::default();
-    meta_same_href.author = Some(Author {
-        href: "https://example.com".to_owned(),
-        name: "".to_owned(),
-        display_name: "".to_owned(),
-        display_handle: "".to_owned(),
-    });
+    let meta_same_href = PostMeta {
+        author: Some(Author {
+            href: "https://example.com".to_owned(),
+            name: String::new(),
+            display_name: String::new(),
+            display_handle: String::new(),
+        }),
+        ..PostMeta::default()
+    };
 
     // different href from [self_author]
-    let mut meta_different_href = PostMeta::default();
-    meta_different_href.author = Some(Author {
-        href: "https://example.net".to_owned(),
-        name: "".to_owned(),
-        display_name: "".to_owned(),
-        display_handle: "".to_owned(),
-    });
+    let meta_different_href = PostMeta {
+        author: Some(Author {
+            href: "https://example.net".to_owned(),
+            name: String::new(),
+            display_name: String::new(),
+            display_handle: String::new(),
+        }),
+        ..PostMeta::default()
+    };
 
     assert!(meta_same_href.is_main_self_author(&settings));
     assert!(!meta_different_href.is_main_self_author(&settings));
@@ -268,12 +276,13 @@ fn test_is_main_self_author() -> eyre::Result<()> {
 }
 
 impl Thread {
-    pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
+    #[must_use]
+    pub fn reverse_chronological(p: &Self, q: &Self) -> Ordering {
         p.meta.published.cmp(&q.meta.published).reverse()
     }
 
     pub fn url_for_original_path(&self) -> eyre::Result<Option<String>> {
-        let result = self.path.as_ref().map(|path| path.references_url());
+        let result = self.path.as_ref().map(path::RelativePath::references_url);
 
         Ok(result)
     }
@@ -282,7 +291,7 @@ impl Thread {
         let result = self
             .path
             .as_ref()
-            .map(|path| path.rendered_path())
+            .map(path::RelativePath::rendered_path)
             .transpose()?
             .flatten()
             .map(|path| path.internal_url());
@@ -294,7 +303,7 @@ impl Thread {
         let result = self
             .path
             .as_ref()
-            .map(|path| path.rendered_path())
+            .map(path::RelativePath::rendered_path)
             .transpose()?
             .flatten()
             .map(|path| path.external_url());
@@ -306,7 +315,7 @@ impl Thread {
         let result = self
             .path
             .as_ref()
-            .map(|path| path.rendered_path())
+            .map(path::RelativePath::rendered_path)
             .transpose()?
             .flatten()
             .map(|path| path.atom_feed_entry_id());
@@ -355,16 +364,14 @@ impl TryFrom<TemplatedPost> for Thread {
 
     fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
         let path = post.path.clone();
+        #[allow(clippy::needless_collect)]
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
-            .into_iter()
+            .iter()
             .filter(|tag| !post.meta.tags.contains(tag))
-            .map(|tag| tag.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .collect::<Vec<_>>();
-        let combined_tags = extra_tags
-            .into_iter()
-            .chain(post.meta.tags.into_iter())
-            .collect();
+        let combined_tags = extra_tags.into_iter().chain(post.meta.tags).collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
         let mut meta = post.meta.clone();
@@ -373,7 +380,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .meta
             .references
             .iter()
-            .map(|path| TemplatedPost::load(path))
+            .map(TemplatedPost::load)
             .collect::<Result<Vec<_>, _>>()?;
         posts.push(post);
 
@@ -388,27 +395,33 @@ impl TryFrom<TemplatedPost> for Thread {
             .rev()
             .find(|post| !post.meta.is_transparent_share);
         meta.title = last_non_transparent_share_post.map(|post| {
-            if let Some(title) = post.meta.title.clone().filter(|t| !t.is_empty()) {
-                title
-            } else if let Some(author) = post.meta.author.as_ref() {
-                format!("untitled post by {}", author.display_handle)
-            } else {
-                "untitled post".to_owned()
-            }
+            post.meta
+                .title
+                .clone()
+                .filter(|t| !t.is_empty())
+                .map_or_else(
+                    || {
+                        post.meta.author.as_ref().map_or_else(
+                            || "untitled post".to_owned(),
+                            |author| format!("untitled post by {}", author.display_handle),
+                        )
+                    },
+                    |title| title,
+                )
         });
         let og_image = last_non_transparent_share_post
             .and_then(|post| post.og_image.as_deref())
             .map(|og_image| SETTINGS.base_url_relativise(og_image));
         let og_description =
-            last_non_transparent_share_post.map(|post| post.og_description.to_owned());
+            last_non_transparent_share_post.map(|post| post.og_description.clone());
 
         let needs_attachments = posts
             .iter()
             .flat_map(|post| post.needs_attachments.iter())
-            .map(|attachment_path| attachment_path.to_owned())
+            .map(std::borrow::ToOwned::to_owned)
             .collect();
 
-        Ok(Thread {
+        Ok(Self {
             path,
             posts,
             meta,
@@ -457,7 +470,7 @@ impl TemplatedPost {
         })? {}
 
         // reader step: filter html.
-        let extracted_html = serialize_html_fragment(post.dom)?;
+        let extracted_html = serialize_html_fragment(&post.dom)?;
         let safe_html = ammonia::Builder::default()
             .add_generic_attributes(["style", "id", "aria-label"])
             .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost
@@ -473,7 +486,7 @@ impl TemplatedPost {
             .clean(&extracted_html)
             .to_string();
 
-        Ok(TemplatedPost {
+        Ok(Self {
             path,
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
@@ -511,15 +524,15 @@ pub fn cli_init() -> eyre::Result<()> {
 ///   (this was not the case for older chosts, as reflected in their `.astMap`)
 /// - blank lines in `<details>` close the element in some situations?
 /// - spaced numbered lists yield separate `<ol start>` instead of `<li><p>`
+#[must_use]
 pub fn render_markdown(markdown: &str) -> String {
     let mut options = comrak::Options::default();
     options.render.unsafe_ = true;
     options.extension.table = true;
     options.extension.autolink = true;
     options.render.hardbreaks = true;
-    let unsafe_html = comrak::markdown_to_html(&markdown, &options);
 
-    unsafe_html
+    comrak::markdown_to_html(markdown, &options)
 }
 
 #[test]
