@@ -66,7 +66,10 @@ pub fn main(args: Cohost2autost) -> eyre::Result<()> {
                 if !specific_post_filenames.contains(&entry.file_name()) {
                     return Ok(());
                 }
-            } else if !filename.ends_with(".json") {
+            } else if !std::path::Path::new(filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+            {
                 return Ok(());
             }
             convert_chost(&entry, &RealAttachmentsContext)
@@ -256,9 +259,9 @@ fn convert_single_chost(
             Block::AttachmentRow { attachments } => {
                 for block in attachments {
                     if let Block::Attachment { attachment } = block {
-                        handle_attachment(attachment)?
+                        handle_attachment(attachment)?;
                     } else {
-                        warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}")
+                        warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}");
                     }
                 }
             }
@@ -521,21 +524,21 @@ fn test_render_markdown_block() -> eyre::Result<()> {
             cacheable: &Cacheable,
         ) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(match cacheable {
-                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(&id.to_string())?,
+                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(id.as_ref())?,
                 Cacheable::Static { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_STATIC.join(&filename.to_string())?
+                    ATTACHMENTS_PATH_COHOST_STATIC.join(filename.as_ref())?
                 }
                 Cacheable::Avatar { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_AVATAR.join(&filename.to_string())?
+                    ATTACHMENTS_PATH_COHOST_AVATAR.join(filename.as_ref())?
                 }
                 Cacheable::Header { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_HEADER.join(&filename.to_string())?
+                    ATTACHMENTS_PATH_COHOST_HEADER.join(filename.as_ref())?
                 }
             }))
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(
-                ATTACHMENTS_PATH_THUMBS.join(&id.to_string())?,
+                ATTACHMENTS_PATH_THUMBS.join(id)?,
             ))
         }
     }
