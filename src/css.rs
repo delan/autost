@@ -87,8 +87,9 @@ fn parse(parser: &mut Parser) -> Vec<InlineStyleToken> {
                 result.extend(nested_result);
             }
             match &token {
-                Token::Function(..) => result.push(InlineStyleToken::Other(")".to_owned())),
-                Token::ParenthesisBlock => result.push(InlineStyleToken::Other(")".to_owned())),
+                Token::ParenthesisBlock | Token::Function(..) => {
+                    result.push(InlineStyleToken::Other(")".to_owned()));
+                }
                 Token::SquareBracketBlock => result.push(InlineStyleToken::Other("]".to_owned())),
                 Token::CurlyBracketBlock => result.push(InlineStyleToken::Other("}".to_owned())),
                 _ => {}
