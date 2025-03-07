@@ -8,7 +8,7 @@ use tokio::time::sleep;
 use tracing::{info, warn};
 
 pub async fn get_json<T: DeserializeOwned>(client: &Client, url: &str) -> eyre::Result<T> {
-    get_with_retries(client, url, json).await
+    get_with_retries(client, url, |body| json(&body)).await
 }
 
 pub async fn get_with_retries<T>(
@@ -67,6 +67,6 @@ async fn get_response_once(client: &Client, url: &str) -> reqwest::Result<Respon
     client.get(url).send().await
 }
 
-fn json<T: DeserializeOwned>(body: Bytes) -> eyre::Result<T> {
-    Ok(serde_json::from_slice(&body)?)
+fn json<T: DeserializeOwned>(body: &Bytes) -> eyre::Result<T> {
+    Ok(serde_json::from_slice(body)?)
 }
