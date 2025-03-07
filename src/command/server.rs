@@ -1,45 +1,146 @@
 use std::{
-    collections::{BTreeMap, HashMap},
-    fs::{File, OpenOptions},
-    io::{self, Read, Write},
-    net::IpAddr,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
-
-#[cfg(windows)]
-use std::os::windows::prelude::OpenOptionsExt;
-
-use askama::Template;
-use chrono::{SecondsFormat, Utc};
-use http::{Response, StatusCode, Uri};
-use jane_eyre::eyre::{self, eyre, Context, OptionExt};
-use tracing::{error, info, warn};
-use warp::{
-    filters::{any::any, path::Peek, reply::header},
-    path,
-    redirect::{see_other, temporary},
-    reject::{custom, Reject, Rejection},
-    reply::{self, Reply},
-    Filter,
+    fs::File,
+    io::{self, Write as _},
 };
 
 use crate::{
+    command::render::render_all,
     output::ThreadsContentTemplate,
-    path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT, SITE_PATH_ROOT},
-    SETTINGS,
+    path::{PostsPath, POSTS_PATH_ROOT},
+    render_markdown,
+    rocket_eyre::{self, EyreReport},
+    Command, PostMeta, TemplatedPost, Thread, SETTINGS,
 };
-use crate::{path::PostsPath, render_markdown, PostMeta, TemplatedPost, Thread};
 
-use crate::command::render::render_all;
+use askama_rocket::Template;
+use chrono::{SecondsFormat, Utc};
+use clap::Parser as _;
+use jane_eyre::eyre::{Context, OptionExt as _};
+use rocket::{
+    form::Form,
+    fs::{FileServer, Options},
+    get, post,
+    response::{content, Redirect},
+    routes, Config, FromForm, Responder,
+};
 
 #[derive(clap::Args, Debug)]
 pub struct Server {
     #[arg(short, long)]
     port: Option<u16>,
 }
+#[derive(askama_rocket::Template)]
+#[template(path = "compose.html")]
+struct ComposeTemplate {
+    source: String,
+}
+#[get("/compose?<reply_to>&<tags>&<is_transparent_share>")]
+fn compose_route(
+    reply_to: Option<String>,
+    tags: Vec<String>,
+    is_transparent_share: Option<bool>,
+) -> rocket_eyre::Result<ComposeTemplate> {
+    let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
-static HTML: &'static str = "text/html; charset=utf-8";
+    let references = if let Some(reply_to) = reply_to {
+        let reply_to = POSTS_PATH_ROOT
+            .join(&reply_to)
+            .map_err(EyreReport::BadRequest)?;
+        let post = TemplatedPost::load(&reply_to)?;
+        let thread = Thread::try_from(post)?;
+        thread.posts.into_iter().flat_map(|x| x.path).collect()
+    } else {
+        vec![]
+    };
+    let is_transparent_share = is_transparent_share.unwrap_or_default();
+
+    let meta = PostMeta {
+        archived: None,
+        references,
+        title: (!is_transparent_share).then_some("headline".to_owned()),
+        published: Some(now),
+        author: SETTINGS.self_author.clone(),
+        tags,
+        is_transparent_share,
+    };
+    let meta = meta.render().wrap_err("failed to render template")?;
+
+    let source = if is_transparent_share {
+        meta
+    } else {
+        format!("{meta}\n\npost body (accepts markdown!)")
+    };
+
+    Ok(ComposeTemplate { source })
+}
+
+#[derive(FromForm, Debug)]
+struct Body<'r> {
+    source: &'r str,
+}
+
+#[post("/preview", data = "<body>")]
+fn preview_route(body: Form<Body<'_>>) -> rocket_eyre::Result<content::RawHtml<String>> {
+    let unsafe_source = body.source;
+    let unsafe_html = render_markdown(unsafe_source);
+    let post = TemplatedPost::filter(&unsafe_html, None)?;
+    let thread = Thread::try_from(post)?;
+    Ok(content::RawHtml(
+        ThreadsContentTemplate::render_normal(&thread).wrap_err("failed to render template")?,
+    ))
+}
+
+#[derive(Responder)]
+enum PublishResponse {
+    Redirect(Box<Redirect>),
+    Text(String),
+}
+
+#[post("/publish?<js>", data = "<body>")]
+fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<PublishResponse> {
+    let js = js.unwrap_or_default();
+    let unsafe_source = body.source;
+
+    // try rendering the post before writing it, to catch any errors.
+    let unsafe_html = render_markdown(unsafe_source);
+    let post = TemplatedPost::filter(&unsafe_html, None)?;
+    let _thread = Thread::try_from(post)?;
+
+    // cohost post ids are all less than 10000000.
+    let (mut file, path) = (10000000..)
+        .map(|id| {
+            let path = PostsPath::markdown_post_path(id);
+            File::create_new(&path).map(|file| (file, path))
+        })
+        .find(|file| !matches!(file, Err(error) if error.kind() == io::ErrorKind::AlreadyExists))
+        .expect("too many posts :(")
+        .wrap_err("failed to create post")?;
+
+    file.write_all(unsafe_source.as_bytes())
+        .wrap_err("failed to write post file")?;
+    render_all()?;
+
+    let post = TemplatedPost::load(&path)?;
+    let _thread = Thread::try_from(post)?;
+    let url = path
+        .rendered_path()?
+        .ok_or_eyre("path has no rendered path")?
+        .internal_url();
+
+    // fetch api does not expose the redirect ‘location’ to scripts.
+    // <https://github.com/whatwg/fetch/issues/763>
+    if js {
+        Ok(PublishResponse::Text(url))
+    } else {
+        Ok(PublishResponse::Redirect(Box::new(Redirect::to(url))))
+    }
+}
+
+// lower than FileServer, which uses rank 10 by default
+#[get("/", rank = 100)]
+fn root_route() -> Redirect {
+    Redirect::to(&SETTINGS.base_url)
+}
 
 /// - site routes (all under `base_url`)
 ///   - `GET <base_url>compose` (`compose_route`)
@@ -50,349 +151,51 @@ static HTML: &'static str = "text/html; charset=utf-8";
 ///   - `POST <base_url>publish` (`publish_route`)
 ///   - `GET <base_url><path>` (`static_route`)
 /// - `GET /` (`root_route`)
-/// - `<METHOD> <path>` (`not_found_route`)
-pub async fn main(args: Server) -> eyre::Result<()> {
+#[rocket::main]
+pub async fn main() -> jane_eyre::eyre::Result<()> {
+    let Command::Server(args) = Command::parse() else {
+        unreachable!("guaranteed by subcommand call in entry point")
+    };
+
     render_all()?;
 
-    let compose_route = warp::path!("compose")
-        .and(warp::filters::method::get())
-        .and(warp::filters::query::query())
-        .and_then(|query_vec: Vec<(String, String)>| async move {
-            let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-            // convert query params from ordered pairs to map of lists
-            let mut query = BTreeMap::<String, Vec<String>>::default();
-            for (key, value) in query_vec {
-                query.entry(key).or_default().push(value);
-            }
-            let references = if let Some(reply_to) = query.remove("reply_to") {
-                let [ref reply_to] = reply_to[..] else {
-                    return Err(Rejection::from(InternalError(eyre!(
-                        "multiple reply_to query parameters not allowed"
-                    ))));
-                };
-                let reply_to = POSTS_PATH_ROOT.join(&reply_to).map_err(BadRequest)?;
-                let post = TemplatedPost::load(&reply_to).map_err(InternalError)?;
-                let thread = Thread::try_from(post).map_err(InternalError)?;
-                thread
-                    .posts
-                    .into_iter()
-                    .flat_map(|post| post.path)
-                    .collect()
-            } else {
-                vec![]
-            };
-            let is_transparent_share = query.contains_key("is_transparent_share");
-            let meta = PostMeta {
-                archived: None,
-                references,
-                title: (!is_transparent_share).then_some("headline".to_owned()),
-                published: Some(now),
-                author: SETTINGS.self_author.clone(),
-                tags: query.remove("tags").unwrap_or_default(),
-                is_transparent_share,
-            };
-            let meta = meta
-                .render()
-                .wrap_err("failed to render template")
-                .map_err(InternalError)?;
-            let source = if is_transparent_share {
-                meta
-            } else {
-                format!("{meta}\n\npost body (accepts markdown!)")
-            };
-            let result = ComposeTemplate { source };
-            let result = result
-                .render()
-                .wrap_err("failed to render template")
-                .map_err(InternalError)?;
-            Ok::<_, Rejection>(result)
-        })
-        .with(header("Content-Type", HTML))
-        .recover(recover);
-
-    // POST /preview with urlencoded body: source=...
-    let preview_route = warp::path!("preview")
-        .and(warp::filters::method::post())
-        .and(warp::filters::body::form())
-        .and_then(|mut form: HashMap<String, String>| async move {
-            let unsafe_source = form
-                .remove("source")
-                .ok_or_eyre("form field missing: source")
-                .map_err(BadRequest)?;
-            let unsafe_html = render_markdown(&unsafe_source);
-            let post = TemplatedPost::filter(&unsafe_html, None).map_err(InternalError)?;
-            let thread = Thread::try_from(post).map_err(InternalError)?;
-            let result = ThreadsContentTemplate::render_normal(&thread)
-                .wrap_err("failed to render template")
-                .map_err(InternalError)?;
-            Ok::<_, Rejection>(result)
-        })
-        .with(header("Content-Type", HTML))
-        .recover(recover);
-
-    // POST /publish[?js] with urlencoded body: source=...
-    let publish_route = warp::path!("publish")
-        .and(warp::filters::method::post())
-        .and(warp::filters::query::query())
-        .and(warp::filters::body::form())
-        .and_then(
-            |query: HashMap<String, String>, mut form: HashMap<String, String>| async move {
-                let unsafe_source = form
-                    .remove("source")
-                    .ok_or_eyre("form field missing: source")
-                    .map_err(BadRequest)?;
-
-                // try rendering the post before writing it, to catch any errors.
-                let unsafe_html = render_markdown(&unsafe_source);
-                let post = TemplatedPost::filter(&unsafe_html, None).map_err(InternalError)?;
-                let _thread = Thread::try_from(post).map_err(InternalError)?;
-
-                // cohost post ids are all less than 10000000.
-                let (mut file, path) = (10000000..)
-                    .map(|id| {
-                        let path = PostsPath::markdown_post_path(id);
-                        File::create_new(&path).map(|file| (file, path))
-                    })
-                    .filter(|file| !matches!(file, Err(error) if error.kind() == io::ErrorKind::AlreadyExists))
-                    .next()
-                    .expect("too many posts :(")
-                    .wrap_err("failed to create post")
-                    .map_err(InternalError)?;
-
-                file.write_all(unsafe_source.as_bytes())
-                    .wrap_err("failed to write post file")
-                    .map_err(InternalError)?;
-                render_all().map_err(InternalError)?;
-
-                let post = TemplatedPost::load(&path).map_err(InternalError)?;
-                let _thread = Thread::try_from(post).map_err(InternalError)?;
-                let url = path.rendered_path()
-                    .map_err(InternalError)?
-                    .ok_or_eyre("path has no rendered path")
-                    .map_err(InternalError)?
-                    .internal_url();
-
-                // fetch api does not expose the redirect ‘location’ to scripts.
-                // <https://github.com/whatwg/fetch/issues/763>
-                let response = if query.contains_key("js") {
-                    Box::new(url) as Box<dyn Reply>
-                } else {
-                    let url = Uri::from_str(&url)
-                        .wrap_err("failed to build Uri")
-                        .map_err(InternalError)?;
-                    Box::new(see_other(url)) as Box<dyn Reply>
-                };
-
-                Ok::<_, Rejection>(response)
-            },
-        )
-        .with(header("Content-Type", HTML))
-        .recover(recover);
-
-    let static_route = warp::filters::method::get()
-        .and(warp::filters::path::peek())
-        .and_then(|peek: Peek| async move {
-            let mut segments = peek.segments().peekable();
-            // serve attachments out of main attachment store, in case we need to preview a post
-            // that refers to an attachment for the first time. otherwise they will 404, since
-            // render won’t have hard-linked it into the site output dir.
-            let mut path: PathBuf = if segments.peek() == Some(&"attachments") {
-                segments.next();
-                (&*ATTACHMENTS_PATH_ROOT).as_ref().to_owned()
-            } else {
-                (&*SITE_PATH_ROOT).as_ref().to_owned()
-            };
-            for component in segments {
-                let component = urlencoding::decode(component)
-                    .wrap_err("failed to decode url path component")
-                    .map_err(BadRequest)?;
-                if component == ".." {
-                    return Err(custom(BadRequest(eyre!("path component not allowed: .."))));
-                } else if component == "." {
-                    continue;
-                }
-                path.push(&*component);
-            }
-
-            enum Error {
-                Internal(eyre::Report),
-                NotFound,
-            }
-            fn read_file_or_index(body: &mut Vec<u8>, path: &Path) -> Result<&'static str, Error> {
-                // "You must set [FILE_FLAG_BACKUP_SEMANTICS] to obtain a handle to a directory."
-                // <https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew>
-                #[cfg(windows)]
-                let open = OpenOptions::new().read(true).custom_flags(0x02000000 /*FILE_FLAG_BACKUP_SEMANTICS*/).open(path);
-
-                #[cfg(not(windows))]
-                let open = OpenOptions::new().read(true).open(path);
-
-                if let Ok(mut file) = open {
-                    let metadata = file.metadata()
-                        .wrap_err("failed to get file metadata")
-                        .map_err(Error::Internal)?;
-                    if metadata.is_dir() {
-                        return read_file_or_index(body, &path.join("index.html"))
-                    } else {
-                        file.read_to_end(body)
-                            .wrap_err("failed to read file")
-                            .map_err(Error::Internal)?;
-                        let extension = path.extension().and_then(|x| x.to_str());
-                        let extension = extension.map(|x| x.to_ascii_lowercase());
-                        let content_type = match extension.as_deref() {
-                            Some("css") => "text/css; charset=utf-8",
-                            Some("gif") => "image/gif",
-                            Some("html") => HTML,
-                            Some("jpg" | "jpeg") => "image/jpeg",
-                            Some("js") => "text/javascript; charset=utf-8",
-                            Some("mp3") => "audio/mpeg",
-                            Some("mp4") => "video/mp4",
-                            Some("png") => "image/png",
-                            Some("svg") => "image/svg+xml",
-                            Some("webp") => "image/webp",
-                            Some("woff2") => "font/woff2",
-                            Some("xml") => "text/xml",
-                            Some(other) => {
-                                warn!("unknown file extension {other}; treating as application/octet-stream");
-                                "application/octet-stream"
-                            },
-                            None => {
-                                warn!("no file extension; treating as application/octet-stream");
-                                "application/octet-stream"
-                            },
-                        };
-                        return Ok(content_type);
-                    }
-                } else {
-                    return Err(Error::NotFound);
-                }
-            }
-
-            let mut body = Vec::default();
-            let content_type = match read_file_or_index(&mut body, &path) {
-                Ok(result) => Ok(result),
-                Err(Error::Internal(error)) => Err(custom(InternalError(error))),
-                Err(Error::NotFound) => Err(custom(NotFound(peek.as_str().to_owned()))),
-            }?;
-
-            let response = Response::builder()
-                .header("Content-Type", content_type)
-                .body(body)
-                .wrap_err("failed to build response")
-                .map_err(InternalError)?;
-
-            Ok(response)
-        })
-        .recover(recover);
-
-    // prepend base_url to all site routes.
-    let mut site_routes = any().boxed();
-    for component in SETTINGS.base_url_path_components() {
-        site_routes = site_routes.and(path(component)).boxed();
-    }
-    // successful responses are in their own types. error responses are in plain text.
-    let site_routes = site_routes.and(
-        compose_route
-            .or(preview_route)
-            .or(publish_route)
-            .or(static_route),
-    );
-
-    // if the base_url setting is not /, redirect / to base_url.
-    let root_route = warp::path!()
-        .and(warp::filters::method::get())
-        .and_then(|| async {
-            let url = Uri::from_str(&SITE_PATH_ROOT.internal_url())
-                .wrap_err("failed to build Uri")
-                .map_err(InternalError)?;
-            Ok::<_, Rejection>(temporary(url))
-        })
-        .recover(recover);
-
-    let not_found_route = any()
-        .and(warp::filters::path::peek())
-        .and_then(|peek: Peek| async move {
-            Err::<Box<dyn Reply>, Rejection>(custom(NotFound(peek.as_str().to_owned())))
-        })
-        .recover(recover);
-
-    let routes = site_routes.or(root_route).or(not_found_route);
-
     let port = args.port.unwrap_or(SETTINGS.server_port());
-    info!("starting server on http://[::1]:{}", port);
-    warp::serve(routes)
-        .run(("::1".parse::<IpAddr>()?, port))
-        .await;
+    let _rocket = rocket::custom(
+        Config::figment()
+            .merge(("port", port))
+            .merge(("address", "::1")),
+    )
+    .mount(
+        &SETTINGS.base_url,
+        routes![compose_route, preview_route, publish_route],
+    )
+    .mount("/", routes![root_route])
+    // serve attachments out of main attachment store, in case we need to preview a post
+    // that refers to an attachment for the first time. otherwise they will 404, since
+    // render won’t have hard-linked it into the site output dir.
+    .mount(
+        format!("{}attachments/", SETTINGS.base_url),
+        FileServer::new(
+            "./attachments",
+            // DotFiles because attachment filenames can start with `.`
+            // NormalizeDirs because relative links rely on directories ending with a `/`
+            Options::Index | Options::DotFiles | Options::NormalizeDirs,
+        )
+        .rank(9),
+    )
+    // serve all other files out of `SITE_PATH_ROOT`.
+    .mount(
+        &SETTINGS.base_url,
+        FileServer::new(
+            "./site",
+            // DotFiles because attachment filenames can start with `.`
+            // NormalizeDirs because relative links rely on directories ending with a `/`
+            Options::Index | Options::DotFiles | Options::NormalizeDirs,
+        )
+        .rank(10),
+    )
+    .launch()
+    .await;
 
     Ok(())
-}
-
-#[derive(Debug)]
-struct InternalError(eyre::Report);
-impl Reject for InternalError {}
-impl From<eyre::Report> for InternalError {
-    fn from(value: eyre::Report) -> Self {
-        Self(value)
-    }
-}
-
-#[derive(Debug)]
-struct BadRequest(eyre::Report);
-impl Reject for BadRequest {}
-
-#[derive(Debug)]
-struct NotFound(String);
-impl Reject for NotFound {}
-
-#[derive(Template)]
-#[template(path = "compose.html")]
-struct ComposeTemplate {
-    source: String,
-}
-
-/// map all errors, other than errors due to none of the routes’ path and method filters matching,
-/// from `Err(Rejection)` to `Ok(Reply)`, so we don’t try any other routes.
-///
-/// every route needs its own `.recover(recover)` for this to work correctly.
-async fn recover(error: Rejection) -> Result<impl Reply, Rejection> {
-    // if the error was due to none of the routes’ path and method filters matching, return that
-    // error, allowing the default route to try serving a static file.
-    if error.is_not_found() {
-        return Err(error);
-    }
-    // for all other errors, convert Err(Rejection) to Ok(Reply), so we don’t try any other routes.
-    Ok(if let Some(error) = error.find::<BadRequest>() {
-        error!(
-            ?error,
-            "BadRequest: responding with http 400 bad request: {}", error.0,
-        );
-        reply::with_status(
-            format!("bad request: {:?}", error.0),
-            StatusCode::BAD_REQUEST,
-        )
-    } else if let Some(error) = error.find::<NotFound>() {
-        error!(
-            ?error,
-            "NotFound: responding with http 404 not found: {}", error.0,
-        );
-        reply::with_status(format!("not found: {:?}", error.0), StatusCode::NOT_FOUND)
-    } else if let Some(error) = error.find::<InternalError>() {
-        error!(
-            ?error,
-            "InternalError: responding with http 500 internal server error: {}", error.0,
-        );
-        reply::with_status(
-            format!("internal error: {:?}", error.0),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
-    } else {
-        error!(
-            ?error,
-            "unknown error: responding with http 500 internal server error",
-        );
-        reply::with_status(
-            format!("unknown error: {error:?}"),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
-    })
 }

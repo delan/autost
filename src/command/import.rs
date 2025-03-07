@@ -6,6 +6,7 @@ use std::{
 
 use askama::Template;
 use base64::{prelude::BASE64_STANDARD, Engine};
+use clap::Parser as _;
 use html5ever::Attribute;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{Handle, NodeData};
@@ -24,7 +25,7 @@ use crate::{
     },
     migrations::run_migrations,
     path::{PostsPath, POSTS_PATH_IMPORTED},
-    Author, PostMeta, TemplatedPost,
+    Author, Command, PostMeta, TemplatedPost,
 };
 
 #[derive(clap::Args, Debug)]
@@ -37,7 +38,11 @@ pub struct Reimport {
     posts_path: String,
 }
 
-pub async fn main(args: Import) -> eyre::Result<()> {
+#[tokio::main]
+pub async fn main() -> eyre::Result<()> {
+    let Command::Import(args) = Command::parse() else {
+        unreachable!("guaranteed by subcommand call in entry point")
+    };
     run_migrations()?;
 
     let url = args.url;
@@ -78,26 +83,33 @@ pub async fn main(args: Import) -> eyre::Result<()> {
     Ok(())
 }
 
-pub async fn reimport(args: Reimport) -> eyre::Result<()> {
-    run_migrations()?;
+pub mod reimport {
+    use super::*;
+    #[tokio::main]
+    pub async fn main() -> eyre::Result<()> {
+        let Command::Reimport(args) = Command::parse() else {
+            unreachable!("guaranteed by subcommand call in entry point")
+        };
+        run_migrations()?;
 
-    let path = args.posts_path;
-    let path = PostsPath::from_site_root_relative_path(&path)?;
-    let post = TemplatedPost::load(&path)?;
-    let url = post.meta.archived.ok_or_eyre("post is not archived")?;
-    let FetchPostResult {
-        base_href,
-        content: e_content,
-        url: u_url,
-        meta,
-    } = fetch_post(&url).await?;
-    assert_eq!(url, u_url.to_string());
+        let path = args.posts_path;
+        let path = PostsPath::from_site_root_relative_path(&path)?;
+        let post = TemplatedPost::load(&path)?;
+        let url = post.meta.archived.ok_or_eyre("post is not archived")?;
+        let FetchPostResult {
+            base_href,
+            content: e_content,
+            url: u_url,
+            meta,
+        } = fetch_post(&url).await?;
+        assert_eq!(url, u_url.to_string());
 
-    info!("updating existing post: {path:?}");
-    let file = File::create(&path)?;
-    write_post(file, meta, e_content, base_href, path)?;
+        info!("updating existing post: {path:?}");
+        let file = File::create(&path)?;
+        write_post(file, meta, e_content, base_href, path)?;
 
-    Ok(())
+        Ok(())
+    }
 }
 
 async fn fetch_post(url: &str) -> eyre::Result<FetchPostResult> {
