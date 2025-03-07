@@ -160,38 +160,42 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
     render_all()?;
 
     let port = args.port.unwrap_or(SETTINGS.server_port());
-    let _rocket = rocket::custom(Config::figment().merge(("port", port)))
-        .mount(
-            &SETTINGS.base_url,
-            routes![compose_route, preview_route, publish_route],
+    let _rocket = rocket::custom(
+        Config::figment()
+            .merge(("port", port))
+            .merge(("address", "::1")),
+    )
+    .mount(
+        &SETTINGS.base_url,
+        routes![compose_route, preview_route, publish_route],
+    )
+    .mount("/", routes![root_route])
+    // serve attachments out of main attachment store, in case we need to preview a post
+    // that refers to an attachment for the first time. otherwise they will 404, since
+    // render won’t have hard-linked it into the site output dir.
+    .mount(
+        format!("{}attachments/", SETTINGS.base_url),
+        FileServer::new(
+            "./attachments",
+            // DotFiles because attachments can start with a .
+            // NormalizeDirs because relative links rely on folders ending with a "/"
+            Options::Index | Options::DotFiles | Options::NormalizeDirs,
         )
-        .mount("/", routes![root_route])
-        // serve attachments out of main attachment store, in case we need to preview a post
-        // that refers to an attachment for the first time. otherwise they will 404, since
-        // render won’t have hard-linked it into the site output dir.
-        .mount(
-            format!("{}attachments/", SETTINGS.base_url),
-            FileServer::new(
-                "./attachments",
-                // DotFiles because attachments can start with a .
-                // NormalizeDirs because relative links rely on folders ending with a "/"
-                Options::Index | Options::DotFiles | Options::NormalizeDirs,
-            )
-            .rank(9),
+        .rank(9),
+    )
+    // serve all other files out of `SITE_PATH_ROOT`.
+    .mount(
+        &SETTINGS.base_url,
+        FileServer::new(
+            "./site",
+            // DotFiles because attachments can start with a .
+            // NormalizeDirs because relative links rely on folders ending with a "/"
+            Options::Index | Options::DotFiles | Options::NormalizeDirs,
         )
-        // serve all other files out of `SITE_PATH_ROOT`.
-        .mount(
-            &SETTINGS.base_url,
-            FileServer::new(
-                "./site",
-                // DotFiles because attachments can start with a .
-                // NormalizeDirs because relative links rely on folders ending with a "/"
-                Options::Index | Options::DotFiles | Options::NormalizeDirs,
-            )
-            .rank(10),
-        )
-        .launch()
-        .await;
+        .rank(10),
+    )
+    .launch()
+    .await;
 
     Ok(())
 }
