@@ -16,7 +16,7 @@ use tracing::{debug, info, trace, warn};
 use url::Url;
 
 use crate::{
-    akkoma::{AkkomaImgTemplate, ApiInstance, ApiStatus},
+    akkoma::{ApiInstance, ApiStatus, ImgTemplate},
     attachments::{AttachmentsContext, RealAttachmentsContext},
     dom::{
         html_attributes_with_embedding_urls, html_attributes_with_non_embedding_urls,
@@ -278,7 +278,7 @@ async fn fetch_akkoma_post(
             warn!(?attachment.r#type, "skipping unknown attachment type");
             continue;
         }
-        let template = AkkomaImgTemplate {
+        let template = ImgTemplate {
             data_akkoma_src: attachment.preview_url.clone(),
             href: attachment.url,
             src: attachment.preview_url,

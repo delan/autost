@@ -49,7 +49,7 @@ pub struct ApiAccount {
 
 #[derive(Template)]
 #[template(path = "akkoma-img.html")]
-pub struct AkkomaImgTemplate {
+pub struct ImgTemplate {
     pub data_akkoma_src: String,
     pub href: String,
     pub src: String,
