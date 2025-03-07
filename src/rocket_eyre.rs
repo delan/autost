@@ -1,3 +1,4 @@
+//! Most of this is lifted from <https://github.com/yuk1ty/rocket-errors/blob/b617f860d27d8f162e97e92311eeeba1abd38b95/src/eyre.rs>
 use jane_eyre::eyre;
 use rocket::{
     http::Status,
@@ -5,8 +6,6 @@ use rocket::{
     Request,
 };
 use tracing::warn;
-
-// Most of this is lifted from <https://github.com/yuk1ty/rocket-errors/blob/b617f860d27d8f162e97e92311eeeba1abd38b95/src/eyre.rs>
 
 /// A type alias with [`EyreReport`] to use `eyre::Result` in Rocket framework.
 pub type Result<T, E = EyreReport> = std::result::Result<T, E>;

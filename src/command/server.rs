@@ -91,13 +91,13 @@ fn preview_route(body: Form<Body<'_>>) -> rocket_eyre::Result<content::RawHtml<S
 }
 
 #[derive(Responder)]
-enum Content {
+enum PublishResponse {
     Redirect(Box<Redirect>),
     Text(String),
 }
 
 #[post("/publish?<js>", data = "<body>")]
-fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<Content> {
+fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<PublishResponse> {
     let js = js.unwrap_or_default();
     let unsafe_source = body.source;
 
@@ -130,9 +130,9 @@ fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<
     // fetch api does not expose the redirect ‘location’ to scripts.
     // <https://github.com/whatwg/fetch/issues/763>
     if js {
-        Ok(Content::Text(url))
+        Ok(PublishResponse::Text(url))
     } else {
-        Ok(Content::Redirect(Box::new(Redirect::to(url))))
+        Ok(PublishResponse::Redirect(Box::new(Redirect::to(url))))
     }
 }
 
@@ -177,8 +177,8 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
         format!("{}attachments/", SETTINGS.base_url),
         FileServer::new(
             "./attachments",
-            // DotFiles because attachments can start with a .
-            // NormalizeDirs because relative links rely on folders ending with a "/"
+            // DotFiles because attachment filenames can start with `.`
+            // NormalizeDirs because relative links rely on directories ending with a `/`
             Options::Index | Options::DotFiles | Options::NormalizeDirs,
         )
         .rank(9),
@@ -188,8 +188,8 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
         &SETTINGS.base_url,
         FileServer::new(
             "./site",
-            // DotFiles because attachments can start with a .
-            // NormalizeDirs because relative links rely on folders ending with a "/"
+            // DotFiles because attachment filenames can start with `.`
+            // NormalizeDirs because relative links rely on directories ending with a `/`
             Options::Index | Options::DotFiles | Options::NormalizeDirs,
         )
         .rank(10),
