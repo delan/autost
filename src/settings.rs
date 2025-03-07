@@ -128,11 +128,8 @@ impl Settings {
 
     #[must_use]
     pub fn base_url_relativise(&self, url: &str) -> String {
-        if let Some(url) = parse_path_relative_scheme_less_url_string(url) {
-            format!("{}{}", self.base_url, url)
-        } else {
-            url.to_owned()
-        }
+        parse_path_relative_scheme_less_url_string(url)
+            .map_or_else(|| url.to_owned(), |url| format!("{}{}", self.base_url, url))
     }
 
     #[must_use]
@@ -142,10 +139,10 @@ impl Settings {
 
     #[must_use]
     pub fn page_title(&self, title: Option<&str>) -> String {
-        match title {
-            Some(title) => format!("{} — {}", title, self.site_title),
-            None => self.site_title.clone(),
-        }
+        title.map_or_else(
+            || self.site_title.clone(),
+            |title| format!("{} — {}", title, self.site_title),
+        )
     }
 
     #[must_use]
@@ -314,7 +311,7 @@ fn test_base_url_path_components() -> eyre::Result<()> {
         Vec::<&str>::default()
     );
 
-    settings.base_url = "/posts/".to_owned();
+    "/posts/".clone_into(&mut settings.base_url);
     assert_eq!(
         settings.base_url_path_components().collect::<Vec<_>>(),
         ["posts"]
