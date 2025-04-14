@@ -59,17 +59,17 @@ impl PathKind for PostsKind {
             .collect::<eyre::Result<Vec<_>>>()?;
 
         Ok(match components[..] {
-            [c] if c.ends_with(".html") => Self::Post {
-                is_markdown: false,
-                in_imported_dir: false,
-            },
-            [c] if c.ends_with(".md") => Self::Post {
-                is_markdown: true,
-                in_imported_dir: false,
-            },
             ["imported", c] if c.ends_with(".html") => Self::Post {
                 is_markdown: false,
                 in_imported_dir: true,
+            },
+            [.., c] if c.ends_with(".html") => Self::Post {
+                is_markdown: false,
+                in_imported_dir: false,
+            },
+            [.., c] if c.ends_with(".md") => Self::Post {
+                is_markdown: true,
+                in_imported_dir: false,
             },
             _ => Self::Other,
         })
@@ -214,12 +214,18 @@ impl PostsPath {
     pub fn rendered_path(&self) -> eyre::Result<Option<SitePath>> {
         match self.kind {
             PostsKind::Post { .. } => {
+                let mut result = SITE_PATH_ROOT.to_owned();
+                let subdir_count = self.components().count() - 1;
+                let mut components = self.components();
+                for _ in 0..subdir_count {
+                    result = result.join(components.next().expect("guaranteed by subdir_count"))?;
+                }
                 let (basename, _) = self
                     .filename()
                     .rsplit_once(".")
                     .expect("guaranteed by PostsKind::new");
                 let filename = format!("{basename}.html");
-                Ok(Some(SITE_PATH_ROOT.join(&filename)?))
+                Ok(Some(result.join(&filename)?))
             }
             PostsKind::Other => Ok(None),
         }

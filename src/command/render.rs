@@ -13,7 +13,7 @@ use crate::{
     meta::hard_link_attachments_into_site,
     migrations::run_migrations,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
-    path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
+    path::{PostsPath, SitePath, SITE_PATH_ROOT, SITE_PATH_TAGGED},
     TemplatedPost, Thread, SETTINGS,
 };
 
@@ -38,17 +38,19 @@ pub fn main(args: Render) -> eyre::Result<()> {
 pub fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
-    create_dir_all(&*POSTS_PATH_ROOT)?;
-    for entry in read_dir(&*POSTS_PATH_ROOT)? {
-        let entry = entry?;
-        let metadata = entry.metadata()?;
-        // cohost2autost creates directories for chost thread ancestors.
-        if metadata.is_dir() {
-            continue;
-        }
+    for dir in SETTINGS.interesting_posts_dirs()? {
+        create_dir_all(&dir)?;
+        for entry in read_dir(&dir)? {
+            let entry = entry?;
+            let metadata = entry.metadata()?;
+            // cohost2autost creates directories for chost thread ancestors.
+            if metadata.is_dir() {
+                continue;
+            }
 
-        let path = POSTS_PATH_ROOT.join_dir_entry(&entry)?;
-        post_paths.push(path);
+            let path = dir.join_dir_entry(&entry)?;
+            post_paths.push(path);
+        }
     }
 
     render(post_paths)
@@ -294,6 +296,9 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         &SETTINGS.page_title(thread.meta.title.as_deref()),
         &None,
     )?;
+    if let Some(subdir) = rendered_path.parent() {
+        create_dir_all(subdir)?;
+    }
     writeln!(File::create(rendered_path)?, "{}", threads_page)?;
 
     let result = CacheableRenderResult {

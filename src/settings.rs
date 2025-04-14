@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     fs::File,
     io::{BufRead, BufReader, Read},
+    iter::once,
     path::{Path, PathBuf},
 };
 
@@ -9,7 +10,10 @@ use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::{path::parse_path_relative_scheme_less_url_string, Author, TemplatedPost, Thread};
+use crate::{
+    path::{parse_path_relative_scheme_less_url_string, PostsPath, POSTS_PATH_ROOT},
+    Author, TemplatedPost, Thread,
+};
 
 #[derive(Deserialize)]
 pub struct Settings {
@@ -19,6 +23,7 @@ pub struct Settings {
     pub site_title: String,
     pub other_self_authors: Vec<String>,
     pub interesting_tags: Vec<Vec<String>>,
+    interesting_posts_subdirs: Option<Vec<String>>,
     archived_thread_tags_path: Option<String>,
     pub archived_thread_tags: Option<HashMap<String, Vec<String>>>,
     pub interesting_output_filenames_list_path: Option<String>,
@@ -170,6 +175,17 @@ impl Settings {
 
     pub fn interesting_tag_groups_iter(&self) -> impl Iterator<Item = &[String]> {
         self.interesting_tags.iter().map(|tag| &**tag)
+    }
+
+    pub fn interesting_posts_dirs(&self) -> eyre::Result<impl Iterator<Item = PostsPath>> {
+        let other = self
+            .interesting_posts_subdirs
+            .iter()
+            .flatten()
+            .map(|path| PostsPath::from_site_root_relative_path(path))
+            .collect::<eyre::Result<Vec<_>>>()?;
+
+        Ok(once(POSTS_PATH_ROOT.to_owned()).chain(other))
     }
 
     pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
