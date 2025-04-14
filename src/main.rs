@@ -29,6 +29,7 @@ fn main() -> eyre::Result<()> {
     match command {
         Command::Attach(_) => command::attach::main(),
         Command::Cohost2autost(args) => command::cohost2autost::main(args),
+        Command::Fedi2autost(args) => command::fedi2autost::main(args),
         Command::Cohost2json(_) => command::cohost2json::main(),
         Command::CohostArchive(_) => command::cohost_archive::main(),
         Command::Import(_) => command::import::main(),

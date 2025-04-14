@@ -31,6 +31,7 @@ use toml::{toml, Value};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
+    command::fedi2autost::Fedi2autost,
     dom::serialize_html_fragment,
     meta::extract_metadata,
     path::{PostsPath, SitePath},
@@ -42,6 +43,7 @@ pub mod command {
     pub mod cohost2autost;
     pub mod cohost2json;
     pub mod cohost_archive;
+    pub mod fedi2autost;
     pub mod import;
     pub mod new;
     pub mod render;
@@ -77,6 +79,7 @@ pub enum Command {
     Cohost2autost(Cohost2autost),
     Cohost2json(Cohost2json),
     CohostArchive(CohostArchive),
+    Fedi2autost(Fedi2autost),
     Import(Import),
     New(New),
     Reimport(Reimport),
