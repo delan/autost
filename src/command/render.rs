@@ -114,14 +114,28 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     let results = post_paths
         .into_par_iter()
+        .map(scan_single_post)
+        .collect::<Vec<_>>();
+
+    let mut render_list = vec![];
+    for result in results {
+        let result = result?;
+        render_list.push(result);
+    }
+
+    let results = render_list
+        .into_par_iter()
         .map(render_single_post)
         .collect::<Vec<_>>();
 
     let RenderResult {
-        mut tags,
-        mut collections,
         mut interesting_output_paths,
-        mut threads_by_interesting_tag,
+        tags_and_collections:
+            TagsAndCollections {
+                mut tags,
+                mut collections,
+                mut threads_by_tag,
+            },
     } = RenderResult::default()?;
     let mut threads_cache = HashMap::default();
     for result in results {
@@ -129,16 +143,13 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             render_result: result,
             cached_thread,
         } = result?;
-        for (tag, count) in result.tags {
+        for (tag, count) in result.tags_and_collections.tags {
             *tags.entry(tag).or_insert(0) += count;
         }
-        collections.merge(result.collections);
+        collections.merge(result.tags_and_collections.collections);
         interesting_output_paths.extend(result.interesting_output_paths);
-        for (tag, threads) in result.threads_by_interesting_tag {
-            threads_by_interesting_tag
-                .entry(tag)
-                .or_default()
-                .extend(threads);
+        for (tag, threads) in result.tags_and_collections.threads_by_tag {
+            threads_by_tag.entry(tag).or_default().extend(threads);
         }
         let path = cached_thread
             .thread
@@ -155,7 +166,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     interesting_output_paths.insert(atom_feed_path);
 
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
-    for (tag, threads) in threads_by_interesting_tag {
+    for (tag, threads) in threads_by_tag {
         let atom_feed_path =
             match SITE_PATH_TAGGED.join_single_component(&format!("{tag}.feed.xml")) {
                 Ok(path) => path,
@@ -230,45 +241,57 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     Ok(())
 }
 
-fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
-    let mut result = RenderResult::default()?;
-
+fn scan_single_post(path: PostsPath) -> eyre::Result<ScanResult> {
     let post = TemplatedPost::load(&path)?;
-    let Some(rendered_path) = path.rendered_path()? else {
-        bail!("post has no rendered path");
-    };
     let thread = Thread::try_from(post)?;
-    hard_link_attachments_into_site(thread.needs_attachments())?;
+    let mut result = ScanResult {
+        path: path.clone(),
+        thread: thread.clone(),
+        is_interesting: false,
+        tags_and_collections: TagsAndCollections::default()?,
+    };
+
     for tag in thread.meta.tags.iter() {
-        *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
+        *result
+            .tags_and_collections
+            .tags
+            .entry(tag.clone())
+            .or_insert(0usize) += 1;
     }
-    result.collections.push("all", &path, &thread);
-    let mut was_interesting = false;
+    result
+        .tags_and_collections
+        .collections
+        .push("all", &path, &thread);
     if thread.meta.is_main_self_author(&SETTINGS) {
-        was_interesting = true;
+        result.is_interesting = true;
     } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
-        result.collections.push("excluded", &path, &thread);
+        result
+            .tags_and_collections
+            .collections
+            .push("excluded", &path, &thread);
     } else if SETTINGS.thread_is_on_interesting_archived_list(&thread) {
         result
+            .tags_and_collections
             .collections
             .push("marked_interesting", &path, &thread);
-        was_interesting = true;
+        result.is_interesting = true;
     } else if thread.meta.is_any_self_author(&SETTINGS) {
         for tag in thread.meta.tags.iter() {
             if SETTINGS.tag_is_interesting(tag) {
-                was_interesting = true;
+                result.is_interesting = true;
                 break;
             }
         }
     }
-    if was_interesting {
+    if result.is_interesting {
         result
-            .interesting_output_paths
-            .insert(rendered_path.clone());
-        result.collections.push("index", &path, &thread);
+            .tags_and_collections
+            .collections
+            .push("index", &path, &thread);
         for tag in thread.meta.tags.iter() {
             result
-                .threads_by_interesting_tag
+                .tags_and_collections
+                .threads_by_tag
                 .entry(tag.clone())
                 .or_default()
                 .insert(ThreadInCollection {
@@ -278,6 +301,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         }
         if thread.meta.tags.is_empty() {
             result
+                .tags_and_collections
                 .collections
                 .push("untagged_interesting", &path, &thread);
         }
@@ -288,15 +312,47 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             // if the thread had some input from us at publish time, that is, if the last post was
             // authored by us with content and/or tags...
             if !last_post.meta.is_transparent_share || !last_post.meta.tags.is_empty() {
-                result.collections.push("skipped_own", &path, &thread);
+                result
+                    .tags_and_collections
+                    .collections
+                    .push("skipped_own", &path, &thread);
             } else {
-                result.collections.push("skipped_other", &path, &thread);
+                result
+                    .tags_and_collections
+                    .collections
+                    .push("skipped_other", &path, &thread);
             }
         } else {
             // liked chosts are generally non-“interesting” archived chosts where the last post was
             // not authored by us. unfortunately this does not include liking our own chosts :(
-            result.collections.push("liked", &path, &thread);
+            result
+                .tags_and_collections
+                .collections
+                .push("liked", &path, &thread);
         }
+    }
+
+    Ok(result)
+}
+
+fn render_single_post(scan_result: ScanResult) -> eyre::Result<CacheableRenderResult> {
+    let ScanResult {
+        path,
+        thread,
+        is_interesting,
+        tags_and_collections,
+    } = scan_result;
+    let mut result = RenderResult::from(tags_and_collections);
+
+    let Some(rendered_path) = path.rendered_path()? else {
+        bail!("post has no rendered path");
+    };
+    hard_link_attachments_into_site(thread.needs_attachments())?;
+
+    if is_interesting {
+        result
+            .interesting_output_paths
+            .insert(rendered_path.clone());
     }
 
     let threads_content =
@@ -325,16 +381,27 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     Ok(result)
 }
 
+struct ScanResult {
+    path: PostsPath,
+    thread: Thread,
+    is_interesting: bool,
+    tags_and_collections: TagsAndCollections,
+}
+
 struct CacheableRenderResult {
     render_result: RenderResult,
     cached_thread: CachedThread,
 }
 
 struct RenderResult {
+    interesting_output_paths: BTreeSet<SitePath>,
+    tags_and_collections: TagsAndCollections,
+}
+
+struct TagsAndCollections {
     tags: HashMap<String, usize>,
     collections: Collections,
-    interesting_output_paths: BTreeSet<SitePath>,
-    threads_by_interesting_tag: HashMap<String, BTreeSet<ThreadInCollection>>,
+    threads_by_tag: HashMap<String, BTreeSet<ThreadInCollection>>,
 }
 
 struct CachedThread {
@@ -361,10 +428,27 @@ struct ThreadInCollection {
 impl RenderResult {
     fn default() -> eyre::Result<Self> {
         Ok(Self {
-            tags: Default::default(),
+            interesting_output_paths: BTreeSet::default(),
+            tags_and_collections: TagsAndCollections::default()?,
+        })
+    }
+}
+
+impl From<TagsAndCollections> for RenderResult {
+    fn from(tags_and_collections: TagsAndCollections) -> Self {
+        Self {
+            interesting_output_paths: BTreeSet::default(),
+            tags_and_collections,
+        }
+    }
+}
+
+impl TagsAndCollections {
+    fn default() -> eyre::Result<Self> {
+        Ok(Self {
+            tags: HashMap::default(),
             collections: Collections::default()?,
-            interesting_output_paths: Default::default(),
-            threads_by_interesting_tag: Default::default(),
+            threads_by_tag: HashMap::default(),
         })
     }
 }
