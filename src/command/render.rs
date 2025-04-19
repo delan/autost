@@ -2,12 +2,13 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs::{create_dir_all, read_dir, File},
     io::Write,
+    path,
 };
 
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::{
     meta::hard_link_attachments_into_site,
@@ -155,7 +156,22 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
     for (tag, threads) in threads_by_interesting_tag {
-        let atom_feed_path = SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?;
+        let atom_feed_path =
+            match SITE_PATH_TAGGED.join_single_component(&format!("{tag}.feed.xml")) {
+                Ok(path) => path,
+                Err(error) => {
+                    warn!(?error, "failed to write tagged feed for tag {tag:?}");
+                    continue;
+                }
+            };
+        let threads_page_path = match SITE_PATH_TAGGED.join_single_component(&format!("{tag}.html"))
+        {
+            Ok(path) => path,
+            Err(error) => {
+                warn!(?error, "failed to write threads page for tag {tag:?}");
+                continue;
+            }
+        };
         let thread_refs = threads
             .iter()
             .map(|thread| &threads_cache[&thread.path].thread)
@@ -166,15 +182,14 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             &now,
         )?;
         writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
-        interesting_output_paths.insert(atom_feed_path);
+        interesting_output_paths.insert(atom_feed_path.clone());
         let threads_content = render_cached_threads_content(&threads_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
             &threads_content,
             &format!("#{tag} — {}", SETTINGS.site_title),
-            &Some(SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?),
+            &Some(atom_feed_path),
         )?;
         // TODO: move this logic into path module and check for slashes
-        let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
         writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
         interesting_output_paths.insert(threads_page_path);
     }
@@ -252,16 +267,14 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             .insert(rendered_path.clone());
         result.collections.push("index", &path, &thread);
         for tag in thread.meta.tags.iter() {
-            if SETTINGS.tag_is_interesting(tag) {
-                result
-                    .threads_by_interesting_tag
-                    .entry(tag.clone())
-                    .or_default()
-                    .insert(ThreadInCollection {
-                        published: thread.meta.published.clone(),
-                        path: path.clone(),
-                    });
-            }
+            result
+                .threads_by_interesting_tag
+                .entry(tag.clone())
+                .or_default()
+                .insert(ThreadInCollection {
+                    published: thread.meta.published.clone(),
+                    path: path.clone(),
+                });
         }
         if thread.meta.tags.is_empty() {
             result

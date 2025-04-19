@@ -396,6 +396,13 @@ impl<Kind: PathKind> RelativePath<Kind> {
         Self::new(self.inner.join(component))
     }
 
+    pub fn join_single_component(&self, component: &str) -> eyre::Result<Self> {
+        if component.contains(['/', '\\']) {
+            bail!("component contains path separator: {component:?}");
+        }
+        Self::new(self.inner.join(component))
+    }
+
     pub fn join_dir_entry(&self, entry: &DirEntry) -> eyre::Result<Self> {
         let filename = entry.file_name();
         let Some(filename) = filename.to_str() else {
