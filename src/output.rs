@@ -4,11 +4,13 @@
 use askama::Template;
 use jane_eyre::eyre;
 use markup5ever_rcdom::{NodeData, RcDom};
+use tracing::trace;
 
 use crate::{
+    css::{parse_inline_style, serialise_inline_style, InlineStyleToken},
     dom::{
         html_attributes_with_urls, parse_html_document, parse_html_fragment,
-        serialize_html_document, serialize_html_fragment, TendrilExt, Transform,
+        serialize_html_document, serialize_html_fragment, AttrsMutExt, TendrilExt, Transform,
     },
     path::{parse_path_relative_scheme_less_url_string, SitePath},
     Author, PostMeta, Thread, SETTINGS,
@@ -197,6 +199,32 @@ fn fix_relative_urls(dom: RcDom) -> eyre::Result<RcDom> {
                                 attr.value = SETTINGS.base_url_relativise(&url).into();
                             }
                         }
+                    }
+                }
+                if let Some(style) = attrs.borrow_mut().attr_mut("style") {
+                    let old_style = style.value.to_str();
+                    let mut has_any_relative_urls = false;
+                    let mut tokens = vec![];
+                    for token in parse_inline_style(style.value.to_str()) {
+                        tokens.push(match token {
+                            InlineStyleToken::Url(url) => {
+                                if let Some(url) = parse_path_relative_scheme_less_url_string(&url)
+                                {
+                                    trace!(url, "found relative url in inline style");
+                                    has_any_relative_urls = true;
+                                    InlineStyleToken::Url(SETTINGS.base_url_relativise(&url))
+                                } else {
+                                    InlineStyleToken::Url(url)
+                                }
+                            }
+                            other => other,
+                        });
+                    }
+                    let new_style = serialise_inline_style(&tokens);
+                    if has_any_relative_urls {
+                        trace!("old style: {old_style}");
+                        trace!("new style: {new_style}");
+                        style.value = new_style.into();
                     }
                 }
             }
