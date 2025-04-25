@@ -146,7 +146,8 @@ article.post > footer .tag {
     color: var(--gray2);
 }
 article.post > .content > .e-content {
-    margin: 1em;
+    margin: 1em 0;
+    padding: 0 0.75em;
 }
 article.post > .content > .e-content > pre {
     overflow: auto;
