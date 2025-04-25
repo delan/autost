@@ -1,4 +1,4 @@
-<article class="thread h-entry"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}"{% endif %}>
+<article class="thread h-entry"{% if let Some(url) = thread.url_for_original_path()? %} data-original-path="{{ url }}" id="thread-{{ url }}"{% endif %}>
 {% if !simple_mode && !thread.meta.references.is_empty() %}
 {{ ThreadOrPostHeaderTemplate::render(thread,thread.meta,true)?|safe }}
 {% endif %}

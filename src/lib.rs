@@ -278,6 +278,12 @@ impl Thread {
         Ok(result)
     }
 
+    pub fn url_for_fragment(&self) -> eyre::Result<Option<String>> {
+        let result = self.path.as_ref().map(|path| path.references_url());
+
+        Ok(result)
+    }
+
     pub fn url_for_html_permalink(&self) -> eyre::Result<Option<String>> {
         let result = self
             .path
