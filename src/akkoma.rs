@@ -32,7 +32,7 @@ pub struct ApiStatusTag {
 #[derive(Deserialize)]
 pub struct ApiMediaAttachment {
     pub r#type: String,
-    pub description: String,
+    pub description: Option<String>,
     pub url: String,
     pub preview_url: String,
 }
@@ -53,7 +53,7 @@ pub struct AkkomaImgTemplate {
     pub data_akkoma_src: String,
     pub href: String,
     pub src: String,
-    pub alt: String,
+    pub alt: Option<String>,
 }
 
 impl From<&ApiAccount> for Author {
