@@ -12,7 +12,7 @@
 "{% else %}article{% endif %} class="post cohost{% if !post.is_main_post %} h-entry{% endif %}">
 {% if !simple_mode || !post.is_main_post %}{{ ThreadOrPostHeaderTemplate::render(thread,post.inner.meta,false)?|safe }}{% endif %}
     {% if !post.inner.meta.is_transparent_share %}
-    <div class="content e-content">{{ post.inner.safe_html|safe }}</div>
+    <div class="content"><div class="e-content">{{ post.inner.safe_html|safe }}</div></div>
     {% endif %}
     <footer><div class="tags">{% for tag in post.inner.meta.tags %}
         {#- TODO: build tag page href properly in path module -#}

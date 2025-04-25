@@ -94,7 +94,7 @@ article.thread :link,
 article.thread :visited {
     color: currentColor;
 }
-article.post {
+article.post, article.post > .content {
     position: relative;
     contain: inline-size style layout paint;
     overflow: clip;
@@ -145,10 +145,10 @@ body > nav ul.tags,
 article.post > footer .tag {
     color: var(--gray2);
 }
-article.post > .content {
+article.post > .content > .e-content {
     margin: 1em;
 }
-article.post > .content > pre {
+article.post > .content > .e-content > pre {
     overflow: auto;
 }
 @media screen and (max-width: 30em) {
