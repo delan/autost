@@ -48,7 +48,7 @@ fn compose_route(
             .map_err(EyreReport::BadRequest)?;
         let post = TemplatedPost::load(&reply_to)?;
         let thread = Thread::try_from(post)?;
-        thread.posts.into_iter().flat_map(|x| x.path).collect()
+        thread.posts.into_iter().filter_map(|x| x.path).collect()
     } else {
         vec![]
     };
@@ -80,6 +80,7 @@ struct Body<'r> {
 }
 
 #[post("/preview", data = "<body>")]
+#[allow(clippy::needless_pass_by_value)]
 fn preview_route(body: Form<Body<'_>>) -> rocket_eyre::Result<content::RawHtml<String>> {
     let unsafe_source = body.source;
     let unsafe_html = render_markdown(unsafe_source);
@@ -97,6 +98,7 @@ enum PublishResponse {
 }
 
 #[post("/publish?<js>", data = "<body>")]
+#[allow(clippy::needless_pass_by_value)]
 fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<PublishResponse> {
     let js = js.unwrap_or_default();
     let unsafe_source = body.source;
@@ -107,7 +109,7 @@ fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<
     let _thread = Thread::try_from(post)?;
 
     // cohost post ids are all less than 10000000.
-    let (mut file, path) = (10000000..)
+    let (mut file, path) = (10_000_000..100_000_000)
         .map(|id| {
             let path = PostsPath::markdown_post_path(id);
             File::create_new(&path).map(|file| (file, path))
@@ -159,7 +161,7 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
 
     render_all()?;
 
-    let port = args.port.unwrap_or(SETTINGS.server_port());
+    let port = args.port.unwrap_or_else(|| SETTINGS.server_port());
     let _rocket = rocket::custom(
         Config::figment()
             .merge(("port", port))

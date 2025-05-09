@@ -66,7 +66,10 @@ pub fn main(args: Cohost2autost) -> eyre::Result<()> {
                 if !specific_post_filenames.contains(&entry.file_name()) {
                     return Ok(());
                 }
-            } else if !filename.ends_with(".json") {
+            } else if !std::path::Path::new(filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+            {
                 return Ok(());
             }
             convert_chost(&entry, &RealAttachmentsContext)
@@ -115,7 +118,7 @@ fn convert_chost(entry: &DirEntry, context: &dyn AttachmentsContext) -> eyre::Re
     }
 
     for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_filenames.iter()) {
-        convert_single_chost(shared_post, vec![], &output_path, context)?;
+        convert_single_chost(shared_post, vec![], output_path, context)?;
     }
 
     let output_path = PostsPath::generated_post_path(post_id);
@@ -255,9 +258,10 @@ fn convert_single_chost(
             }
             Block::AttachmentRow { attachments } => {
                 for block in attachments {
-                    match block {
-                        Block::Attachment { attachment } => handle_attachment(attachment)?,
-                        _ => warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}"),
+                    if let Block::Attachment { attachment } = block {
+                        handle_attachment(attachment)?;
+                    } else {
+                        warn!("AttachmentRow should only have Attachment blocks, but we got: {block:?}");
                     }
                 }
             }
@@ -273,17 +277,12 @@ fn convert_single_chost(
 
 fn process_ast(root: Ast) -> RcDom {
     let (dom, html_root) = create_fragment();
-    let mut ast_queue = VecDeque::from([(root, html_root.clone())]);
+    let mut ast_queue = VecDeque::from([(root, html_root)]);
 
     while let Some((node, parent)) = ast_queue.pop_front() {
         match node {
             Ast::Root { children } => {
-                ast_queue.extend(
-                    children
-                        .into_iter()
-                        .map(|node| (node, parent.clone()))
-                        .collect::<Vec<_>>(),
-                );
+                ast_queue.extend(children.into_iter().map(|node| (node, parent.clone())));
             }
             Ast::Element {
                 tagName,
@@ -313,12 +312,7 @@ fn process_ast(root: Ast) -> RcDom {
                 });
 
                 parent.children.borrow_mut().push(element.clone());
-                ast_queue.extend(
-                    children
-                        .into_iter()
-                        .map(|node| (node, element.clone()))
-                        .collect::<Vec<_>>(),
-                );
+                ast_queue.extend(children.into_iter().map(|node| (node, element.clone())));
             }
             Ast::Text { value } => {
                 let text = Node::new(NodeData::Text {
@@ -504,7 +498,7 @@ fn process_chost_fragment(
         Ok(())
     })? {}
 
-    Ok(serialize_html_fragment(dom)?)
+    serialize_html_fragment(&dom)
 }
 
 #[test]
@@ -530,21 +524,21 @@ fn test_render_markdown_block() -> eyre::Result<()> {
             cacheable: &Cacheable,
         ) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(match cacheable {
-                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(&format!("{id}"))?,
+                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(id.as_ref())?,
                 Cacheable::Static { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_STATIC.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_STATIC.join(filename.as_ref())?
                 }
                 Cacheable::Avatar { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_AVATAR.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_AVATAR.join(filename.as_ref())?
                 }
                 Cacheable::Header { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_HEADER.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_HEADER.join(filename.as_ref())?
                 }
             }))
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(
-                ATTACHMENTS_PATH_THUMBS.join(&format!("{id}"))?,
+                ATTACHMENTS_PATH_THUMBS.join(id)?,
             ))
         }
     }

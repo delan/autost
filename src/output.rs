@@ -20,7 +20,7 @@ use crate::{
 #[template(path = "threads.html")]
 pub struct ThreadsPageTemplate<'template> {
     thread_page_meta: Option<&'template str>,
-    /// not `threads: Vec<Thread>`, to encourage us to cache ThreadsContentTemplate output between
+    /// not `threads: Vec<Thread>`, to encourage us to cache `ThreadsContentTemplate` output between
     /// individual thread pages and combined collection pages.
     threads_content: &'template str,
     page_title: &'template str,
@@ -182,7 +182,7 @@ fn fix_relative_urls_in_html_fragment(html: &str) -> eyre::Result<String> {
     let dom = parse_html_fragment(html.as_bytes())?;
     let dom = fix_relative_urls(dom)?;
 
-    serialize_html_fragment(dom)
+    serialize_html_fragment(&dom)
 }
 
 fn fix_relative_urls(dom: RcDom) -> eyre::Result<RcDom> {
