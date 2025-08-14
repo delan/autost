@@ -30,6 +30,7 @@ trait PathKind: Sized {
 pub enum PostsKind {
     Post {
         is_markdown: bool,
+        in_top_level: bool,
         in_imported_dir: bool,
     },
     Other,
@@ -61,14 +62,17 @@ impl PathKind for PostsKind {
         Ok(match components[..] {
             [c] if c.ends_with(".html") => Self::Post {
                 is_markdown: false,
+                in_top_level: true,
                 in_imported_dir: false,
             },
             [c] if c.ends_with(".md") => Self::Post {
                 is_markdown: true,
+                in_top_level: true,
                 in_imported_dir: false,
             },
             ["imported", c] if c.ends_with(".html") => Self::Post {
                 is_markdown: false,
+                in_top_level: false,
                 in_imported_dir: true,
             },
             _ => Self::Other,
@@ -84,6 +88,7 @@ fn test_posts_kind() -> eyre::Result<()> {
         PostsKind::new(Path::new("posts/1.html"))?,
         PostsKind::Post {
             is_markdown: false,
+            in_top_level: true,
             in_imported_dir: false
         }
     );
@@ -91,6 +96,7 @@ fn test_posts_kind() -> eyre::Result<()> {
         PostsKind::new(Path::new("posts/1.md"))?,
         PostsKind::Post {
             is_markdown: true,
+            in_top_level: true,
             in_imported_dir: false
         }
     );
@@ -106,6 +112,7 @@ fn test_posts_kind() -> eyre::Result<()> {
         PostsKind::new(Path::new("posts/imported/1.html"))?,
         PostsKind::Post {
             is_markdown: false,
+            in_top_level: false,
             in_imported_dir: true
         }
     );
@@ -233,6 +240,25 @@ impl PostsPath {
                 ..
             }
         )
+    }
+
+    pub fn is_top_level_post(&self) -> bool {
+        matches!(
+            self.kind,
+            PostsKind::Post {
+                in_top_level: true,
+                ..
+            }
+        )
+    }
+
+    pub fn top_level_numeric_post_id(&self) -> Option<usize> {
+        if !self.is_top_level_post() {
+            return None;
+        }
+        let (basename, _) = self.filename().rsplit_once(".")?;
+
+        basename.parse().ok()
     }
 
     pub fn import_id(&self) -> Option<usize> {
