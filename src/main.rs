@@ -15,7 +15,7 @@ async fn main() -> eyre::Result<()> {
     let command = Command::parse();
     info!(run_details = ?RunDetails::default());
 
-    if matches!(
+    let _db = if matches!(
         command,
         Command::Attach { .. }
             | Command::Cohost2autost { .. }
@@ -26,8 +26,10 @@ async fn main() -> eyre::Result<()> {
     ) {
         // fail fast if there are any settings or migration errors.
         let _ = &*SETTINGS;
-        run_migrations().await?;
-    }
+        Some(run_migrations().await?)
+    } else {
+        None
+    };
 
     match command {
         Command::Attach(_) => command::attach::main().await,
