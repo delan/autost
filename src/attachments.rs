@@ -46,7 +46,7 @@ impl CachedFileResult<SitePath> {
 
 pub trait AttachmentsContext {
     fn store(&self, input_path: &Path) -> eyre::Result<AttachmentsPath>;
-    fn cache_imported(&self, url: &str, import_id: &str) -> eyre::Result<AttachmentsPath>;
+    fn cache_imported(&self, url: &str, import_id: usize) -> eyre::Result<AttachmentsPath>;
     fn cache_cohost_resource(
         &self,
         cacheable: &Cacheable,
@@ -69,7 +69,7 @@ impl AttachmentsContext for RealAttachmentsContext {
     }
 
     #[tracing::instrument(skip(self))]
-    fn cache_imported(&self, url: &str, import_id: &str) -> eyre::Result<AttachmentsPath> {
+    fn cache_imported(&self, url: &str, import_id: usize) -> eyre::Result<AttachmentsPath> {
         let mut hash = Sha256::new();
         hash.update(url);
         let hash = hash.finalize().map(|o| format!("{o:02x}")).join("");
