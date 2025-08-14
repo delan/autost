@@ -1,2 +1,3 @@
 [toolchain]
-channel = "1.82"
+# don’t forget to bump the nixpkgs flake input to a commit with a matching version of rust!
+channel = "1.88"

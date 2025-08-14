@@ -249,10 +249,10 @@ impl Transform {
 }
 
 pub trait HandleExt {
-    fn attrs(&self) -> Option<RefMut<Vec<Attribute>>>;
+    fn attrs(&self) -> Option<RefMut<'_, Vec<Attribute>>>;
 }
 impl HandleExt for Handle {
-    fn attrs(&self) -> Option<RefMut<Vec<Attribute>>> {
+    fn attrs(&self) -> Option<RefMut<'_, Vec<Attribute>>> {
         if let NodeData::Element { attrs, .. } = &self.data {
             Some(attrs.borrow_mut())
         } else {

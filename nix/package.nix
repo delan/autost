@@ -24,7 +24,7 @@ rustPlatform.buildRustPackage {
   };
 
   # don't forget to update this hash when Cargo.lock or ${version} changes!
-  cargoHash = "sha256-0r0HoXF0jrrUyVdssGZeZTy6801HtT0a88rGoup8n9o=";
+  cargoHash = "sha256-dhm8MxFNIzQfvkLjhnEnuYrJTTotO/nqRbvJ3Nlqz0U=";
 
   # tell rust that the version should be “x.y.z-nix”
   # FIXME: nix package does not have access to git
