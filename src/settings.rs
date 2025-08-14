@@ -149,19 +149,17 @@ impl Settings {
         // compare href only, ignoring other fields
         self.self_author
             .as_ref()
-            .map_or(false, |a| a.href == author.href)
+            .is_some_and(|a| a.href == author.href)
     }
 
     pub fn is_any_self_author(&self, author: &Author) -> bool {
         // compare href only, ignoring other fields
-        self.is_main_self_author(author)
-            || self.other_self_authors.iter().any(|a| *a == author.href)
+        self.is_main_self_author(author) || self.other_self_authors.contains(&author.href)
     }
 
     pub fn tag_is_interesting(&self, tag: &str) -> bool {
         self.interesting_tags_iter()
-            .find(|&interesting_tag| interesting_tag == tag)
-            .is_some()
+            .any(|interesting_tag| interesting_tag == tag)
     }
 
     pub fn interesting_tags_iter(&self) -> impl Iterator<Item = &str> {

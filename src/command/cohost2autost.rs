@@ -115,7 +115,7 @@ fn convert_chost(entry: &DirEntry, context: &dyn AttachmentsContext) -> eyre::Re
     }
 
     for (shared_post, output_path) in shared_posts.into_iter().zip(shared_post_filenames.iter()) {
-        convert_single_chost(shared_post, vec![], &output_path, context)?;
+        convert_single_chost(shared_post, vec![], output_path, context)?;
     }
 
     let output_path = PostsPath::generated_post_path(post_id);
@@ -173,7 +173,7 @@ fn convert_single_chost(
         // posts in the cohost api provide an `astMap` that contains the perfect rendering of
         // markdown blocks. since our own markdown rendering is far from perfect, we use their
         // rendering instead of our own when available.
-        while spans.front().map_or(false, |(_ast, _start, end)| i >= *end) {
+        while spans.front().is_some_and(|(_ast, _start, end)| i >= *end) {
             spans.pop_front();
         }
         if let Some((ast, start, end)) = match spans.front() {
@@ -504,7 +504,7 @@ fn process_chost_fragment(
         Ok(())
     })? {}
 
-    Ok(serialize_html_fragment(dom)?)
+    serialize_html_fragment(dom)
 }
 
 #[test]
@@ -530,21 +530,21 @@ fn test_render_markdown_block() -> eyre::Result<()> {
             cacheable: &Cacheable,
         ) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(match cacheable {
-                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(&format!("{id}"))?,
+                Cacheable::Attachment { id, .. } => ATTACHMENTS_PATH_ROOT.join(id)?,
                 Cacheable::Static { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_STATIC.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_STATIC.join(filename)?
                 }
                 Cacheable::Avatar { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_AVATAR.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_AVATAR.join(filename)?
                 }
                 Cacheable::Header { filename, .. } => {
-                    ATTACHMENTS_PATH_COHOST_HEADER.join(&format!("{filename}"))?
+                    ATTACHMENTS_PATH_COHOST_HEADER.join(filename)?
                 }
             }))
         }
         fn cache_cohost_thumb(&self, id: &str) -> eyre::Result<CachedFileResult<AttachmentsPath>> {
             Ok(CachedFileResult::CachedPath(
-                ATTACHMENTS_PATH_THUMBS.join(&format!("{id}"))?,
+                ATTACHMENTS_PATH_THUMBS.join(id)?,
             ))
         }
     }

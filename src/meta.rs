@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
-    let dom = parse_html_fragment(&mut unsafe_html.as_bytes())?;
+    let dom = parse_html_fragment(unsafe_html.as_bytes())?;
 
     let mut meta = PostMeta::default();
     let mut needs_attachments = BTreeSet::default();
@@ -147,7 +147,7 @@ pub fn hard_link_attachments_into_site<'paths>(
             bail!("path has no parent: {site_path:?}");
         };
         create_dir_all(parent)?;
-        hard_link_if_not_exists(attachments_path, &site_path)?;
+        hard_link_if_not_exists(attachments_path, site_path)?;
     }
 
     Ok(())

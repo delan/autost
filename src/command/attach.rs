@@ -25,7 +25,7 @@ pub async fn main() -> eyre::Result<()> {
     create_dir_all(&*ATTACHMENTS_PATH_ROOT)?;
 
     for path in args.paths {
-        let attachment_path = RealAttachmentsContext.store(&Path::new(&path))?;
+        let attachment_path = RealAttachmentsContext.store(Path::new(&path))?;
         info!(
             "created attachment: <{}>",
             attachment_path.site_path()?.base_relative_url()

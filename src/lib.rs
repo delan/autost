@@ -203,7 +203,7 @@ impl RunDetailsWriter {
             .strip_prefix("x = ")
             .expect("guaranteed by definition");
 
-        Ok(write!(self.file, r#"{key} = {}"#, result)?)
+        Ok(write!(self.file, r#"{key} = {result}"#)?)
     }
 
     pub fn ok(mut self) -> eyre::Result<()> {
@@ -240,22 +240,26 @@ fn test_is_main_self_author() -> eyre::Result<()> {
     meta_no_author.author = None;
 
     // same href as [self_author], but different name, display_name, and handle
-    let mut meta_same_href = PostMeta::default();
-    meta_same_href.author = Some(Author {
-        href: "https://example.com".to_owned(),
-        name: "".to_owned(),
-        display_name: "".to_owned(),
-        display_handle: "".to_owned(),
-    });
+    let meta_same_href = PostMeta {
+        author: Some(Author {
+            href: "https://example.com".to_owned(),
+            name: "".to_owned(),
+            display_name: "".to_owned(),
+            display_handle: "".to_owned(),
+        }),
+        ..Default::default()
+    };
 
     // different href from [self_author]
-    let mut meta_different_href = PostMeta::default();
-    meta_different_href.author = Some(Author {
-        href: "https://example.net".to_owned(),
-        name: "".to_owned(),
-        display_name: "".to_owned(),
-        display_handle: "".to_owned(),
-    });
+    let meta_different_href = PostMeta {
+        author: Some(Author {
+            href: "https://example.net".to_owned(),
+            name: "".to_owned(),
+            display_name: "".to_owned(),
+            display_handle: "".to_owned(),
+        }),
+        ..Default::default()
+    };
 
     assert!(meta_same_href.is_main_self_author(&settings));
     assert!(!meta_different_href.is_main_self_author(&settings));
@@ -363,14 +367,11 @@ impl TryFrom<TemplatedPost> for Thread {
         let path = post.path.clone();
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
-            .into_iter()
+            .iter()
             .filter(|tag| !post.meta.tags.contains(tag))
             .map(|tag| tag.to_owned())
             .collect::<Vec<_>>();
-        let combined_tags = extra_tags
-            .into_iter()
-            .chain(post.meta.tags.into_iter())
-            .collect();
+        let combined_tags = extra_tags.into_iter().chain(post.meta.tags).collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
         post.meta.tags = resolved_tags;
         let mut meta = post.meta.clone();
@@ -379,7 +380,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .meta
             .references
             .iter()
-            .map(|path| TemplatedPost::load(path))
+            .map(TemplatedPost::load)
             .collect::<Result<Vec<_>, _>>()?;
         posts.push(post);
 
@@ -523,7 +524,8 @@ pub fn render_markdown(markdown: &str) -> String {
     options.extension.table = true;
     options.extension.autolink = true;
     options.render.hardbreaks = true;
-    let unsafe_html = comrak::markdown_to_html(&markdown, &options);
+    #[allow(clippy::let_and_return)]
+    let unsafe_html = comrak::markdown_to_html(markdown, &options);
 
     unsafe_html
 }

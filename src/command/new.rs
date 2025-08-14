@@ -18,7 +18,7 @@ pub fn main(args: New) -> eyre::Result<()> {
     info!("creating new site in {path:?}");
 
     create_dir_all(path)?;
-    for entry in read_dir(path)? {
+    if let Some(entry) = (read_dir(path)?).next() {
         bail!("directory is not empty: {:?}", entry?.path());
     }
     let mut settings = File::create_new(path.join("autost.toml"))?;

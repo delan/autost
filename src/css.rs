@@ -29,7 +29,7 @@ pub fn serialise_inline_style(tokens: &[InlineStyleToken]) -> String {
         .join("")
 }
 
-fn parse<'i>(parser: &'i mut Parser) -> Vec<InlineStyleToken> {
+fn parse(parser: &mut Parser) -> Vec<InlineStyleToken> {
     let mut result = vec![];
     loop {
         let token = match parser.next_including_whitespace_and_comments() {

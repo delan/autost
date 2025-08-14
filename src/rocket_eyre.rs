@@ -36,7 +36,7 @@ impl<'r> Responder<'r, 'static> for EyreReport {
         };
 
         warn!("Error: {:?}", error);
-        let mut res = RawText(format!("{:?}", error)).respond_to(request)?;
+        let mut res = RawText(format!("{error:?}")).respond_to(request)?;
         res.set_status(status);
         Ok(res)
     }

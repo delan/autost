@@ -269,13 +269,8 @@ pub trait AttrsMutExt: AttrsRefExt {
 }
 impl AttrsMutExt for Vec<Attribute> {
     fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute> {
-        for attr in self.iter_mut() {
-            if attr.name == QualName::attribute(name) {
-                return Some(attr);
-            }
-        }
-
-        None
+        self.iter_mut()
+            .find(|attr| attr.name == QualName::attribute(name))
     }
 }
 impl AttrsRefExt for Vec<Attribute> {

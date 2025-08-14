@@ -54,7 +54,7 @@ pub fn render_all() -> eyre::Result<()> {
     render(post_paths)
 }
 
-pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
+pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     run_migrations()?;
 
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
@@ -97,7 +97,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         ),
     ];
     for file in static_files.iter() {
-        copy_static(&*SITE_PATH_ROOT, file)?;
+        copy_static(&SITE_PATH_ROOT, file)?;
     }
     #[cfg(unix)]
     {
@@ -163,7 +163,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
             &format!("{} — {tag}", SETTINGS.site_title),
             &now,
         )?;
-        writeln!(File::create(&atom_feed_path)?, "{}", atom_feed,)?;
+        writeln!(File::create(&atom_feed_path)?, "{atom_feed}",)?;
         interesting_output_paths.insert(atom_feed_path);
         let threads_content = render_cached_threads_content(&threads_cache, &threads);
         let threads_page = ThreadsPageTemplate::render(
@@ -173,7 +173,7 @@ pub fn render<'posts>(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
         )?;
         // TODO: move this logic into path module and check for slashes
         let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(File::create(&threads_page_path)?, "{}", threads_page)?;
+        writeln!(File::create(&threads_page_path)?, "{threads_page}")?;
         interesting_output_paths.insert(threads_page_path);
     }
 
@@ -294,7 +294,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         &SETTINGS.page_title(thread.meta.title.as_deref()),
         &None,
     )?;
-    writeln!(File::create(rendered_path)?, "{}", threads_page)?;
+    writeln!(File::create(rendered_path)?, "{threads_page}")?;
 
     let result = CacheableRenderResult {
         render_result: result,
@@ -406,7 +406,7 @@ impl Collections {
     }
 
     fn keys(&self) -> impl Iterator<Item = &str> {
-        self.inner.keys().map(|key| *key)
+        self.inner.keys().copied()
     }
 
     fn len(&self, key: &str) -> usize {

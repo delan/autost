@@ -488,11 +488,12 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
         let url = url.strip_suffix(|c| c <= '\x20').unwrap_or(url);
 
         // “Remove all [ASCII tab or newline] from *input*.”
-        let url = url.replace(|c| c == '\x09' || c == '\x0A' || c == '\x0D', "");
+        let url = url.replace(['\x09', '\x0A', '\x0D'], "");
 
         // “Let *state* be *state override* if given, or [scheme start state] otherwise.”
         #[derive(Debug)]
         enum State {
+            #[allow(clippy::enum_variant_names)]
             SchemeStartState,
             Scheme,
             NoScheme,
@@ -546,6 +547,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                     continue; // skip pointer increase
                 }
                 State::Relative => {
+                    #[allow(clippy::if_same_then_else)]
                     if c.is_some_and(|c| c == '/') {
                         state = State::RelativeSlash;
                     } else if c.is_some_and(|c| c == '\\') {

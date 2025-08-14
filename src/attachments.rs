@@ -160,12 +160,12 @@ fn cached_attachment_url(id: &str, dir: &AttachmentsPath) -> eyre::Result<Attach
         bail!("directory is empty: {path:?}");
     };
 
-    Ok(path.join_dir_entry(&entry?)?)
+    path.join_dir_entry(&entry?)
 }
 
 fn cache_imported_attachment(url: &str, path: &AttachmentsPath) -> eyre::Result<AttachmentsPath> {
     // if the attachment id directory exists...
-    if let Ok(mut entries) = read_dir(&path) {
+    if let Ok(mut entries) = read_dir(path) {
         // and the directory contains a file...
         if let Some(entry) = entries.next() {
             // and we can open the file...
