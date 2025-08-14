@@ -194,6 +194,10 @@ impl PostsPath {
             .expect("guaranteed by argument")
     }
 
+    pub fn db_post_table_path(&self) -> String {
+        self.relative_path()
+    }
+
     pub fn references_url(&self) -> String {
         self.relative_url()
     }
@@ -303,6 +307,10 @@ impl SitePath {
         }
 
         Self::new(path)
+    }
+
+    pub fn db_post_table_path(&self) -> String {
+        self.relative_path()
     }
 
     /// use this only in post authoring contexts, like the output of importers.
