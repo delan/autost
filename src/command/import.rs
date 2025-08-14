@@ -313,8 +313,8 @@ fn write_post(
     info!("writing {path:?}");
     file.write_all(meta.render()?.as_bytes())?;
     file.write_all(b"\n\n")?;
-    let basename = path.basename().ok_or_eyre("path has no basename")?;
-    let unsafe_html = process_content(&e_content, basename, &base_href, &RealAttachmentsContext)?;
+    let import_id = path.import_id().ok_or_eyre("path has no import id")?;
+    let unsafe_html = process_content(&e_content, import_id, &base_href, &RealAttachmentsContext)?;
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
     info!("click here to reply: {}", path.compose_reply_url());
@@ -335,7 +335,7 @@ struct FetchPostResult {
 
 fn process_content(
     content: &str,
-    post_basename: &str,
+    import_id: &str,
     base_href: &Url,
     context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
@@ -357,7 +357,7 @@ fn process_content(
                             attr.name.local
                         );
                         attr.value = context
-                            .cache_imported(fetch_url.as_ref(), post_basename)?
+                            .cache_imported(fetch_url.as_ref(), import_id)?
                             .site_path()?
                             .base_relative_url()
                             .into();
