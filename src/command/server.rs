@@ -1,7 +1,4 @@
-use std::{
-    fs::File,
-    io::{self, Write as _},
-};
+use std::{fs::File, io::Write as _, sync::Arc};
 
 use crate::{
     command::render::render_all,
@@ -12,6 +9,7 @@ use crate::{
 };
 
 use askama_rocket::Template;
+use async_lock::RwLock;
 use chrono::{SecondsFormat, Utc};
 use clap::Parser as _;
 use jane_eyre::eyre::{Context, OptionExt as _};
@@ -20,8 +18,9 @@ use rocket::{
     fs::{FileServer, Options},
     get, post,
     response::{content, Redirect},
-    routes, Config, FromForm, Responder,
+    routes, Config, FromForm, Responder, State,
 };
+use sqlx::{Connection, SqliteConnection};
 
 #[derive(clap::Args, Debug)]
 pub struct Server {
@@ -96,7 +95,11 @@ enum PublishResponse {
 }
 
 #[post("/publish?<js>", data = "<body>")]
-fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<PublishResponse> {
+async fn publish_route(
+    js: Option<bool>,
+    body: Form<Body<'_>>,
+    db: &State<Arc<RwLock<SqliteConnection>>>,
+) -> rocket_eyre::Result<PublishResponse> {
     let js = js.unwrap_or_default();
     let unsafe_source = body.source;
 
@@ -105,19 +108,26 @@ fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<
     let post = FilteredPost::filter(post)?;
     let _thread = Thread::try_from(post)?;
 
-    // cohost post ids are all less than 10000000.
-    let (mut file, path) = (10000000..)
-        .map(|id| {
-            let path = PostsPath::markdown_post_path(id);
-            File::create_new(&path).map(|file| (file, path))
-        })
-        .find(|file| !matches!(file, Err(error) if error.kind() == io::ErrorKind::AlreadyExists))
-        .expect("too many posts :(")
-        .wrap_err("failed to create post")?;
+    // create the post, then update its path, in a database transaction.
+    // commit the transaction only after the file i/o for the post succeeds.
+    let mut db = db.write().await;
+    let mut tx = db.begin().await?;
+    let post_id = sqlx::query(r#"INSERT INTO "post" ("path") VALUES ("")"#)
+        .execute(&mut *tx)
+        .await?
+        .last_insert_rowid();
+    let path = PostsPath::markdown_post_path(usize::try_from(post_id)?);
+    sqlx::query(r#"UPDATE "post" SET "path" = $1 WHERE "post_id" = $2"#)
+        .bind(path.db_post_table_path())
+        .bind(post_id)
+        .execute(&mut *tx)
+        .await?;
 
+    let mut file = File::create_new(&path).wrap_err("failed to create post")?;
     file.write_all(unsafe_source.as_bytes())
         .wrap_err("failed to write post file")?;
     render_all()?;
+    tx.commit().await?;
 
     let post = FilteredPost::load(&path)?;
     let _thread = Thread::try_from(post)?;
@@ -150,7 +160,7 @@ fn root_route() -> Redirect {
 ///   - `POST <base_url>publish` (`publish_route`)
 ///   - `GET <base_url><path>` (`static_route`)
 /// - `GET /` (`root_route`)
-pub async fn main() -> jane_eyre::eyre::Result<()> {
+pub async fn main(db: SqliteConnection) -> jane_eyre::eyre::Result<()> {
     let Command::Server(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
     };
@@ -163,6 +173,7 @@ pub async fn main() -> jane_eyre::eyre::Result<()> {
             .merge(("port", port))
             .merge(("address", "::1")),
     )
+    .manage(Arc::new(RwLock::new(db)))
     .mount(
         &SETTINGS.base_url,
         routes![compose_route, preview_route, publish_route],
