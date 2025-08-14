@@ -469,10 +469,10 @@ impl TemplatedPost {
             .add_generic_attributes(["data-cohost-href", "data-cohost-src"]) // cohost2autost
             .add_generic_attributes(["data-import-src"]) // autost import
             .add_tag_attributes("a", ["target"])
-            .add_tag_attributes("audio", ["controls", "src"])
+            .add_tag_attributes("audio", ["controls", "src", "loop"])
             .add_tag_attributes("details", ["open", "name"]) // <details name> for cohost compatibility
             .add_tag_attributes("img", ["loading"])
-            .add_tag_attributes("video", ["controls", "src"])
+            .add_tag_attributes("video", ["controls", "src", "loop"])
             .add_tags(["audio", "meta", "video"])
             .add_tag_attributes("meta", ["name", "content"])
             .id_prefix(Some("user-content-")) // cohost compatibility
