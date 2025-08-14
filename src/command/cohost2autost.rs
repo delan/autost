@@ -24,7 +24,6 @@ use crate::{
         debug_not_known_good_attributes_seen, html_attributes_with_urls, parse_html_fragment,
         serialize_html_fragment, AttrsMutExt, AttrsRefExt, QualNameExt, TendrilExt, Transform,
     },
-    migrations::run_migrations,
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ATTACHMENTS, SITE_PATH_THUMBS},
     render_markdown, PostMeta,
 };
@@ -36,8 +35,6 @@ pub struct Cohost2autost {
 }
 
 pub fn main(args: Cohost2autost) -> eyre::Result<()> {
-    run_migrations()?;
-
     let input_path = Path::new(&args.path_to_chosts);
     let specific_post_filenames = args
         .specific_chost_filenames

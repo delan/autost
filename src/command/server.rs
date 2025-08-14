@@ -151,7 +151,6 @@ fn root_route() -> Redirect {
 ///   - `POST <base_url>publish` (`publish_route`)
 ///   - `GET <base_url><path>` (`static_route`)
 /// - `GET /` (`root_route`)
-#[rocket::main]
 pub async fn main() -> jane_eyre::eyre::Result<()> {
     let Command::Server(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")

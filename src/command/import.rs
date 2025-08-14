@@ -23,7 +23,6 @@ use crate::{
         parse_html_document, parse_html_fragment, serialize_html_fragment, serialize_node_contents,
         text_content, AttrsRefExt, BreadthTraverse, QualName, QualNameExt, TendrilExt,
     },
-    migrations::run_migrations,
     path::{PostsPath, POSTS_PATH_IMPORTED},
     Author, Command, PostMeta, TemplatedPost,
 };
@@ -38,12 +37,10 @@ pub struct Reimport {
     posts_path: String,
 }
 
-#[tokio::main]
 pub async fn main() -> eyre::Result<()> {
     let Command::Import(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
     };
-    run_migrations()?;
 
     let url = args.url;
     create_dir_all(&*POSTS_PATH_IMPORTED)?;
@@ -85,12 +82,10 @@ pub async fn main() -> eyre::Result<()> {
 
 pub mod reimport {
     use super::*;
-    #[tokio::main]
     pub async fn main() -> eyre::Result<()> {
         let Command::Reimport(args) = Command::parse() else {
             unreachable!("guaranteed by subcommand call in entry point")
         };
-        run_migrations()?;
 
         let path = args.posts_path;
         let path = PostsPath::from_site_root_relative_path(&path)?;
