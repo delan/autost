@@ -235,17 +235,17 @@ impl PostsPath {
         )
     }
 
-    pub fn basename(&self) -> Option<&str> {
+    pub fn import_id(&self) -> Option<&str> {
         if let PostsKind::Post {
             in_imported_dir: true,
             ..
         } = self.kind
         {
-            let (basename, _) = self
+            let (result, _) = self
                 .filename()
                 .rsplit_once(".")
                 .expect("guaranteed by PostsKind::new");
-            return Some(basename);
+            return Some(result);
         }
 
         None
