@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
-    let dom = parse_html_fragment(&mut unsafe_html.as_bytes())?;
+    let dom = parse_html_fragment(unsafe_html.as_bytes())?;
 
     let mut meta = PostMeta::default();
     let mut needs_attachments = BTreeSet::default();
@@ -32,7 +32,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
             if let NodeData::Element { name, attrs, .. } = &kid.data {
                 let attrs = attrs.borrow();
                 if name == &QualName::html("meta") {
-                    let content = attrs.attr_str("content")?.map(|t| t.to_owned());
+                    let content = attrs.attr_str("content")?.map(std::borrow::ToOwned::to_owned);
                     match attrs.attr_str("name")? {
                         Some("title") => {
                             meta.title = content;
@@ -58,8 +58,8 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                     }
                     continue;
                 } else if name == &QualName::html("link") {
-                    let href = attrs.attr_str("href")?.map(|t| t.to_owned());
-                    let name = attrs.attr_str("name")?.map(|t| t.to_owned());
+                    let href = attrs.attr_str("href")?.map(std::borrow::ToOwned::to_owned);
+                    let name = attrs.attr_str("name")?.map(std::borrow::ToOwned::to_owned);
                     match attrs.attr_str("rel")? {
                         Some("archived") => {
                             meta.archived = href;
@@ -76,36 +76,36 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
                         _ => {}
                     }
                     continue;
-                } else {
-                    if let Some(attr_names) = html_attributes_with_urls().get(name) {
-                        for attr in attrs.iter() {
-                            if attr_names.contains(&attr.name) {
-                                if let Ok(url) =
-                                    SitePath::from_rendered_attachment_url(attr.value.to_str())
-                                {
-                                    trace!("found attachment url in rendered post: {url:?}");
-                                    needs_attachments.insert(url);
-                                }
+                } 
+                if let Some(attr_names) = html_attributes_with_urls().get(name) {
+                    for attr in attrs.iter() {
+                        if attr_names.contains(&attr.name) {
+                            if let Ok(url) =
+                            SitePath::from_rendered_attachment_url(attr.value.to_str())
+                            {
+                                trace!("found attachment url in rendered post: {url:?}");
+                                needs_attachments.insert(url);
                             }
-                        }
-                    }
-                    if let Some(style) = attrs.attr_str("style")? {
-                        for token in parse_inline_style(style) {
-                            if let InlineStyleToken::Url(url) = token {
-                                if let Ok(url) = SitePath::from_rendered_attachment_url(&url) {
-                                    trace!("found attachment url in rendered post (inline styles): {url:?}");
-                                    needs_attachments.insert(url);
-                                }
-                            }
-                        }
-                    }
-                    // use the first <img src>, if any, as the <meta> og:image.
-                    if og_image.is_none() && name == &QualName::html("img") {
-                        if let Some(src) = attrs.attr_str("src")?.map(|t| t.to_owned()) {
-                            og_image = Some(src);
                         }
                     }
                 }
+                if let Some(style) = attrs.attr_str("style")? {
+                    for token in parse_inline_style(style) {
+                        if let InlineStyleToken::Url(url) = token {
+                            if let Ok(url) = SitePath::from_rendered_attachment_url(&url) {
+                                trace!("found attachment url in rendered post (inline styles): {url:?}");
+                                needs_attachments.insert(url);
+                            }
+                        }
+                    }
+                }
+                // use the first <img src>, if any, as the <meta> og:image.
+                if og_image.is_none() && name == &QualName::html("img") {
+                    if let Some(src) = attrs.attr_str("src")?.map(std::borrow::ToOwned::to_owned) {
+                        og_image = Some(src);
+                    }
+                }
+
             }
             new_kids.push(kid.clone());
         }
@@ -118,10 +118,10 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
         || author_display_handle.is_some()
     {
         meta.author = Some(Author {
-            href: author_href.unwrap_or("".to_owned()),
-            name: author_name.unwrap_or("".to_owned()),
-            display_name: author_display_name.unwrap_or("".to_owned()),
-            display_handle: author_display_handle.unwrap_or("".to_owned()),
+            href: author_href.unwrap_or(String::new()),
+            name: author_name.unwrap_or(String::new()),
+            display_name: author_display_name.unwrap_or(String::new()),
+            display_handle: author_display_handle.unwrap_or(String::new()),
         });
     }
 
@@ -147,7 +147,7 @@ pub fn hard_link_attachments_into_site<'paths>(
             bail!("path has no parent: {site_path:?}");
         };
         create_dir_all(parent)?;
-        hard_link_if_not_exists(attachments_path, &site_path)?;
+        hard_link_if_not_exists(attachments_path, site_path)?;
     }
 
     Ok(())
@@ -157,7 +157,7 @@ pub fn hard_link_attachments_into_site<'paths>(
 fn test_extract_metadata() -> eyre::Result<()> {
     use crate::dom::serialize_html_fragment;
     let post = extract_metadata(r#"<meta name="title" content="foo">bar"#)?;
-    assert_eq!(serialize_html_fragment(post.dom)?, "bar");
+    assert_eq!(serialize_html_fragment(&post.dom)?, "bar");
     assert_eq!(post.meta.title.as_deref(), Some("foo"));
 
     Ok(())

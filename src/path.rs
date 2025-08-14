@@ -10,12 +10,16 @@ use url::Url;
 
 use crate::SETTINGS;
 
+#[allow(clippy::module_name_repetitions)]
 pub type PostsPath = RelativePath<PostsKind>;
+#[allow(clippy::module_name_repetitions)]
 pub type SitePath = RelativePath<SiteKind>;
+#[allow(clippy::module_name_repetitions)]
 pub type AttachmentsPath = RelativePath<AttachmentsKind>;
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[allow(private_bounds)]
+#[allow(clippy::module_name_repetitions)]
 pub struct RelativePath<Kind: PathKind> {
     inner: PathBuf,
     kind: Kind,
@@ -59,18 +63,34 @@ impl PathKind for PostsKind {
             .collect::<eyre::Result<Vec<_>>>()?;
 
         Ok(match components[..] {
-            [c] if c.ends_with(".html") => Self::Post {
-                is_markdown: false,
-                in_imported_dir: false,
-            },
-            [c] if c.ends_with(".md") => Self::Post {
-                is_markdown: true,
-                in_imported_dir: false,
-            },
-            ["imported", c] if c.ends_with(".html") => Self::Post {
-                is_markdown: false,
-                in_imported_dir: true,
-            },
+            [c] if std::path::Path::new(c)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("html")) =>
+            {
+                Self::Post {
+                    is_markdown: false,
+                    in_imported_dir: false,
+                }
+            }
+            [c] if std::path::Path::new(c)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md")) =>
+            {
+                Self::Post {
+                    is_markdown: true,
+                    in_imported_dir: false,
+                }
+            }
+            ["imported", c]
+                if std::path::Path::new(c)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("html")) =>
+            {
+                Self::Post {
+                    is_markdown: false,
+                    in_imported_dir: true,
+                }
+            }
             _ => Self::Other,
         })
     }
@@ -187,6 +207,7 @@ impl PostsPath {
             .expect("guaranteed by argument")
     }
 
+    #[must_use]
     pub fn references_url(&self) -> String {
         self.relative_url()
     }
@@ -216,7 +237,7 @@ impl PostsPath {
             PostsKind::Post { .. } => {
                 let (basename, _) = self
                     .filename()
-                    .rsplit_once(".")
+                    .rsplit_once('.')
                     .expect("guaranteed by PostsKind::new");
                 let filename = format!("{basename}.html");
                 Ok(Some(SITE_PATH_ROOT.join(&filename)?))
@@ -225,7 +246,8 @@ impl PostsPath {
         }
     }
 
-    pub fn is_markdown_post(&self) -> bool {
+    #[must_use]
+    pub const fn is_markdown_post(&self) -> bool {
         matches!(
             self.kind,
             PostsKind::Post {
@@ -235,6 +257,7 @@ impl PostsPath {
         )
     }
 
+    #[must_use]
     pub fn basename(&self) -> Option<&str> {
         if let PostsKind::Post {
             in_imported_dir: true,
@@ -243,7 +266,7 @@ impl PostsPath {
         {
             let (basename, _) = self
                 .filename()
-                .rsplit_once(".")
+                .rsplit_once('.')
                 .expect("guaranteed by PostsKind::new");
             return Some(basename);
         }
@@ -283,23 +306,28 @@ impl SitePath {
     }
 
     /// use this only in post authoring contexts, like the output of importers.
+    #[must_use]
     pub fn base_relative_url(&self) -> String {
         self.relative_url()
     }
 
+    #[must_use]
     pub fn internal_url(&self) -> String {
         format!("{}{}", SETTINGS.base_url, self.relative_url())
     }
 
+    #[must_use]
     pub fn external_url(&self) -> String {
         format!("{}{}", SETTINGS.external_base_url, self.relative_url())
     }
 
+    #[must_use]
     pub fn atom_feed_entry_id(&self) -> String {
         // TODO: this violates the atom spec (#6)
         self.relative_url()
     }
 
+    #[must_use]
     pub fn rsync_deploy_line(&self) -> String {
         self.relative_path()
     }
@@ -468,7 +496,16 @@ pub fn hard_link_if_not_exists(
 /// - `foo:/bar` → false
 ///
 /// <https://url.spec.whatwg.org/#path-relative-scheme-less-url-string>
+#[must_use]
 pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
+    #[derive(Debug)]
+    enum State {
+        SchemeStart,
+        Scheme,
+        NoScheme,
+        Relative,
+        RelativeSlash,
+    }
     // is it a “relative-URL string”? (case “Otherwise”)
     // <https://url.spec.whatwg.org/#relative-url-string>
     if Url::parse(url) == Err(url::ParseError::RelativeUrlWithoutBase) {
@@ -488,18 +525,10 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
         let url = url.strip_suffix(|c| c <= '\x20').unwrap_or(url);
 
         // “Remove all [ASCII tab or newline] from *input*.”
-        let url = url.replace(|c| c == '\x09' || c == '\x0A' || c == '\x0D', "");
+        let url = url.replace(['\x09', '\x0A', '\x0D'], "");
 
         // “Let *state* be *state override* if given, or [scheme start state] otherwise.”
-        #[derive(Debug)]
-        enum State {
-            SchemeStartState,
-            Scheme,
-            NoScheme,
-            Relative,
-            RelativeSlash,
-        }
-        let mut state = State::SchemeStartState;
+        let mut state = State::SchemeStart;
 
         // “Let *pointer* be a [pointer] for *input*.”
         let mut pointer = &url[..];
@@ -513,7 +542,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
             let c = pointer.chars().next();
 
             match state {
-                State::SchemeStartState => {
+                State::SchemeStart => {
                     if c.is_some_and(|c| c.is_ascii_alphabetic()) {
                         state = State::Scheme;
                     } else {
@@ -546,9 +575,7 @@ pub fn parse_path_relative_scheme_less_url_string(url: &str) -> Option<String> {
                     continue; // skip pointer increase
                 }
                 State::Relative => {
-                    if c.is_some_and(|c| c == '/') {
-                        state = State::RelativeSlash;
-                    } else if c.is_some_and(|c| c == '\\') {
+                    if c.is_some_and(|c| c == '/') || c.is_some_and(|c| c == '\\') {
                         state = State::RelativeSlash;
                     } else {
                         // “Set [...], url’s path to a clone of base’s path, [...].”

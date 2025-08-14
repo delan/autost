@@ -9,6 +9,7 @@ use std::{
 use html5ever::{
     interface::{ElementFlags, TreeSink},
     local_name, namespace_url, ns,
+    serialize::SerializeOpts,
     tendril::{StrTendril, TendrilSink},
     tree_builder::TreeBuilderOpts,
     Attribute, LocalName, Namespace, ParseOpts,
@@ -134,7 +135,7 @@ static HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS: LazyLock<BTreeMap<QualName, BTre
             let attr_names = result
                 .get_mut(other_name)
                 .expect("guaranteed by constant values");
-            for other_attr_name in other_attr_names.iter() {
+            for other_attr_name in other_attr_names {
                 attr_names.remove(other_attr_name);
             }
         }
@@ -201,10 +202,18 @@ impl Iterator for DepthTraverse {
 
     fn next(&mut self) -> Option<Self::Item> {
         while !self.stack.is_empty() {
-            while self.stack.last().is_some_and(|queue| queue.is_empty()) {
+            while self
+                .stack
+                .last()
+                .is_some_and(std::collections::VecDeque::is_empty)
+            {
                 self.stack.pop();
             }
-            if let Some(node) = self.stack.last_mut().and_then(|queue| queue.pop_front()) {
+            if let Some(node) = self
+                .stack
+                .last_mut()
+                .and_then(std::collections::VecDeque::pop_front)
+            {
                 let kids = node
                     .children
                     .borrow()
@@ -237,7 +246,7 @@ impl Transform {
         if let Some(node) = self.0.pop_front() {
             let mut new_kids = vec![];
             f(&node.children.borrow(), &mut new_kids)?;
-            for kid in new_kids.iter() {
+            for kid in &new_kids {
                 self.0.push_back(kid.clone());
             }
             node.children.replace(new_kids);
@@ -269,18 +278,13 @@ pub trait AttrsMutExt: AttrsRefExt {
 }
 impl AttrsMutExt for Vec<Attribute> {
     fn attr_mut(&mut self, name: &str) -> Option<&mut Attribute> {
-        for attr in self.iter_mut() {
-            if attr.name == QualName::attribute(name) {
-                return Some(attr);
-            }
-        }
-
-        None
+        self.iter_mut()
+            .find(|attr| attr.name == QualName::attribute(name))
     }
 }
 impl AttrsRefExt for Vec<Attribute> {
     fn attr_str(&self, name: &str) -> eyre::Result<Option<&str>> {
-        for attr in self.iter() {
+        for attr in self {
             if attr.name == QualName::attribute(name) {
                 return Ok(Some(attr.value.to_str()));
             }
@@ -313,10 +317,12 @@ pub trait TendrilExt: Borrow<[u8]> {
 impl TendrilExt for StrTendril {}
 
 pub trait QualNameExt {
+    #[must_use]
     fn html(name: &str) -> QualName {
         QualName::new(None, ns!(html), LocalName::from(name))
     }
 
+    #[must_use]
     fn atom(name: &str) -> QualName {
         QualName::new(
             None,
@@ -325,6 +331,7 @@ pub trait QualNameExt {
         )
     }
 
+    #[must_use]
     fn attribute(name: &str) -> QualName {
         // per html5ever::Attribute docs:
         // “The namespace on the attribute name is almost always ns!(“”). The tokenizer creates all
@@ -368,10 +375,10 @@ pub fn parse_xml(mut input: &[u8]) -> eyre::Result<RcDom> {
 }
 
 pub fn serialize_html_document(dom: RcDom) -> eyre::Result<String> {
-    serialize_node_contents(dom.document.clone())
+    serialize_node_contents(dom.document)
 }
 
-pub fn serialize_html_fragment(dom: RcDom) -> eyre::Result<String> {
+pub fn serialize_html_fragment(dom: &RcDom) -> eyre::Result<String> {
     // html5ever::parse_fragment builds a tree with the input wrapped in an <html> element.
     // this is consistent with how the web platform dom requires exactly one root element.
     let children = dom.document.children.borrow();
@@ -391,9 +398,9 @@ pub fn serialize_html_fragment(dom: RcDom) -> eyre::Result<String> {
 
 pub fn serialize_node_contents(node: Handle) -> eyre::Result<String> {
     let mut result = Vec::default();
-    let node: SerializableHandle = node.clone().into();
+    let node: SerializableHandle = node.into();
     // default SerializeOpts has `traversal_scope: ChildrenOnly(None)`.
-    html5ever::serialize(&mut result, &node, Default::default())?;
+    html5ever::serialize(&mut result, &node, SerializeOpts::default())?;
     let result = String::from_utf8(result)?;
 
     Ok(result)
@@ -402,31 +409,32 @@ pub fn serialize_node_contents(node: Handle) -> eyre::Result<String> {
 #[test]
 fn test_serialize() -> eyre::Result<()> {
     assert_eq!(
-        serialize_html_fragment(RcDom::default()).map_err(|_| ()),
+        serialize_html_fragment(&RcDom::default()).map_err(|_| ()),
         Err(())
     );
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize_html_fragment(dom)?, "");
+    assert_eq!(serialize_html_fragment(&dom)?, "");
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
     let html = create_element(&mut dom, "html");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize_html_fragment(dom).map_err(|_| ()), Err(()));
+    assert_eq!(serialize_html_fragment(&dom).map_err(|_| ()), Err(()));
 
     let mut dom = RcDom::default();
     let html = create_element(&mut dom, "p");
     dom.document.children.borrow_mut().push(html);
-    assert_eq!(serialize_html_fragment(dom).map_err(|_| ()), Err(()));
+    assert_eq!(serialize_html_fragment(&dom).map_err(|_| ()), Err(()));
 
     Ok(())
 }
 
 /// create a [`RcDom`] whose document has exactly one child, a wrapper <html> element.
+#[must_use]
 pub fn create_fragment() -> (RcDom, Handle) {
     let mut dom = RcDom::default();
     let root = create_element(&mut dom, "html");
@@ -450,7 +458,7 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
     // our known-good list.
     ATTRIBUTES_SEEN
         .lock()
-        .unwrap()
+        .expect("should be lockable")
         .insert((tag_name.to_owned(), result.to_owned()));
     if !KNOWN_GOOD_ATTRIBUTES.contains(&(None, result))
         && !KNOWN_GOOD_ATTRIBUTES.contains(&(Some(tag_name), result))
@@ -458,7 +466,7 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
         warn!("saw attribute not on known-good-attributes list! check if output is correct for: <{tag_name} {result}>");
         NOT_KNOWN_GOOD_ATTRIBUTES_SEEN
             .lock()
-            .unwrap()
+            .expect("should be lockable")
             .insert((tag_name.to_owned(), result.to_owned()));
     }
 
@@ -466,7 +474,6 @@ pub fn rename_idl_to_content_attribute(tag_name: &str, attribute_name: &str) -> 
 }
 
 #[test]
-
 fn test_rename_idl_to_content_attribute() {
     assert_eq!(
         rename_idl_to_content_attribute("div", "tabIndex"),
@@ -573,26 +580,34 @@ pub fn text_content_for_summaries(node: Handle) -> eyre::Result<String> {
 }
 
 pub fn debug_attributes_seen() -> Vec<(String, String)> {
-    ATTRIBUTES_SEEN.lock().unwrap().iter().cloned().collect()
-}
-
-pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
-    NOT_KNOWN_GOOD_ATTRIBUTES_SEEN
+    ATTRIBUTES_SEEN
         .lock()
-        .unwrap()
+        .expect("should be lockable")
         .iter()
         .cloned()
         .collect()
 }
 
+pub fn debug_not_known_good_attributes_seen() -> Vec<(String, String)> {
+    NOT_KNOWN_GOOD_ATTRIBUTES_SEEN
+        .lock()
+        .expect("should be lockable")
+        .iter()
+        .cloned()
+        .collect()
+}
+
+#[must_use]
 pub fn html_attributes_with_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_URLS
 }
 
+#[must_use]
 pub fn html_attributes_with_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>> {
     &HTML_ATTRIBUTES_WITH_EMBEDDING_URLS
 }
 
+#[must_use]
 pub fn html_attributes_with_non_embedding_urls() -> &'static BTreeMap<QualName, BTreeSet<QualName>>
 {
     &HTML_ATTRIBUTES_WITH_NON_EMBEDDING_URLS
