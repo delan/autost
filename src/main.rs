@@ -15,7 +15,7 @@ async fn main() -> eyre::Result<()> {
     let command = Command::parse();
     info!(run_details = ?RunDetails::default());
 
-    let _db = if matches!(
+    let db = if matches!(
         command,
         Command::Attach { .. }
             | Command::Cohost2autost { .. }
@@ -40,6 +40,6 @@ async fn main() -> eyre::Result<()> {
         Command::New(args) => command::new::main(args),
         Command::Reimport(_) => command::import::reimport::main().await,
         Command::Render(args) => command::render::main(args),
-        Command::Server(_) => command::server::main().await,
+        Command::Server(_) => command::server::main(db.expect("guaranteed by definition")).await,
     }
 }
