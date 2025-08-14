@@ -11,7 +11,6 @@ use tracing::{debug, info};
 
 use crate::{
     meta::hard_link_attachments_into_site,
-    migrations::run_migrations,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
     TemplatedPost, Thread, SETTINGS,
@@ -55,8 +54,6 @@ pub fn render_all() -> eyre::Result<()> {
 }
 
 pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
-    run_migrations()?;
-
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     create_dir_all(&*SITE_PATH_ROOT)?;
     create_dir_all(&*SITE_PATH_TAGGED)?;
