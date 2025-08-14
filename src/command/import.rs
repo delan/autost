@@ -335,7 +335,7 @@ struct FetchPostResult {
 
 fn process_content(
     content: &str,
-    import_id: &str,
+    import_id: usize,
     base_href: &Url,
     context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
