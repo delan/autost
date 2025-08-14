@@ -6,7 +6,7 @@ use tracing::{info, trace};
 use crate::path::{hard_link_if_not_exists, SitePath, SITE_PATH_ATTACHMENTS};
 
 #[tracing::instrument]
-pub fn run_migrations() -> eyre::Result<()> {
+pub async fn run_migrations() -> eyre::Result<()> {
     info!("hard linking attachments out of site/attachments");
     create_dir_all(&*SITE_PATH_ATTACHMENTS)?;
     let mut dirs = vec![SITE_PATH_ATTACHMENTS.to_owned()];
