@@ -78,6 +78,7 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
 #[derive(clap::Parser, Debug)]
 pub enum Command {
     Attach(Attach),
+    #[command(subcommand)]
     Db(Db),
     Cohost2autost(Cohost2autost),
     Cohost2json(Cohost2json),

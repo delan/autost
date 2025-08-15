@@ -41,6 +41,7 @@ scraper = "0.22.0"
 serde = { version = "1.0.210", features = ["derive"] }
 serde_json = { version = "1.0.128", features = ["unbounded_depth"] }
 sha2 = "0.10.8"
+sha3 = "0.10.8"
 sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "tls-rustls"] }
 tokio = { version = "1.40.0", features = ["full"] }
 toml = "0.8.19"
