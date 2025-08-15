@@ -19,6 +19,7 @@ async fn main() -> eyre::Result<()> {
         command,
         Command::Attach { .. }
             | Command::Cohost2autost { .. }
+            | Command::Db { .. }
             | Command::Import { .. }
             | Command::Reimport { .. }
             | Command::Render { .. }
@@ -36,6 +37,7 @@ async fn main() -> eyre::Result<()> {
         Command::Cohost2autost(args) => command::cohost2autost::main(args),
         Command::Cohost2json(_) => command::cohost2json::main().await,
         Command::CohostArchive(_) => command::cohost_archive::main().await,
+        Command::Db(args) => command::db::main(args).await,
         Command::Import(_) => command::import::main().await,
         Command::New(args) => command::new::main(args),
         Command::Reimport(_) => command::import::reimport::main().await,
