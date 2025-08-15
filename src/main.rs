@@ -19,7 +19,7 @@ async fn main() -> eyre::Result<()> {
         command,
         Command::Attach { .. }
             | Command::Cohost2autost { .. }
-            | Command::Db { .. }
+            // | Command::Db { .. }
             | Command::Import { .. }
             | Command::Reimport { .. }
             | Command::Render { .. }

@@ -1,11 +1,12 @@
 use std::{
-    fs::{hard_link, DirEntry},
+    fs::{hard_link, read_dir, DirEntry},
     io::ErrorKind,
     path::{Component, Path, PathBuf},
     sync::LazyLock,
 };
 
 use jane_eyre::eyre::{self, bail, Context, OptionExt};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use url::Url;
 
 use crate::SETTINGS;
@@ -428,6 +429,53 @@ impl<Kind: PathKind> RelativePath<Kind> {
         };
 
         self.join(filename)
+    }
+
+    fn read_dir_into_vecs(&self) -> eyre::Result<(Vec<Self>, Vec<Self>)> {
+        let mut dirs = vec![];
+        let mut files = vec![];
+        for entry in read_dir(self)? {
+            let entry = entry?;
+            let path = self.join_dir_entry(&entry)?;
+            if entry.file_type()?.is_dir() {
+                dirs.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+
+        Ok((dirs, files))
+    }
+
+    pub fn read_dir_flat(&self) -> eyre::Result<Vec<Self>> {
+        let mut files = vec![];
+        for entry in read_dir(self)? {
+            let entry = entry?;
+            let path = self.join_dir_entry(&entry)?;
+            if !entry.file_type()?.is_dir() {
+                files.push(path);
+            }
+        }
+
+        Ok(files)
+    }
+
+    pub fn read_dir_recursive(&self) -> eyre::Result<Vec<Self>>
+    where
+        Self: Send,
+    {
+        let mut combined_result = vec![];
+        let (dirs, files) = self.read_dir_into_vecs()?;
+        combined_result.extend(files);
+        let results = dirs
+            .into_par_iter()
+            .map(|path| -> eyre::Result<Vec<Self>> { path.read_dir_recursive() })
+            .collect::<eyre::Result<Vec<_>>>()?;
+        for result in results {
+            combined_result.extend(result);
+        }
+
+        Ok(combined_result)
     }
 
     pub fn parent(&self) -> Option<Self> {
