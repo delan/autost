@@ -15,7 +15,7 @@ use crate::{
     Author, ExtractedPost, FrontMatter, PostMeta,
 };
 
-pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
+pub fn extract_metadata(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<ExtractedPost> {
     let dom = parse_html_fragment(unsafe_html.as_bytes())?;
 
     let mut meta = FrontMatter::default();
@@ -126,6 +126,7 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     }
 
     Ok(ExtractedPost {
+        path,
         dom,
         meta: PostMeta {
             front_matter: meta,
@@ -158,7 +159,7 @@ pub fn hard_link_attachments_into_site<'paths>(
 #[test]
 fn test_extract_metadata() -> eyre::Result<()> {
     use crate::dom::serialize_html_fragment;
-    let post = extract_metadata(r#"<meta name="title" content="foo">bar"#)?;
+    let post = extract_metadata(r#"<meta name="title" content="foo">bar"#, None)?;
     assert_eq!(serialize_html_fragment(post.dom)?, "bar");
     assert_eq!(post.meta.front_matter.title.as_deref(), Some("foo"));
 

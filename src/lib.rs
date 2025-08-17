@@ -129,6 +129,7 @@ pub struct Author {
 }
 
 pub struct ExtractedPost {
+    pub path: Option<PostsPath>,
     pub dom: RcDom,
     pub meta: PostMeta,
 }
@@ -440,6 +441,12 @@ impl TryFrom<TemplatedPost> for Thread {
     }
 }
 
+impl ExtractedPost {
+    pub fn new(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
+        extract_metadata(unsafe_html, path)
+    }
+}
+
 impl TemplatedPost {
     pub fn load(path: &PostsPath) -> eyre::Result<Self> {
         let mut file = File::open(path)?;
@@ -458,7 +465,7 @@ impl TemplatedPost {
 
     pub fn filter(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
         // reader step: extract metadata.
-        let post = extract_metadata(unsafe_html)?;
+        let post = ExtractedPost::new(unsafe_html, path)?;
 
         let mut transform = Transform::new(post.dom.document.clone());
         while transform.next(|kids, new_kids| {
@@ -495,7 +502,7 @@ impl TemplatedPost {
             .to_string();
 
         Ok(TemplatedPost {
-            path,
+            path: post.path,
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
             safe_html,
