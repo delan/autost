@@ -31,6 +31,7 @@ use toml::{toml, Value};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
+    cache::hash_bytes,
     dom::serialize_html_fragment,
     path::{PostsPath, SitePath},
     settings::Settings,
@@ -49,6 +50,7 @@ pub mod command {
 
 pub mod akkoma;
 pub mod attachments;
+pub mod cache;
 pub mod cohost;
 pub mod css;
 pub mod dom;
@@ -127,9 +129,10 @@ pub struct Author {
     pub display_handle: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct UnsafePost {
     pub path: Option<PostsPath>,
+    pub hash: blake3::Hash,
     pub unsafe_html: String,
 }
 
@@ -451,6 +454,7 @@ impl UnsafePost {
         let mut unsafe_source = String::default();
         file.read_to_string(&mut unsafe_source)?;
 
+        let hash = hash_bytes(unsafe_source.as_bytes());
         let unsafe_html = if path.is_markdown_post() {
             // author step: render markdown to html.
             render_markdown(&unsafe_source)
@@ -460,6 +464,7 @@ impl UnsafePost {
 
         Ok(Self {
             path: Some(path.to_owned()),
+            hash,
             unsafe_html,
         })
     }
@@ -469,13 +474,18 @@ impl UnsafePost {
 
         Self {
             path: None,
+            hash: hash_bytes(unsafe_source.as_bytes()),
             unsafe_html,
         }
     }
 
     pub fn with_html(unsafe_html: &str) -> Self {
+        // the source is already html; there is no markdown.
+        let unsafe_source = unsafe_html;
+
         Self {
             path: None,
+            hash: hash_bytes(unsafe_source.as_bytes()),
             unsafe_html: unsafe_html.to_owned(),
         }
     }
@@ -578,4 +588,29 @@ fn test_render_markdown() {
         render_markdown("first\nsecond"),
         "<p>first<br />\nsecond</p>\n"
     );
+}
+
+#[test]
+fn test_unsafe_post() -> eyre::Result<()> {
+    let post = UnsafePost::with_html(r#"<a href="x">y</a>"#);
+    assert_eq!(
+        post,
+        UnsafePost {
+            path: None,
+            hash: hash_bytes(r#"<a href="x">y</a>"#.as_bytes()),
+            unsafe_html: r#"<a href="x">y</a>"#.to_owned(),
+        }
+    );
+
+    let post = UnsafePost::with_markdown(r#"[y](x)"#);
+    assert_eq!(
+        post,
+        UnsafePost {
+            path: None,
+            hash: hash_bytes("[y](x)".as_bytes()),
+            unsafe_html: "<p><a href=\"x\">y</a></p>\n".to_owned(),
+        }
+    );
+
+    Ok(())
 }
