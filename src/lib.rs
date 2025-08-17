@@ -464,7 +464,16 @@ impl UnsafePost {
         })
     }
 
-    pub fn new(unsafe_html: &str) -> Self {
+    pub fn with_markdown(unsafe_source: &str) -> Self {
+        let unsafe_html = render_markdown(unsafe_source);
+
+        Self {
+            path: None,
+            unsafe_html,
+        }
+    }
+
+    pub fn with_html(unsafe_html: &str) -> Self {
         Self {
             path: None,
             unsafe_html: unsafe_html.to_owned(),

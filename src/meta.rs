@@ -161,7 +161,7 @@ pub fn hard_link_attachments_into_site<'paths>(
 #[test]
 fn test_extracted_post() -> eyre::Result<()> {
     use crate::dom::serialize_html_fragment;
-    let post = UnsafePost::new(r#"<meta name="title" content="foo">bar"#);
+    let post = UnsafePost::with_html(r#"<meta name="title" content="foo">bar"#);
     let post = UnsafeExtractedPost::new(post)?;
     assert_eq!(serialize_html_fragment(post.dom)?, "bar");
     assert_eq!(post.meta.front_matter.title.as_deref(), Some("foo"));

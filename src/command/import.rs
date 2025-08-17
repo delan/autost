@@ -319,7 +319,7 @@ fn write_post(
     file.write_all(b"\n\n")?;
     let import_id = path.import_id().ok_or_eyre("path has no import id")?;
     let unsafe_html = process_content(&e_content, import_id, &base_href, &RealAttachmentsContext)?;
-    let post = UnsafePost::new(&unsafe_html);
+    let post = UnsafePost::with_html(&unsafe_html);
     let post = TemplatedPost::filter(post)?;
     file.write_all(post.safe_html.as_bytes())?;
     info!("click here to reply: {}", path.compose_reply_url());
