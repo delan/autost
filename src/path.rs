@@ -17,7 +17,7 @@ pub type AttachmentsPath = RelativePath<AttachmentsKind>;
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[allow(private_bounds)]
-pub struct RelativePath<Kind: PathKind> {
+pub struct RelativePath<Kind> {
     inner: PathBuf,
     kind: Kind,
 }

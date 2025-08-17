@@ -6,11 +6,15 @@ use sha2::{
 };
 use std::{fs::read, path::Path};
 
-use crate::path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT};
+use crate::{
+    db::build_dep_tree,
+    path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
+};
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Db {
     Benchmark(Benchmark),
+    DepTree(DepTree),
 }
 
 #[derive(clap::Args, Debug)]
@@ -19,6 +23,9 @@ pub struct Benchmark {
     algorithm: Algorithm,
     count: usize,
 }
+
+#[derive(clap::Args, Debug)]
+pub struct DepTree {}
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq)]
 pub enum Dir {
@@ -47,7 +54,13 @@ fn turboshake128() -> sha3::TurboShake128 {
 }
 
 pub async fn main(args: Db) -> eyre::Result<()> {
-    let Db::Benchmark(args) = args;
+    match args {
+        Db::Benchmark(benchmark) => do_benchmark(benchmark).await,
+        Db::DepTree(dep_tree) => do_dep_tree(dep_tree).await,
+    }
+}
+
+async fn do_benchmark(args: Benchmark) -> eyre::Result<()> {
     let mut sum_paths_len = 0;
     let mut sum_read_len = 0;
     let mut sum_sha256 = sha2::Sha256::new();
@@ -191,4 +204,8 @@ pub async fn main(args: Db) -> eyre::Result<()> {
     }
 
     Ok(())
+}
+
+async fn do_dep_tree(_args: DepTree) -> Result<(), eyre::Error> {
+    build_dep_tree().await
 }
