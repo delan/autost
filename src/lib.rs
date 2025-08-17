@@ -32,7 +32,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 use crate::{
     dom::serialize_html_fragment,
-    meta::extract_metadata,
     path::{PostsPath, SitePath},
     settings::Settings,
 };
@@ -438,12 +437,6 @@ impl TryFrom<TemplatedPost> for Thread {
         };
 
         Ok(Thread { path, posts, meta })
-    }
-}
-
-impl ExtractedPost {
-    pub fn new(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
-        extract_metadata(unsafe_html, path)
     }
 }
 
