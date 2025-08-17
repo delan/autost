@@ -127,8 +127,14 @@ pub struct Author {
     pub display_handle: String,
 }
 
-pub struct ExtractedPost {
+#[derive(Clone, Debug)]
+pub struct UnsafePost {
     pub path: Option<PostsPath>,
+    pub unsafe_html: String,
+}
+
+pub struct UnsafeExtractedPost {
+    pub post: UnsafePost,
     pub dom: RcDom,
     pub meta: PostMeta,
 }
@@ -142,9 +148,8 @@ pub struct Thread {
 
 #[derive(Clone, Debug)]
 pub struct TemplatedPost {
-    pub path: Option<PostsPath>,
+    pub post: UnsafePost,
     pub meta: PostMeta,
-    pub original_html: String,
     pub safe_html: String,
 }
 
@@ -369,7 +374,7 @@ impl TryFrom<TemplatedPost> for Thread {
     type Error = eyre::Report;
 
     fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
-        let path = post.path.clone();
+        let path = post.post.path.clone();
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
             .iter()
@@ -440,7 +445,7 @@ impl TryFrom<TemplatedPost> for Thread {
     }
 }
 
-impl TemplatedPost {
+impl UnsafePost {
     pub fn load(path: &PostsPath) -> eyre::Result<Self> {
         let mut file = File::open(path)?;
         let mut unsafe_source = String::default();
@@ -453,12 +458,30 @@ impl TemplatedPost {
             unsafe_source
         };
 
-        Self::filter(&unsafe_html, Some(path.to_owned()))
+        Ok(Self {
+            path: Some(path.to_owned()),
+            unsafe_html,
+        })
     }
 
-    pub fn filter(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
+    pub fn new(unsafe_html: &str) -> Self {
+        Self {
+            path: None,
+            unsafe_html: unsafe_html.to_owned(),
+        }
+    }
+}
+
+impl TemplatedPost {
+    pub fn load(path: &PostsPath) -> eyre::Result<Self> {
+        let post = UnsafePost::load(path)?;
+
+        Self::filter(post)
+    }
+
+    pub fn filter(post: UnsafePost) -> eyre::Result<Self> {
         // reader step: extract metadata.
-        let post = ExtractedPost::new(unsafe_html, path)?;
+        let post = UnsafeExtractedPost::new(post)?;
 
         let mut transform = Transform::new(post.dom.document.clone());
         while transform.next(|kids, new_kids| {
@@ -495,9 +518,8 @@ impl TemplatedPost {
             .to_string();
 
         Ok(TemplatedPost {
-            path: post.path,
+            post: post.post,
             meta: post.meta,
-            original_html: unsafe_html.to_owned(),
             safe_html,
         })
     }

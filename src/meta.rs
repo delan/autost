@@ -12,12 +12,12 @@ use crate::{
         QualNameExt, TendrilExt, Transform,
     },
     path::{hard_link_if_not_exists, PostsPath, SitePath},
-    Author, ExtractedPost, FrontMatter, PostMeta,
+    Author, FrontMatter, PostMeta, UnsafeExtractedPost, UnsafePost,
 };
 
-impl ExtractedPost {
-    pub fn new(unsafe_html: &str, path: Option<PostsPath>) -> eyre::Result<Self> {
-        let dom = parse_html_fragment(unsafe_html.as_bytes())?;
+impl UnsafeExtractedPost {
+    pub fn new(post: UnsafePost) -> eyre::Result<Self> {
+        let dom = parse_html_fragment(post.unsafe_html.as_bytes())?;
 
         let mut meta = FrontMatter::default();
         let mut needs_attachments = BTreeSet::default();
@@ -126,8 +126,8 @@ impl ExtractedPost {
             });
         }
 
-        Ok(ExtractedPost {
-            path,
+        Ok(UnsafeExtractedPost {
+            post,
             dom,
             meta: PostMeta {
                 front_matter: meta,
@@ -161,7 +161,8 @@ pub fn hard_link_attachments_into_site<'paths>(
 #[test]
 fn test_extracted_post() -> eyre::Result<()> {
     use crate::dom::serialize_html_fragment;
-    let post = ExtractedPost::new(r#"<meta name="title" content="foo">bar"#, None)?;
+    let post = UnsafePost::new(r#"<meta name="title" content="foo">bar"#);
+    let post = UnsafeExtractedPost::new(post)?;
     assert_eq!(serialize_html_fragment(post.dom)?, "bar");
     assert_eq!(post.meta.front_matter.title.as_deref(), Some("foo"));
 

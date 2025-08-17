@@ -24,7 +24,7 @@ use crate::{
         text_content, AttrsRefExt, BreadthTraverse, QualName, QualNameExt, TendrilExt,
     },
     path::{PostsPath, POSTS_PATH_IMPORTED},
-    Author, Command, FrontMatter, TemplatedPost,
+    Author, Command, FrontMatter, TemplatedPost, UnsafePost,
 };
 
 #[derive(clap::Args, Debug)]
@@ -319,7 +319,8 @@ fn write_post(
     file.write_all(b"\n\n")?;
     let import_id = path.import_id().ok_or_eyre("path has no import id")?;
     let unsafe_html = process_content(&e_content, import_id, &base_href, &RealAttachmentsContext)?;
-    let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
+    let post = UnsafePost::new(&unsafe_html);
+    let post = TemplatedPost::filter(post)?;
     file.write_all(post.safe_html.as_bytes())?;
     info!("click here to reply: {}", path.compose_reply_url());
     info!(
