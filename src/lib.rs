@@ -12,6 +12,7 @@ use askama::Template;
 use chrono::{SecondsFormat, Utc};
 use command::{
     attach::Attach,
+    cache::Cache,
     cohost2autost::Cohost2autost,
     cohost2json::Cohost2json,
     cohost_archive::CohostArchive,
@@ -40,6 +41,7 @@ use crate::{
 
 pub mod command {
     pub mod attach;
+    pub mod cache;
     pub mod cohost2autost;
     pub mod cohost2json;
     pub mod cohost_archive;
@@ -80,6 +82,8 @@ pub enum Command {
     Attach(Attach),
     #[command(subcommand)]
     Db(Db),
+    #[command(subcommand)]
+    Cache(Cache),
     Cohost2autost(Cohost2autost),
     Cohost2json(Cohost2json),
     CohostArchive(CohostArchive),

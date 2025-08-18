@@ -7,6 +7,7 @@ use std::{
 
 use jane_eyre::eyre::{self, bail, Context, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde::{de::Visitor, Deserialize, Serialize};
 use url::Url;
 
 use crate::SETTINGS;
@@ -600,6 +601,39 @@ impl AsRef<Path> for DynamicPath {
             DynamicPath::Site(path) => path.as_ref(),
             DynamicPath::Attachments(path) => path.as_ref(),
         }
+    }
+}
+
+impl Serialize for DynamicPath {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.db_dep_table_path())
+    }
+}
+impl<'de> Deserialize<'de> for DynamicPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(DynamicPathVisitor)
+    }
+}
+struct DynamicPathVisitor;
+impl<'de> Visitor<'de> for DynamicPathVisitor {
+    type Value = DynamicPath;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string that is a site-root-relative path")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        DynamicPath::from_site_root_relative_path(v)
+            .map_err(|e| E::custom(format!("failed to parse path: {e:?}")))
     }
 }
 

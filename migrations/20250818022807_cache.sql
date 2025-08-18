@@ -25,3 +25,13 @@ CREATE TABLE "threads_content_cache" (
     , "normal" TEXT NOT NULL
     , "simple" TEXT NOT NULL
 );
+
+
+CREATE TABLE "derivation" (
+    "derivation_id" TEXT NOT NULL PRIMARY KEY
+    , "details" TEXT NOT NULL
+);
+CREATE TABLE "output" (
+    "output_id" TEXT NOT NULL PRIMARY KEY
+    , "content" BLOB NOT NULL
+);
