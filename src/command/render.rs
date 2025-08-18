@@ -7,9 +7,11 @@ use std::{
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use sqlx::{Row, SqliteConnection};
 use tracing::{debug, info};
 
 use crate::{
+    db::parse_hash_hex,
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
@@ -21,20 +23,41 @@ pub struct Render {
     specific_post_paths: Vec<String>,
 }
 
-pub fn main(args: Render) -> eyre::Result<()> {
+pub async fn main(args: Render, mut db: SqliteConnection) -> eyre::Result<()> {
+    let threads_content_cache =
+        sqlx::query(r#"SELECT "path", "hash", "normal", "simple" FROM "threads_content_cache""#)
+            .fetch_all(&mut db)
+            .await?
+            .into_iter()
+            .map(|row| {
+                (
+                    row.get("path"),
+                    (
+                        row.get("hash"),
+                        CachedThreadsContent {
+                            normal: row.get("normal"),
+                            simple: row.get("simple"),
+                        },
+                    ),
+                )
+            })
+            .collect::<BTreeMap<String, (String, CachedThreadsContent)>>();
+
     if !args.specific_post_paths.is_empty() {
         let specific_post_paths = args
             .specific_post_paths
             .into_iter()
             .map(|path| PostsPath::from_site_root_relative_path(&path))
             .collect::<eyre::Result<Vec<_>>>()?;
-        render(specific_post_paths)
+        render(specific_post_paths, &threads_content_cache).await
     } else {
-        render_all()
+        render_all(&threads_content_cache).await
     }
 }
 
-pub fn render_all() -> eyre::Result<()> {
+pub async fn render_all(
+    threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
+) -> eyre::Result<()> {
     let mut post_paths = vec![];
 
     create_dir_all(&*POSTS_PATH_ROOT)?;
@@ -50,10 +73,13 @@ pub fn render_all() -> eyre::Result<()> {
         post_paths.push(path);
     }
 
-    render(post_paths)
+    render(post_paths, threads_content_cache).await
 }
 
-pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
+pub async fn render(
+    post_paths: Vec<PostsPath>,
+    threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
+) -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     create_dir_all(&*SITE_PATH_ROOT)?;
     create_dir_all(&*SITE_PATH_TAGGED)?;
@@ -108,7 +134,7 @@ pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     let results = post_paths
         .into_par_iter()
-        .map(render_single_post)
+        .map(|path| render_single_post(path, threads_content_cache))
         .collect::<Vec<_>>();
 
     let RenderResult {
@@ -150,6 +176,7 @@ pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
     for (tag, threads) in threads_by_interesting_tag {
+        info!("writing threads page and atom feed for tag {tag:?}");
         let atom_feed_path = SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?;
         let cached_threads = threads
             .iter()
@@ -176,8 +203,8 @@ pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     let mut tags = tags.into_iter().collect::<Vec<_>>();
     tags.sort_by(|p, q| p.1.cmp(&q.1).reverse().then(p.0.cmp(&q.0)));
-    info!("all tags: {tags:?}");
-    info!(
+    debug!("all tags: {tags:?}");
+    debug!(
         "interesting tags: {:?}",
         tags.iter()
             .filter(|(tag, _)| SETTINGS.tag_is_interesting(tag))
@@ -210,10 +237,19 @@ pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     Ok(())
 }
 
-fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
+fn render_single_post(
+    path: PostsPath,
+    threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
+) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
     let post = FilteredPost::load(&path)?;
+    let tail_path = post
+        .post
+        .path
+        .clone()
+        .expect("Guaranteed by FilteredPost::load()");
+    let tail_hash = post.post.hash;
     let Some(rendered_path) = path.rendered_path()? else {
         bail!("post has no rendered path");
     };
@@ -283,24 +319,29 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         }
     }
 
-    let threads_content_normal = ThreadsContentTemplate::render_normal(&thread)?;
-    let threads_content_simple = ThreadsContentTemplate::render_simple(&thread)?;
-
-    debug!("writing post page: {rendered_path:?}");
-    let threads_page = ThreadsPageTemplate::render_single_thread(
-        &thread,
-        &threads_content_normal,
-        &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
-        &None,
-    )?;
-    writeln!(File::create(rendered_path)?, "{threads_page}")?;
+    let threads_content = threads_content_cache
+        .get(&tail_path.to_dynamic_path().db_dep_table_path())
+        .filter(|(hash, _content)| parse_hash_hex(hash).ok() == Some(tail_hash))
+        .map(|(_hash, content)| Ok(content.clone()))
+        .unwrap_or_else(|| -> eyre::Result<CachedThreadsContent> {
+            let normal = ThreadsContentTemplate::render_normal(&thread)?;
+            let simple = ThreadsContentTemplate::render_simple(&thread)?;
+            debug!("writing post page: {rendered_path:?}");
+            let threads_page = ThreadsPageTemplate::render_single_thread(
+                &thread,
+                &normal,
+                &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
+                &None,
+            )?;
+            writeln!(File::create(rendered_path)?, "{threads_page}")?;
+            Ok(CachedThreadsContent { normal, simple })
+        })?;
 
     let result = CacheableRenderResult {
         render_result: result,
         cached_thread: CachedThread {
             thread,
-            threads_content_normal,
-            threads_content_simple,
+            threads_content,
         },
     };
 
@@ -322,8 +363,13 @@ struct RenderResult {
 #[derive(Debug)]
 pub struct CachedThread {
     pub thread: Thread,
-    pub threads_content_normal: String,
-    pub threads_content_simple: String,
+    pub threads_content: CachedThreadsContent,
+}
+
+#[derive(Clone, Debug)]
+pub struct CachedThreadsContent {
+    pub normal: String,
+    pub simple: String,
 }
 
 struct Collections {
@@ -531,7 +577,7 @@ fn render_cached_threads_content(
 ) -> String {
     let threads_contents = threads
         .iter()
-        .map(|thread| &*cache[&thread.path].threads_content_normal)
+        .map(|thread| &*cache[&thread.path].threads_content.normal)
         .collect::<Vec<_>>();
 
     threads_contents.join("")

@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, fs::read, path::Path};
 use tracing::info;
 
 use crate::{
-    db::build_dep_tree,
+    db::{build_dep_tree, hash_bytes, hash_file},
     migrations::run_migrations,
     path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
 };
@@ -234,11 +234,13 @@ async fn do_update_attachment_cache(mut db: SqliteConnection) -> eyre::Result<()
         .collect::<BTreeMap<String, String>>();
     let paths = ATTACHMENTS_PATH_ROOT.read_dir_recursive()?;
     for (i, path) in paths.iter().enumerate() {
-        let content = read(path)?;
-        let hash = blake3::hash(&content);
+        let hash = hash_file(path)?;
         if cached_hash.get(&path.to_dynamic_path().db_dep_table_path()) != Some(&hash.to_string()) {
+            let content = read(path)?;
+            // hash again with the contents, in case the file changed.
+            let hash = hash_bytes(&content);
             sqlx::query(
-                r#"INSERT INTO "attachment_cache" ("path", "hash", "content") VALUES ($1, $2, $3)"#,
+                r#"INSERT INTO "attachment_cache" ("path", "hash", "content") VALUES ($1, $2, $3) ON CONFLICT DO UPDATE SET "hash" = "excluded"."hash", "content" = "excluded"."content""#,
             )
             .bind(path.to_dynamic_path().db_dep_table_path())
             .bind(hash.to_string())

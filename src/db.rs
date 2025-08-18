@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::read,
     mem::take,
+    path::Path,
 };
 
 use jane_eyre::eyre;
@@ -10,13 +11,14 @@ use sqlx::{Connection, Row, SqliteConnection};
 use tracing::info;
 
 use crate::{
-    path::{DynamicPath, ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
-    UnsafeExtractedPost, UnsafePost,
+    output::ThreadsContentTemplate,
+    path::{DynamicPath, PostsPath, ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
+    FilteredPost, Thread, UnsafeExtractedPost, UnsafePost,
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct DepNode {
-    path: DynamicPath,
+pub struct PostNode {
+    path: PostsPath,
     hash: String,
     needs: BTreeSet<DynamicPath>,
 }
@@ -69,7 +71,7 @@ pub async fn build_dep_tree(mut db: SqliteConnection) -> eyre::Result<()> {
         match &dynamic_path {
             DynamicPath::Posts(path) => {
                 if let Some(hash) = cached_hash.get(&dynamic_path) {
-                    if blake3::hash(&read(path)?) != blake3::Hash::from_hex(hash)? {
+                    if hash_bytes(read(path)?) != parse_hash_hex(hash)? {
                         queue.insert(dynamic_path);
                     }
                 } else {
@@ -109,8 +111,8 @@ pub async fn build_dep_tree(mut db: SqliteConnection) -> eyre::Result<()> {
                         let needs = needs_posts
                             .chain(needs_attachments)
                             .collect::<BTreeSet<_>>();
-                        Some(DepNode {
-                            path: path.into_dynamic_path(),
+                        Some(PostNode {
+                            path,
                             hash: post.post.hash.to_string(),
                             needs: needs.clone(),
                         })
@@ -123,25 +125,36 @@ pub async fn build_dep_tree(mut db: SqliteConnection) -> eyre::Result<()> {
             .collect::<eyre::Result<Vec<_>>>()?;
         for node in results {
             sqlx::query(r#"INSERT INTO "file_cache" ("path", "hash") VALUES ($1, $2) ON CONFLICT DO UPDATE SET "hash" = "excluded"."hash""#)
-                .bind(node.path.db_dep_table_path())
+                .bind(node.path.to_dynamic_path().db_dep_table_path())
                 .bind(node.hash.clone())
                 .execute(&mut *tx)
                 .await?;
             sqlx::query(r#"DELETE FROM "dep_cache" WHERE "path" = $1"#)
-                .bind(node.path.db_dep_table_path())
+                .bind(node.path.to_dynamic_path().db_dep_table_path())
                 .execute(&mut *tx)
                 .await?;
             for needs_path in node.needs {
                 sqlx::query(
                     r#"INSERT INTO "dep_cache" ("path", "hash", "needs_path") VALUES ($1, $2, $3)"#,
                 )
-                .bind(node.path.db_dep_table_path())
+                .bind(node.path.to_dynamic_path().db_dep_table_path())
                 .bind(node.hash.clone())
                 .bind(needs_path.db_dep_table_path())
                 .execute(&mut *tx)
                 .await?;
             }
-            if let Some(dependents) = cached_dependents.get(&node.path) {
+            let post = FilteredPost::load(&node.path)?;
+            let thread = Thread::try_from(post)?;
+            let normal = ThreadsContentTemplate::render_normal(&thread)?;
+            let simple = ThreadsContentTemplate::render_simple(&thread)?;
+            sqlx::query(r#"INSERT INTO "threads_content_cache" ("path", "hash", "normal", "simple") VALUES ($1, $2, $3, $4) ON CONFLICT DO UPDATE SET "hash" = "excluded"."hash", "normal" = "excluded"."normal", "simple" = "excluded"."simple""#)
+                .bind(node.path.to_dynamic_path().db_dep_table_path())
+                .bind(node.hash.clone())
+                .bind(normal)
+                .bind(simple)
+                .execute(&mut *tx)
+                .await?;
+            if let Some(dependents) = cached_dependents.get(&node.path.to_dynamic_path()) {
                 queue.extend(dependents.iter().cloned());
             }
         }
@@ -151,4 +164,19 @@ pub async fn build_dep_tree(mut db: SqliteConnection) -> eyre::Result<()> {
     info!("done!");
 
     Ok(())
+}
+
+pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> blake3::Hash {
+    blake3::hash(bytes.as_ref())
+}
+
+pub fn hash_file(path: impl AsRef<Path>) -> eyre::Result<blake3::Hash> {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_mmap_rayon(path)?;
+
+    Ok(hasher.finalize())
+}
+
+pub fn parse_hash_hex(input: &str) -> eyre::Result<blake3::Hash> {
+    Ok(blake3::Hash::from_hex(input)?)
 }

@@ -41,7 +41,9 @@ async fn main() -> eyre::Result<()> {
         Command::Import(_) => command::import::main().await,
         Command::New(args) => command::new::main(args),
         Command::Reimport(_) => command::import::reimport::main().await,
-        Command::Render(args) => command::render::main(args),
+        Command::Render(args) => {
+            command::render::main(args, db.expect("guaranteed by definition")).await
+        }
         Command::Server(_) => command::server::main(db.expect("guaranteed by definition")).await,
     }
 }

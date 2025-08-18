@@ -17,3 +17,11 @@ CREATE TABLE "dep_cache" (
     , "hash" TEXT NOT NULL
     , "needs_path" TEXT NOT NULL
 );
+
+CREATE TABLE "threads_content_cache" (
+    "cache_id" INTEGER PRIMARY KEY
+    , "path" TEXT NOT NULL UNIQUE
+    , "hash" TEXT NOT NULL
+    , "normal" TEXT NOT NULL
+    , "simple" TEXT NOT NULL
+);

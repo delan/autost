@@ -16,7 +16,7 @@
 <content type="html" xml:base="{{ SETTINGS.external_base_url }}">
 {#- fluent-reader needs html base tag, not xml:base (yang991178/fluent-reader#692) -#}
 &lt;base href="{{ SETTINGS.external_base_url }}"&gt;
-{{ thread.threads_content_simple }}
+{{ thread.threads_content.simple }}
 </content>
 </entry>
 {% endfor %}
