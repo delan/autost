@@ -154,12 +154,12 @@ pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
     for (tag, threads) in threads_by_interesting_tag {
         let atom_feed_path = SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?;
-        let thread_refs = threads
+        let cached_threads = threads
             .iter()
-            .map(|thread| &threads_cache[&thread.path].thread)
+            .map(|thread| &threads_cache[&thread.path])
             .collect::<Vec<_>>();
         let atom_feed = AtomFeedTemplate::render(
-            thread_refs,
+            cached_threads,
             &format!("{} — {tag}", SETTINGS.site_title),
             &now,
         )?;
@@ -284,12 +284,13 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         }
     }
 
-    let threads_content = ThreadsContentTemplate::render_normal(&thread)?;
+    let threads_content_normal = ThreadsContentTemplate::render_normal(&thread)?;
+    let threads_content_simple = ThreadsContentTemplate::render_simple(&thread)?;
 
     debug!("writing post page: {rendered_path:?}");
     let threads_page = ThreadsPageTemplate::render_single_thread(
         &thread,
-        &threads_content,
+        &threads_content_normal,
         &SETTINGS.page_title(thread.meta.title.as_deref()),
         &None,
     )?;
@@ -299,7 +300,8 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         render_result: result,
         cached_thread: CachedThread {
             thread,
-            threads_content,
+            threads_content_normal,
+            threads_content_simple,
         },
     };
 
@@ -318,9 +320,11 @@ struct RenderResult {
     threads_by_interesting_tag: HashMap<String, BTreeSet<ThreadInCollection>>,
 }
 
-struct CachedThread {
-    thread: Thread,
-    threads_content: String,
+#[derive(Debug)]
+pub struct CachedThread {
+    pub thread: Thread,
+    pub threads_content_normal: String,
+    pub threads_content_simple: String,
 }
 
 struct Collections {
@@ -492,15 +496,15 @@ impl Collection {
         now: &str,
         threads_cache: &HashMap<PostsPath, CachedThread>,
     ) -> eyre::Result<()> {
-        let thread_refs = self
+        let cached_threads = self
             .threads
             .iter()
-            .map(|thread| &threads_cache[&thread.path].thread)
+            .map(|thread| &threads_cache[&thread.path])
             .collect::<Vec<_>>();
         writeln!(
             File::create(atom_feed_path)?,
             "{}",
-            AtomFeedTemplate::render(thread_refs, &SETTINGS.site_title, now)?
+            AtomFeedTemplate::render(cached_threads, &SETTINGS.site_title, now)?
         )?;
 
         Ok(())
@@ -528,7 +532,7 @@ fn render_cached_threads_content(
 ) -> String {
     let threads_contents = threads
         .iter()
-        .map(|thread| &*cache[&thread.path].threads_content)
+        .map(|thread| &*cache[&thread.path].threads_content_normal)
         .collect::<Vec<_>>();
 
     threads_contents.join("")

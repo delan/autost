@@ -7,6 +7,7 @@ use markup5ever_rcdom::{NodeData, RcDom};
 use tracing::trace;
 
 use crate::{
+    command::render::CachedThread,
     css::{parse_inline_style, serialise_inline_style, InlineStyleToken},
     dom::{
         html_attributes_with_urls, parse_html_document, parse_html_fragment,
@@ -57,7 +58,7 @@ pub struct ThreadOrPostMetaTemplate<'template> {
 #[derive(Clone, Debug, Template)]
 #[template(path = "feed.xml")]
 pub struct AtomFeedTemplate<'template> {
-    thread_refs: Vec<&'template Thread>,
+    cached_threads: Vec<&'template CachedThread>,
     feed_title: &'template str,
     updated: &'template str,
 }
@@ -118,7 +119,7 @@ impl<'template> ThreadsContentTemplate<'template> {
         )
     }
 
-    fn render_simple(thread: &'template Thread) -> eyre::Result<String> {
+    pub fn render_simple(thread: &'template Thread) -> eyre::Result<String> {
         fix_relative_urls_in_html_fragment(
             &Self {
                 thread,
@@ -160,12 +161,12 @@ impl<'template> ThreadOrPostMetaTemplate<'template> {
 
 impl<'template> AtomFeedTemplate<'template> {
     pub fn render(
-        thread_refs: Vec<&'template Thread>,
+        cached_threads: Vec<&'template CachedThread>,
         feed_title: &'template str,
         updated: &'template str,
     ) -> eyre::Result<String> {
         Ok(Self {
-            thread_refs,
+            cached_threads,
             feed_title,
             updated,
         }
