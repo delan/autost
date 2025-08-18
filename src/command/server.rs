@@ -9,7 +9,7 @@ use crate::{
     path::{PostsPath, POSTS_PATH_ROOT},
     render_markdown,
     rocket_eyre::{self, EyreReport},
-    Command, PostMeta, TemplatedPost, Thread, SETTINGS,
+    Command, FrontMatter, TemplatedPost, Thread, SETTINGS,
 };
 
 use askama_rocket::Template;
@@ -54,7 +54,7 @@ fn compose_route(
     };
     let is_transparent_share = is_transparent_share.unwrap_or_default();
 
-    let meta = PostMeta {
+    let meta = FrontMatter {
         archived: None,
         references,
         title: (!is_transparent_share).then_some("headline".to_owned()),

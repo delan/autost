@@ -219,12 +219,12 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     };
     let thread = Thread::try_from(post)?;
     hard_link_attachments_into_site(thread.needs_attachments())?;
-    for tag in thread.meta.tags.iter() {
+    for tag in thread.meta.front_matter.tags.iter() {
         *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
     }
     result.collections.push("all", &path, &thread);
     let mut was_interesting = false;
-    if thread.meta.is_main_self_author(&SETTINGS) {
+    if thread.meta.front_matter.is_main_self_author(&SETTINGS) {
         was_interesting = true;
     } else if SETTINGS.thread_is_on_excluded_archived_list(&thread) {
         result.collections.push("excluded", &path, &thread);
@@ -233,8 +233,8 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             .collections
             .push("marked_interesting", &path, &thread);
         was_interesting = true;
-    } else if thread.meta.is_any_self_author(&SETTINGS) {
-        for tag in thread.meta.tags.iter() {
+    } else if thread.meta.front_matter.is_any_self_author(&SETTINGS) {
+        for tag in thread.meta.front_matter.tags.iter() {
             if SETTINGS.tag_is_interesting(tag) {
                 was_interesting = true;
                 break;
@@ -246,19 +246,19 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
             .interesting_output_paths
             .insert(rendered_path.clone());
         result.collections.push("index", &path, &thread);
-        for tag in thread.meta.tags.iter() {
+        for tag in thread.meta.front_matter.tags.iter() {
             if SETTINGS.tag_is_interesting(tag) {
                 result
                     .threads_by_interesting_tag
                     .entry(tag.clone())
                     .or_default()
                     .insert(ThreadInCollection {
-                        published: thread.meta.published.clone(),
+                        published: thread.meta.front_matter.published.clone(),
                         path: path.clone(),
                     });
             }
         }
-        if thread.meta.tags.is_empty() {
+        if thread.meta.front_matter.tags.is_empty() {
             result
                 .collections
                 .push("untagged_interesting", &path, &thread);
@@ -266,10 +266,12 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     } else if let Some(last_post) = thread.posts.last() {
         // at this point, if the last post was ours, it was one of our archived chosts or rechosts.
         // otherwise it was a liked chost. this may change in the future, but it’s true for now.
-        if last_post.meta.is_any_self_author(&SETTINGS) {
+        if last_post.meta.front_matter.is_any_self_author(&SETTINGS) {
             // if the thread had some input from us at publish time, that is, if the last post was
             // authored by us with content and/or tags...
-            if !last_post.meta.is_transparent_share || !last_post.meta.tags.is_empty() {
+            if !last_post.meta.front_matter.is_transparent_share
+                || !last_post.meta.front_matter.tags.is_empty()
+            {
                 result.collections.push("skipped_own", &path, &thread);
             } else {
                 result.collections.push("skipped_other", &path, &thread);
@@ -288,7 +290,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     let threads_page = ThreadsPageTemplate::render_single_thread(
         &thread,
         &threads_content_normal,
-        &SETTINGS.page_title(thread.meta.title.as_deref()),
+        &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
         &None,
     )?;
     writeln!(File::create(rendered_path)?, "{threads_page}")?;
@@ -419,7 +421,7 @@ impl Collections {
             .expect("BUG: unknown collection!")
             .threads
             .insert(ThreadInCollection {
-                published: thread.meta.published.clone(),
+                published: thread.meta.front_matter.published.clone(),
                 path: path.clone(),
             });
     }

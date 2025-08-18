@@ -173,21 +173,21 @@ impl Settings {
     pub fn thread_is_on_interesting_archived_list(&self, thread: &Thread) -> bool {
         self.interesting_archived_threads_list
             .as_ref()
-            .zip(thread.meta.archived.as_ref())
+            .zip(thread.meta.front_matter.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
     pub fn thread_is_on_excluded_archived_list(&self, thread: &Thread) -> bool {
         self.excluded_archived_threads_list
             .as_ref()
-            .zip(thread.meta.archived.as_ref())
+            .zip(thread.meta.front_matter.archived.as_ref())
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
     pub fn extra_archived_thread_tags(&self, post: &TemplatedPost) -> &[String] {
         self.archived_thread_tags
             .as_ref()
-            .zip(post.meta.archived.as_ref())
+            .zip(post.meta.front_matter.archived.as_ref())
             .and_then(|(tags, archived)| tags.get(archived))
             .map(|result| &**result)
             .unwrap_or(&[])

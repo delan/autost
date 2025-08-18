@@ -24,7 +24,7 @@ use crate::{
         text_content, AttrsRefExt, BreadthTraverse, QualName, QualNameExt, TendrilExt,
     },
     path::{PostsPath, POSTS_PATH_IMPORTED},
-    Author, Command, PostMeta, TemplatedPost,
+    Author, Command, FrontMatter, TemplatedPost,
 };
 
 #[derive(clap::Args, Debug)]
@@ -63,7 +63,7 @@ pub async fn main() -> eyre::Result<()> {
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 let post = TemplatedPost::load(&path)?;
-                if post.meta.archived == Some(u_url.to_string()) {
+                if post.meta.front_matter.archived == Some(u_url.to_string()) {
                     info!("updating existing post: {path:?}");
                     let file = File::create(&path)?;
                     result = Some((path, file));
@@ -90,7 +90,11 @@ pub mod reimport {
         let path = args.posts_path;
         let path = PostsPath::from_site_root_relative_path(&path)?;
         let post = TemplatedPost::load(&path)?;
-        let url = post.meta.archived.ok_or_eyre("post is not archived")?;
+        let url = post
+            .meta
+            .front_matter
+            .archived
+            .ok_or_eyre("post is not archived")?;
         let FetchPostResult {
             base_href,
             content: e_content,
@@ -197,7 +201,7 @@ fn fetch_h_entry_post(document: Handle, url: &str) -> eyre::Result<Option<FetchP
         tags.push(p_category);
     }
 
-    let meta = PostMeta {
+    let meta = FrontMatter {
         archived: Some(canonical_url.to_string()),
         references: vec![], // TODO: define a cohost-like h-entry extension for this?
         title: p_name,
@@ -285,7 +289,7 @@ async fn fetch_akkoma_post(
     let content = contents.join("");
 
     let url = Url::parse(&canonical_url)?;
-    let meta = PostMeta {
+    let meta = FrontMatter {
         archived: Some(canonical_url),
         references: vec![], // TODO: handle akkoma reply chain?
         title: None,
@@ -305,7 +309,7 @@ async fn fetch_akkoma_post(
 
 fn write_post(
     mut file: File,
-    meta: PostMeta,
+    meta: FrontMatter,
     e_content: String,
     base_href: Url,
     path: PostsPath,
@@ -330,7 +334,7 @@ struct FetchPostResult {
     base_href: Url,
     content: String,
     url: Url,
-    meta: PostMeta,
+    meta: FrontMatter,
 }
 
 fn process_content(

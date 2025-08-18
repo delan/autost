@@ -98,9 +98,10 @@ pub struct RunDetailsWriter {
     file: File,
 }
 
+/// post metadata in the front matter only.
 #[derive(Clone, Debug, Default, PartialEq, Template)]
-#[template(path = "post-meta.html")]
-pub struct PostMeta {
+#[template(path = "front-matter.html")]
+pub struct FrontMatter {
     pub archived: Option<String>,
     pub references: Vec<PostsPath>,
     pub title: Option<String>,
@@ -108,6 +109,15 @@ pub struct PostMeta {
     pub author: Option<Author>,
     pub tags: Vec<String>,
     pub is_transparent_share: bool,
+}
+
+/// all post metadata, including computed metadata.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PostMeta {
+    pub front_matter: FrontMatter,
+    pub needs_attachments: BTreeSet<SitePath>,
+    pub og_image: Option<String>,
+    pub og_description: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -121,9 +131,6 @@ pub struct Author {
 pub struct ExtractedPost {
     pub dom: RcDom,
     pub meta: PostMeta,
-    pub needs_attachments: BTreeSet<SitePath>,
-    pub og_image: Option<String>,
-    pub og_description: String,
 }
 
 #[derive(Clone, Debug)]
@@ -131,9 +138,6 @@ pub struct Thread {
     pub path: Option<PostsPath>,
     pub posts: Vec<TemplatedPost>,
     pub meta: PostMeta,
-    pub needs_attachments: BTreeSet<SitePath>,
-    pub og_image: Option<String>,
-    pub og_description: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -142,9 +146,6 @@ pub struct TemplatedPost {
     pub meta: PostMeta,
     pub original_html: String,
     pub safe_html: String,
-    pub needs_attachments: BTreeSet<SitePath>,
-    pub og_image: Option<String>,
-    pub og_description: String,
 }
 
 impl Default for RunDetails {
@@ -211,7 +212,7 @@ impl RunDetailsWriter {
     }
 }
 
-impl PostMeta {
+impl FrontMatter {
     pub fn is_main_self_author(&self, settings: &Settings) -> bool {
         self.author
             .as_ref()
@@ -235,12 +236,12 @@ fn test_is_main_self_author() -> eyre::Result<()> {
     let settings = Settings::load_example()?;
 
     let mut settings_no_self_author = Settings::load_example()?;
-    let mut meta_no_author = PostMeta::default();
+    let mut meta_no_author = FrontMatter::default();
     settings_no_self_author.self_author = None;
     meta_no_author.author = None;
 
     // same href as [self_author], but different name, display_name, and handle
-    let meta_same_href = PostMeta {
+    let meta_same_href = FrontMatter {
         author: Some(Author {
             href: "https://example.com".to_owned(),
             name: "".to_owned(),
@@ -251,7 +252,7 @@ fn test_is_main_self_author() -> eyre::Result<()> {
     };
 
     // different href from [self_author]
-    let meta_different_href = PostMeta {
+    let meta_different_href = FrontMatter {
         author: Some(Author {
             href: "https://example.net".to_owned(),
             name: "".to_owned(),
@@ -273,7 +274,11 @@ fn test_is_main_self_author() -> eyre::Result<()> {
 
 impl Thread {
     pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
-        p.meta.published.cmp(&q.meta.published).reverse()
+        p.meta
+            .front_matter
+            .published
+            .cmp(&q.meta.front_matter.published)
+            .reverse()
     }
 
     pub fn url_for_original_path(&self) -> eyre::Result<Option<String>> {
@@ -325,7 +330,7 @@ impl Thread {
     }
 
     pub fn needs_attachments(&self) -> impl Iterator<Item = &SitePath> {
-        self.needs_attachments.iter()
+        self.meta.needs_attachments.iter()
     }
 
     pub fn posts_in_thread(&self) -> impl Iterator<Item = PostInThread> + '_ {
@@ -368,16 +373,20 @@ impl TryFrom<TemplatedPost> for Thread {
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
             .iter()
-            .filter(|tag| !post.meta.tags.contains(tag))
+            .filter(|tag| !post.meta.front_matter.tags.contains(tag))
             .map(|tag| tag.to_owned())
             .collect::<Vec<_>>();
-        let combined_tags = extra_tags.into_iter().chain(post.meta.tags).collect();
+        let combined_tags = extra_tags
+            .into_iter()
+            .chain(post.meta.front_matter.tags)
+            .collect();
         let resolved_tags = SETTINGS.resolve_tags(combined_tags);
-        post.meta.tags = resolved_tags;
+        post.meta.front_matter.tags = resolved_tags;
         let mut meta = post.meta.clone();
 
         let mut posts = post
             .meta
+            .front_matter
             .references
             .iter()
             .map(TemplatedPost::load)
@@ -393,36 +402,41 @@ impl TryFrom<TemplatedPost> for Thread {
         let last_non_transparent_share_post = posts
             .iter()
             .rev()
-            .find(|post| !post.meta.is_transparent_share);
-        meta.title = last_non_transparent_share_post.map(|post| {
-            if let Some(title) = post.meta.title.clone().filter(|t| !t.is_empty()) {
+            .find(|post| !post.meta.front_matter.is_transparent_share);
+        meta.front_matter.title = last_non_transparent_share_post.map(|post| {
+            if let Some(title) = post
+                .meta
+                .front_matter
+                .title
+                .clone()
+                .filter(|t| !t.is_empty())
+            {
                 title
-            } else if let Some(author) = post.meta.author.as_ref() {
+            } else if let Some(author) = post.meta.front_matter.author.as_ref() {
                 format!("untitled post by {}", author.display_handle)
             } else {
                 "untitled post".to_owned()
             }
         });
+
         let og_image = last_non_transparent_share_post
-            .and_then(|post| post.og_image.as_deref())
+            .and_then(|post| post.meta.og_image.as_deref())
             .map(|og_image| SETTINGS.base_url_relativise(og_image));
         let og_description =
-            last_non_transparent_share_post.map(|post| post.og_description.to_owned());
-
+            last_non_transparent_share_post.and_then(|post| post.meta.og_description.to_owned());
         let needs_attachments = posts
             .iter()
-            .flat_map(|post| post.needs_attachments.iter())
+            .flat_map(|post| post.meta.needs_attachments.iter())
             .map(|attachment_path| attachment_path.to_owned())
             .collect();
-
-        Ok(Thread {
-            path,
-            posts,
-            meta,
+        let meta = PostMeta {
+            front_matter: meta.front_matter,
             needs_attachments,
             og_image,
             og_description,
-        })
+        };
+
+        Ok(Thread { path, posts, meta })
     }
 }
 
@@ -485,9 +499,6 @@ impl TemplatedPost {
             meta: post.meta,
             original_html: unsafe_html.to_owned(),
             safe_html,
-            needs_attachments: post.needs_attachments,
-            og_image: post.og_image,
-            og_description: post.og_description,
         })
     }
 }

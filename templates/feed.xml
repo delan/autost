@@ -6,13 +6,13 @@
 <entry>
 {% if let Some(id) = thread.thread.atom_feed_entry_id()? %}<id>{{ id }}</id>{% endif %}
 <link rel="alternate" href="{% if let Some(url) = thread.thread.url_for_atom_permalink()? %}{{ url }}{% endif %}"/>
-{% if let Some(published) = thread.thread.meta.published %}<published>{{ published }}</published>{% endif %}
-<title>{% if let Some(title) = thread.thread.meta.title %}{{ title }}{% endif %}</title>
-{% if let Some(author) = thread.thread.meta.author %}<author>
+{% if let Some(published) = thread.thread.meta.front_matter.published %}<published>{{ published }}</published>{% endif %}
+<title>{% if let Some(title) = thread.thread.meta.front_matter.title %}{{ title }}{% endif %}</title>
+{% if let Some(author) = thread.thread.meta.front_matter.author %}<author>
 <name>{{ author.name }}</name>
 <uri>{{ author.href }}</uri>
 </author>{% endif %}
-{% for tag in thread.thread.main_post()?.meta.tags.iter() %}<category term="{{ tag }}" />{% endfor %}
+{% for tag in thread.thread.main_post()?.meta.front_matter.tags.iter() %}<category term="{{ tag }}" />{% endfor %}
 <content type="html" xml:base="{{ SETTINGS.external_base_url }}">
 {#- fluent-reader needs html base tag, not xml:base (yang991178/fluent-reader#692) -#}
 &lt;base href="{{ SETTINGS.external_base_url }}"&gt;

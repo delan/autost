@@ -25,7 +25,7 @@ use crate::{
         serialize_html_fragment, AttrsMutExt, AttrsRefExt, QualNameExt, TendrilExt, Transform,
     },
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ATTACHMENTS, SITE_PATH_THUMBS},
-    render_markdown, PostMeta,
+    render_markdown, FrontMatter,
 };
 
 #[derive(clap::Args, Debug)]
@@ -130,7 +130,7 @@ fn convert_single_chost(
     info!("writing: {output_path:?}");
     let mut output = File::create(output_path)?;
 
-    let meta = PostMeta {
+    let meta = FrontMatter {
         archived: Some(format!(
             "https://cohost.org/{}/post/{}",
             post.postingProject.handle, post.filename

@@ -12,16 +12,16 @@ use crate::{
         QualNameExt, TendrilExt, Transform,
     },
     path::{hard_link_if_not_exists, PostsPath, SitePath},
-    Author, ExtractedPost, PostMeta,
+    Author, ExtractedPost, FrontMatter, PostMeta,
 };
 
 pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
     let dom = parse_html_fragment(unsafe_html.as_bytes())?;
 
-    let mut meta = PostMeta::default();
+    let mut meta = FrontMatter::default();
     let mut needs_attachments = BTreeSet::default();
     let mut og_image = None;
-    let og_description = text_content_for_summaries(dom.document.clone())?;
+    let og_description = Some(text_content_for_summaries(dom.document.clone())?);
     let mut author_href = None;
     let mut author_name = None;
     let mut author_display_name = None;
@@ -127,10 +127,12 @@ pub fn extract_metadata(unsafe_html: &str) -> eyre::Result<ExtractedPost> {
 
     Ok(ExtractedPost {
         dom,
-        meta,
-        needs_attachments,
-        og_image,
-        og_description,
+        meta: PostMeta {
+            front_matter: meta,
+            needs_attachments,
+            og_image,
+            og_description,
+        },
     })
 }
 
@@ -158,7 +160,7 @@ fn test_extract_metadata() -> eyre::Result<()> {
     use crate::dom::serialize_html_fragment;
     let post = extract_metadata(r#"<meta name="title" content="foo">bar"#)?;
     assert_eq!(serialize_html_fragment(post.dom)?, "bar");
-    assert_eq!(post.meta.title.as_deref(), Some("foo"));
+    assert_eq!(post.meta.front_matter.title.as_deref(), Some("foo"));
 
     Ok(())
 }

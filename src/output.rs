@@ -14,7 +14,7 @@ use crate::{
         serialize_html_document, serialize_html_fragment, AttrsMutExt, TendrilExt, Transform,
     },
     path::{parse_path_relative_scheme_less_url_string, SitePath},
-    Author, PostMeta, Thread, SETTINGS,
+    Author, FrontMatter, Thread, SETTINGS,
 };
 
 #[derive(Clone, Debug, Template)]
@@ -39,7 +39,7 @@ pub struct ThreadsContentTemplate<'template> {
 #[template(path = "thread-or-post-header.html")]
 pub struct ThreadOrPostHeaderTemplate<'template> {
     thread: &'template Thread,
-    post_meta: &'template PostMeta,
+    post_meta: &'template FrontMatter,
     is_thread_header: bool,
 }
 
@@ -133,7 +133,7 @@ impl<'template> ThreadsContentTemplate<'template> {
 impl<'template> ThreadOrPostHeaderTemplate<'template> {
     pub fn render(
         thread: &'template Thread,
-        post_meta: &'template PostMeta,
+        post_meta: &'template FrontMatter,
         is_thread_header: bool,
     ) -> eyre::Result<String> {
         fix_relative_urls_in_html_fragment(
