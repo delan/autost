@@ -6,7 +6,11 @@ use jane_eyre::eyre::{self, bail, Context};
 use serde::{de::Visitor, Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 
-use crate::{migrations::run_migrations, path::DynamicPath};
+use crate::{
+    migrations::run_migrations,
+    path::{DynamicPath, POSTS_PATH_ROOT},
+    UnsafeExtractedPost, UnsafePost,
+};
 
 pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
     let mut hasher = blake3::Hasher::new();
@@ -131,18 +135,54 @@ impl Derivation {
         })
     }
 
-    // async fn store(&self, pool: &SqlitePool) -> eyre::Result<()> {
-    //     let mut tx = pool.begin().await?;
-    //     sqlx::query(r#"INSERT INTO "derivation" ("derivation_id", "details") VALUES ($1, $2)"#)
-    //         .bind(self.output.to_string())
-    //         .bind(self.to_string())
-    //         .execute(&mut *tx)
-    //         .await?;
+    fn post_meta(post_file: &Derivation) -> Self {
+        Self::from(DerivationInit {
+            input_derivations: [post_file.id()].into_iter().collect(),
+            input_sources: [].into_iter().collect(),
+            builder: Builder::PostMeta,
+        })
+    }
 
-    //     Ok(())
-    // }
+    fn id(&self) -> Id {
+        self.output
+    }
+
+    async fn load(id: Id, pool: &SqlitePool) -> eyre::Result<Self> {
+        let mut tx = pool.begin().await?;
+        let result =
+            sqlx::query(r#"SELECT "details" FROM "derivation" WHERE "derivation_id" = $1"#)
+                .bind(id.to_string())
+                .fetch_one(&mut *tx)
+                .await?;
+
+        Ok(serde_json::from_str(result.get("details"))?)
+    }
+
+    async fn store(self, pool: &SqlitePool) -> eyre::Result<Self> {
+        let mut tx = pool.begin().await?;
+        sqlx::query(r#"INSERT INTO "derivation" ("derivation_id", "details") VALUES ($1, $2) ON CONFLICT DO NOTHING"#)
+            .bind(self.output.to_string())
+            .bind(self.to_string())
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+
+        Ok(self)
+    }
 
     async fn realise(&self, pool: &SqlitePool) -> eyre::Result<Vec<u8>> {
+        // realise any derivations this derivation depends on.
+        let mut input_derivations = vec![];
+        for id in &self.input_derivations {
+            input_derivations.push(
+                Box::pin(async {
+                    let derivation = Self::load(*id, pool).await?;
+                    let content = derivation.realise(pool).await?;
+                    Ok::<_, eyre::Report>((derivation, content))
+                })
+                .await?,
+            );
+        }
         // use cached output, if previously realised.
         let mut tx = pool.begin().await?;
         if let Some(row) = sqlx::query(r#"SELECT "content" FROM "output" WHERE "output_id" = $1"#)
@@ -154,26 +194,40 @@ impl Derivation {
         }
         // build the derivation and cache its output.
         let result = async {
-            match self.builder {
+            let content = match self.builder {
                 Builder::ReadFile => {
                     let [path] = self.input_sources.iter().collect::<Vec<_>>()[..] else {
                         bail!("expected exactly one path in `input_sources`");
                     };
-                    let content = read(path)?;
-                    sqlx::query(r#"INSERT INTO "output" ("output_id", "content") VALUES ($1, $2)"#)
-                        .bind(self.output.to_string())
-                        .bind(content.clone())
-                        .execute(&mut *tx)
-                        .await?;
-                    tx.commit().await?;
-
-                    Ok(content)
+                    read(path)?
                 }
-            }
+                Builder::PostMeta => {
+                    let [(_derivation, source)] = input_derivations.iter().collect::<Vec<_>>()[..]
+                    else {
+                        bail!("expected exactly one derivation in `input_derivations`");
+                    };
+                    // TODO: handle html case
+                    let source = str::from_utf8(source)?;
+                    let post = UnsafePost::with_markdown(source);
+                    let post = UnsafeExtractedPost::new(post)?;
+                    serde_json::to_vec(&post.meta)?
+                }
+            };
+            sqlx::query(r#"INSERT INTO "output" ("output_id", "content") VALUES ($1, $2)"#)
+                .bind(self.output.to_string())
+                .bind(content.clone())
+                .execute(&mut *tx)
+                .await?;
+            tx.commit().await?;
+            Ok(content)
         };
         result
             .await
             .wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+    }
+
+    async fn realise_string(&self, pool: &SqlitePool) -> eyre::Result<String> {
+        Ok(String::from_utf8(self.realise(pool).await?)?)
     }
 }
 async fn pool() -> eyre::Result<SqlitePool> {
@@ -184,17 +238,20 @@ async fn pool() -> eyre::Result<SqlitePool> {
 #[derive(Debug, Deserialize, Serialize)]
 enum Builder {
     ReadFile,
+    PostMeta,
 }
 impl Builder {}
 
 pub async fn test() -> eyre::Result<()> {
     let pool = pool().await?;
-    let output = Derivation::read_file(DynamicPath::from_site_root_relative_path(
-        "posts/10000000.md",
-    )?)
-    .realise(&pool)
-    .await?;
-    dbg!(output);
+    for path in POSTS_PATH_ROOT.read_dir_flat()? {
+        let post_file = Derivation::read_file(path.into_dynamic_path())
+            .store(&pool)
+            .await?;
+        let post_meta = Derivation::post_meta(&post_file).store(&pool).await?;
+        let output = post_meta.realise_string(&pool).await?;
+        dbg!(output);
+    }
 
     Ok(())
 }
