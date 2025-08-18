@@ -284,8 +284,7 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         }
     }
 
-    let threads_content =
-        ThreadsContentTemplate::render_normal_without_fixing_relative_urls(&thread)?;
+    let threads_content = ThreadsContentTemplate::render_normal(&thread)?;
 
     debug!("writing post page: {rendered_path:?}");
     let threads_page = ThreadsPageTemplate::render_single_thread(
