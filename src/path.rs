@@ -22,9 +22,10 @@ pub struct RelativePath<Kind> {
     kind: Kind,
 }
 
-trait PathKind: Sized {
+trait PathKind: Sized + Clone {
     const ROOT: &'static str;
     fn new(path: &Path) -> eyre::Result<Self>;
+    fn dynamic_path_variant() -> fn(RelativePath<Self>) -> DynamicPath;
 }
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -45,6 +46,13 @@ pub enum SiteKind {
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct AttachmentsKind {}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub enum DynamicPath {
+    Posts(PostsPath),
+    Site(SitePath),
+    Attachments(AttachmentsPath),
+}
 
 impl PathKind for PostsKind {
     const ROOT: &'static str = "posts";
@@ -78,6 +86,10 @@ impl PathKind for PostsKind {
             },
             _ => Self::Other,
         })
+    }
+
+    fn dynamic_path_variant() -> fn(RelativePath<Self>) -> DynamicPath {
+        DynamicPath::Posts
     }
 }
 
@@ -132,6 +144,10 @@ impl PathKind for SiteKind {
 
         Ok(Self::Other)
     }
+
+    fn dynamic_path_variant() -> fn(RelativePath<Self>) -> DynamicPath {
+        DynamicPath::Site
+    }
 }
 
 impl PathKind for AttachmentsKind {
@@ -139,6 +155,10 @@ impl PathKind for AttachmentsKind {
 
     fn new(_path: &Path) -> eyre::Result<Self> {
         Ok(Self {})
+    }
+
+    fn dynamic_path_variant() -> fn(RelativePath<Self>) -> DynamicPath {
+        DynamicPath::Attachments
     }
 }
 
@@ -418,6 +438,14 @@ impl<Kind: PathKind> RelativePath<Kind> {
         Self::new(path.into())
     }
 
+    pub fn into_dynamic_path(self) -> DynamicPath {
+        Kind::dynamic_path_variant()(self)
+    }
+
+    pub fn to_dynamic_path(&self) -> DynamicPath {
+        self.clone().into_dynamic_path()
+    }
+
     pub fn join(&self, component: &str) -> eyre::Result<Self> {
         Self::new(self.inner.join(component))
     }
@@ -504,6 +532,14 @@ impl<Kind: PathKind> RelativePath<Kind> {
         })
     }
 
+    fn site_root_relative_components(&self) -> impl Iterator<Item = &str> {
+        self.inner.components().map(|c| {
+            c.as_os_str()
+                .to_str()
+                .expect("guaranteed by RelativePath::new")
+        })
+    }
+
     /// converts path to a url relative to the root directory of the kind.
     ///
     /// this is tricky to use correctly, because not all pages and feeds are in that directory.
@@ -523,6 +559,47 @@ impl<Kind: PathKind> RelativePath<Kind> {
         let components = self.components().collect::<Vec<_>>();
 
         components.join(std::path::MAIN_SEPARATOR_STR)
+    }
+
+    fn site_root_relative_path_for_db(&self) -> String {
+        let components = self.site_root_relative_components().collect::<Vec<_>>();
+
+        components.join("/")
+    }
+}
+
+impl DynamicPath {
+    #[tracing::instrument]
+    pub fn from_site_root_relative_path(inner: &str) -> eyre::Result<Self> {
+        if let Ok(result) = PostsPath::from_site_root_relative_path(inner) {
+            return Ok(Self::Posts(result));
+        }
+        if let Ok(result) = SitePath::from_site_root_relative_path(inner) {
+            return Ok(Self::Site(result));
+        }
+        if let Ok(result) = AttachmentsPath::from_site_root_relative_path(inner) {
+            return Ok(Self::Attachments(result));
+        }
+
+        bail!("path is not of a known type: {inner:?}")
+    }
+
+    pub fn db_dep_table_path(&self) -> String {
+        match self {
+            DynamicPath::Posts(path) => path.site_root_relative_path_for_db(),
+            DynamicPath::Site(path) => path.site_root_relative_path_for_db(),
+            DynamicPath::Attachments(path) => path.site_root_relative_path_for_db(),
+        }
+    }
+}
+
+impl AsRef<Path> for DynamicPath {
+    fn as_ref(&self) -> &Path {
+        match self {
+            DynamicPath::Posts(path) => path.as_ref(),
+            DynamicPath::Site(path) => path.as_ref(),
+            DynamicPath::Attachments(path) => path.as_ref(),
+        }
     }
 }
 

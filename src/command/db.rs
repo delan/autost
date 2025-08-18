@@ -4,10 +4,13 @@ use sha2::{
     digest::{ExtendableOutput, XofReader},
     Digest,
 };
-use std::{fs::read, path::Path};
+use sqlx::{Connection, Row, SqliteConnection};
+use std::{collections::BTreeMap, fs::read, path::Path};
+use tracing::info;
 
 use crate::{
     db::build_dep_tree,
+    migrations::run_migrations,
     path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
 };
 
@@ -15,6 +18,7 @@ use crate::{
 pub enum Db {
     Benchmark(Benchmark),
     DepTree(DepTree),
+    UpdateAttachmentCache,
 }
 
 #[derive(clap::Args, Debug)]
@@ -54,9 +58,19 @@ fn turboshake128() -> sha3::TurboShake128 {
 }
 
 pub async fn main(args: Db) -> eyre::Result<()> {
+    let db = if matches!(args, Db::DepTree(_) | Db::UpdateAttachmentCache) {
+        // fail fast if there are any settings or migration errors.
+        Some(run_migrations().await?)
+    } else {
+        None
+    };
+
     match args {
         Db::Benchmark(benchmark) => do_benchmark(benchmark).await,
-        Db::DepTree(dep_tree) => do_dep_tree(dep_tree).await,
+        Db::DepTree(dep_tree) => do_dep_tree(dep_tree, db.expect("Guaranteed by definition")).await,
+        Db::UpdateAttachmentCache => {
+            do_update_attachment_cache(db.expect("Guaranteed by definition")).await
+        }
     }
 }
 
@@ -206,6 +220,37 @@ async fn do_benchmark(args: Benchmark) -> eyre::Result<()> {
     Ok(())
 }
 
-async fn do_dep_tree(_args: DepTree) -> Result<(), eyre::Error> {
-    build_dep_tree().await
+async fn do_dep_tree(_args: DepTree, db: SqliteConnection) -> eyre::Result<()> {
+    build_dep_tree(db).await
+}
+
+async fn do_update_attachment_cache(mut db: SqliteConnection) -> eyre::Result<()> {
+    let mut tx = db.begin().await?;
+    let cached_hash = sqlx::query(r#"SELECT "path", "hash" FROM "attachment_cache""#)
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .map(|row| (row.get("path"), row.get("hash")))
+        .collect::<BTreeMap<String, String>>();
+    let paths = ATTACHMENTS_PATH_ROOT.read_dir_recursive()?;
+    for (i, path) in paths.iter().enumerate() {
+        let content = read(path)?;
+        let hash = blake3::hash(&content);
+        if cached_hash.get(&path.to_dynamic_path().db_dep_table_path()) != Some(&hash.to_string()) {
+            sqlx::query(
+                r#"INSERT INTO "attachment_cache" ("path", "hash", "content") VALUES ($1, $2, $3)"#,
+            )
+            .bind(path.to_dynamic_path().db_dep_table_path())
+            .bind(hash.to_string())
+            .bind(content)
+            .execute(&mut *tx)
+            .await?;
+        }
+        eprint!("... {}/{}\r", i + 1, paths.len());
+    }
+    tx.commit().await?;
+    eprintln!();
+    info!("done!");
+
+    Ok(())
 }
