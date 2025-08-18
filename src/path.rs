@@ -1,6 +1,7 @@
 use std::{
     fs::{hard_link, read_dir, DirEntry},
     io::ErrorKind,
+    marker::PhantomData,
     path::{Component, Path, PathBuf},
     sync::LazyLock,
 };
@@ -566,6 +567,39 @@ impl<Kind: PathKind> RelativePath<Kind> {
         let components = self.site_root_relative_components().collect::<Vec<_>>();
 
         components.join("/")
+    }
+}
+
+impl<Kind: PathKind> Serialize for RelativePath<Kind> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_dynamic_path().db_dep_table_path())
+    }
+}
+impl<'de, Kind: PathKind> Deserialize<'de> for RelativePath<Kind> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(RelativePathVisitor(PhantomData))
+    }
+}
+struct RelativePathVisitor<Kind>(PhantomData<Kind>);
+impl<'de, Kind: PathKind> Visitor<'de> for RelativePathVisitor<Kind> {
+    type Value = RelativePath<Kind>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string that is a site-root-relative path")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        RelativePath::from_site_root_relative_path(v)
+            .map_err(|e| E::custom(format!("failed to parse path: {e:?}")))
     }
 }
 

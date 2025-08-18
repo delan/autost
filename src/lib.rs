@@ -109,7 +109,7 @@ pub struct RunDetailsWriter {
 }
 
 /// post metadata in the front matter only.
-#[derive(Clone, Debug, Default, PartialEq, Template)]
+#[derive(Clone, Debug, Default, PartialEq, Template, Serialize, Deserialize)]
 #[template(path = "front-matter.html")]
 pub struct FrontMatter {
     pub archived: Option<String>,
@@ -122,7 +122,7 @@ pub struct FrontMatter {
 }
 
 /// all post metadata, including computed metadata.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PostMeta {
     pub front_matter: FrontMatter,
     pub needs_attachments: BTreeSet<SitePath>,
@@ -130,7 +130,7 @@ pub struct PostMeta {
     pub og_description: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Author {
     pub href: String,
     pub name: String,
