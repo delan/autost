@@ -13,7 +13,7 @@ use crate::{
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
-    TemplatedPost, Thread, SETTINGS,
+    FilteredPost, Thread, SETTINGS,
 };
 
 #[derive(clap::Args, Debug)]
@@ -213,7 +213,7 @@ pub fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
-    let post = TemplatedPost::load(&path)?;
+    let post = FilteredPost::load(&path)?;
     let Some(rendered_path) = path.rendered_path()? else {
         bail!("post has no rendered path");
     };

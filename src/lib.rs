@@ -140,17 +140,17 @@ pub struct UnsafeExtractedPost {
 }
 
 #[derive(Clone, Debug)]
-pub struct Thread {
-    pub path: Option<PostsPath>,
-    pub posts: Vec<TemplatedPost>,
-    pub meta: PostMeta,
-}
-
-#[derive(Clone, Debug)]
-pub struct TemplatedPost {
+pub struct FilteredPost {
     pub post: UnsafePost,
     pub meta: PostMeta,
     pub safe_html: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Thread {
+    pub path: Option<PostsPath>,
+    pub posts: Vec<FilteredPost>,
+    pub meta: PostMeta,
 }
 
 impl Default for RunDetails {
@@ -360,20 +360,20 @@ impl Thread {
             })
     }
 
-    pub fn main_post(&self) -> eyre::Result<&TemplatedPost> {
+    pub fn main_post(&self) -> eyre::Result<&FilteredPost> {
         self.posts.last().ok_or_eyre("thread has no posts")
     }
 }
 
 pub struct PostInThread {
-    inner: TemplatedPost,
+    inner: FilteredPost,
     is_main_post: bool,
 }
 
-impl TryFrom<TemplatedPost> for Thread {
+impl TryFrom<FilteredPost> for Thread {
     type Error = eyre::Report;
 
-    fn try_from(mut post: TemplatedPost) -> eyre::Result<Self> {
+    fn try_from(mut post: FilteredPost) -> eyre::Result<Self> {
         let path = post.post.path.clone();
         let extra_tags = SETTINGS
             .extra_archived_thread_tags(&post)
@@ -394,7 +394,7 @@ impl TryFrom<TemplatedPost> for Thread {
             .front_matter
             .references
             .iter()
-            .map(TemplatedPost::load)
+            .map(FilteredPost::load)
             .collect::<Result<Vec<_>, _>>()?;
         posts.push(post);
 
@@ -481,7 +481,7 @@ impl UnsafePost {
     }
 }
 
-impl TemplatedPost {
+impl FilteredPost {
     pub fn load(path: &PostsPath) -> eyre::Result<Self> {
         let post = UnsafePost::load(path)?;
 
@@ -526,7 +526,7 @@ impl TemplatedPost {
             .clean(&extracted_html)
             .to_string();
 
-        Ok(TemplatedPost {
+        Ok(FilteredPost {
             post: post.post,
             meta: post.meta,
             safe_html,

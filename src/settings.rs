@@ -9,7 +9,7 @@ use jane_eyre::eyre::{self, bail};
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::{path::parse_path_relative_scheme_less_url_string, Author, TemplatedPost, Thread};
+use crate::{path::parse_path_relative_scheme_less_url_string, Author, FilteredPost, Thread};
 
 #[derive(Deserialize)]
 pub struct Settings {
@@ -184,7 +184,7 @@ impl Settings {
             .is_some_and(|(list, archived)| list.iter().any(|x| x == archived))
     }
 
-    pub fn extra_archived_thread_tags(&self, post: &TemplatedPost) -> &[String] {
+    pub fn extra_archived_thread_tags(&self, post: &FilteredPost) -> &[String] {
         self.archived_thread_tags
             .as_ref()
             .zip(post.meta.front_matter.archived.as_ref())

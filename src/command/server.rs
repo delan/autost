@@ -8,7 +8,7 @@ use crate::{
     output::ThreadsContentTemplate,
     path::{PostsPath, POSTS_PATH_ROOT},
     rocket_eyre::{self, EyreReport},
-    Command, FrontMatter, TemplatedPost, Thread, UnsafePost, SETTINGS,
+    Command, FilteredPost, FrontMatter, Thread, UnsafePost, SETTINGS,
 };
 
 use askama_rocket::Template;
@@ -45,7 +45,7 @@ fn compose_route(
         let reply_to = POSTS_PATH_ROOT
             .join(&reply_to)
             .map_err(EyreReport::BadRequest)?;
-        let post = TemplatedPost::load(&reply_to)?;
+        let post = FilteredPost::load(&reply_to)?;
         let thread = Thread::try_from(post)?;
         thread.posts.into_iter().flat_map(|x| x.post.path).collect()
     } else {
@@ -82,7 +82,7 @@ struct Body<'r> {
 fn preview_route(body: Form<Body<'_>>) -> rocket_eyre::Result<content::RawHtml<String>> {
     let unsafe_source = body.source;
     let post = UnsafePost::with_markdown(unsafe_source);
-    let post = TemplatedPost::filter(post)?;
+    let post = FilteredPost::filter(post)?;
     let thread = Thread::try_from(post)?;
     Ok(content::RawHtml(
         ThreadsContentTemplate::render_normal(&thread).wrap_err("failed to render template")?,
@@ -102,7 +102,7 @@ fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<
 
     // try rendering the post before writing it, to catch any errors.
     let post = UnsafePost::with_markdown(unsafe_source);
-    let post = TemplatedPost::filter(post)?;
+    let post = FilteredPost::filter(post)?;
     let _thread = Thread::try_from(post)?;
 
     // cohost post ids are all less than 10000000.
@@ -119,7 +119,7 @@ fn publish_route(js: Option<bool>, body: Form<Body<'_>>) -> rocket_eyre::Result<
         .wrap_err("failed to write post file")?;
     render_all()?;
 
-    let post = TemplatedPost::load(&path)?;
+    let post = FilteredPost::load(&path)?;
     let _thread = Thread::try_from(post)?;
     let url = path
         .rendered_path()?
