@@ -68,15 +68,23 @@ impl ThreadsPageTemplate<'_> {
         page_title: &str,
         feed_href: &Option<SitePath>,
     ) -> eyre::Result<String> {
-        fix_relative_urls_in_html_document(
-            &ThreadsPageTemplate {
-                thread_page_meta: None,
-                threads_content,
-                page_title,
-                feed_href,
-            }
-            .render()?,
-        )
+        // render the template with a placeholder for `threads_content`, to avoid having to fix relative urls in the
+        // html for the same threads over and over (we do that once per thread, when rendering the `CachedThread`).
+        let template = ThreadsPageTemplate {
+            thread_page_meta: None,
+            threads_content: "\u{FDD0}",
+            page_title,
+            feed_href,
+        }
+        .render()?;
+        let result = fix_relative_urls_in_html_document(&template)?;
+
+        // now insert `threads_content` at the placeholder, making sure the placeholder wasn’t used elsewhere.
+        // based on the assumption that the “fixing relative urls” operation distributes over the two parts.
+        assert_eq!(template.matches("\u{FDD0}").count(), 1);
+        let result = result.replace("\u{FDD0}", threads_content);
+
+        Ok(result)
     }
 
     pub fn render_single_thread(
@@ -101,19 +109,13 @@ impl ThreadsPageTemplate<'_> {
 
 impl<'template> ThreadsContentTemplate<'template> {
     pub fn render_normal(thread: &'template Thread) -> eyre::Result<String> {
-        fix_relative_urls_in_html_fragment(&Self::render_normal_without_fixing_relative_urls(
-            thread,
-        )?)
-    }
-
-    pub fn render_normal_without_fixing_relative_urls(
-        thread: &'template Thread,
-    ) -> eyre::Result<String> {
-        Ok(Self {
-            thread,
-            simple_mode: false,
-        }
-        .render()?)
+        fix_relative_urls_in_html_fragment(
+            &Self {
+                thread,
+                simple_mode: false,
+            }
+            .render()?,
+        )
     }
 
     fn render_simple(thread: &'template Thread) -> eyre::Result<String> {
