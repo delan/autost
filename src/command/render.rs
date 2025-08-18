@@ -11,7 +11,7 @@ use sqlx::{Row, SqliteConnection};
 use tracing::{debug, info};
 
 use crate::{
-    db::parse_hash_hex,
+    cache::parse_hash_hex,
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},

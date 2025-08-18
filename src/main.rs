@@ -1,4 +1,5 @@
 use autost::{
+    cache::HASHER,
     cli_init,
     command::{self},
     migrations::run_migrations,
@@ -26,6 +27,7 @@ async fn main() -> eyre::Result<()> {
             | Command::Server { .. }
     ) {
         // fail fast if there are any settings or migration errors.
+        let _ = &*HASHER;
         let _ = &*SETTINGS;
         Some(run_migrations().await?)
     } else {

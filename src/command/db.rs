@@ -9,7 +9,8 @@ use std::{collections::BTreeMap, fs::read, path::Path};
 use tracing::info;
 
 use crate::{
-    db::{build_dep_tree, hash_bytes, hash_file},
+    cache::{hash_bytes, hash_file},
+    db::build_dep_tree,
     migrations::run_migrations,
     path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
 };

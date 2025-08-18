@@ -2,7 +2,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::read,
     mem::take,
-    path::Path,
 };
 
 use jane_eyre::eyre;
@@ -11,6 +10,7 @@ use sqlx::{Connection, Row, SqliteConnection};
 use tracing::info;
 
 use crate::{
+    cache::{hash_bytes, parse_hash_hex},
     output::ThreadsContentTemplate,
     path::{DynamicPath, PostsPath, ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
     FilteredPost, Thread, UnsafeExtractedPost, UnsafePost,
@@ -164,19 +164,4 @@ pub async fn build_dep_tree(mut db: SqliteConnection) -> eyre::Result<()> {
     info!("done!");
 
     Ok(())
-}
-
-pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> blake3::Hash {
-    blake3::hash(bytes.as_ref())
-}
-
-pub fn hash_file(path: impl AsRef<Path>) -> eyre::Result<blake3::Hash> {
-    let mut hasher = blake3::Hasher::new();
-    hasher.update_mmap_rayon(path)?;
-
-    Ok(hasher.finalize())
-}
-
-pub fn parse_hash_hex(input: &str) -> eyre::Result<blake3::Hash> {
-    Ok(blake3::Hash::from_hex(input)?)
 }
