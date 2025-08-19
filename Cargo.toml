@@ -22,6 +22,7 @@ ammonia = "4.0.0"
 askama = { version = "0.12.1", features = ["with-rocket"] }
 askama_rocket = "0.12.0"
 async-lock = "3.4.1"
+atomic-write-file = "0.2.3"
 base64 = "0.22.1"
 blake3 = { version = "1.8.2", features = ["digest", "mmap", "rayon"] }
 bytes = "1.7.1"

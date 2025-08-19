@@ -1,21 +1,20 @@
 use std::{
-    collections::BTreeSet, env::current_exe, fmt::Display, fs::read, path::Path, sync::LazyLock,
-    thread::available_parallelism, time::Duration,
+    collections::BTreeSet,
+    env::current_exe,
+    fmt::Display,
+    fs::{read, File},
+    io::Write,
+    path::Path,
+    sync::LazyLock,
 };
 
+use atomic_write_file::AtomicWriteFile;
 use jane_eyre::eyre::{self, bail, Context};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
-use sqlx::{
-    pool::PoolOptions,
-    sqlite::{SqliteConnectOptions, SqliteJournalMode},
-    Row, SqlitePool,
-};
-use tokio::runtime::Runtime;
 
 use crate::{
-    migrations::run_migrations,
-    path::{DynamicPath, POSTS_PATH_ROOT},
+    path::{CachePath, DynamicPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
     FilteredPost, UnsafePost,
 };
 
@@ -154,53 +153,42 @@ impl Derivation {
         self.output
     }
 
-    async fn load(id: Id, pool: &SqlitePool) -> eyre::Result<Self> {
-        let mut tx = pool.begin().await?;
-        let result =
-            sqlx::query(r#"SELECT "details" FROM "derivation" WHERE "derivation_id" = $1"#)
-                .bind(id.to_string())
-                .fetch_one(&mut *tx)
-                .await?;
-
-        Ok(serde_json::from_str(result.get("details"))?)
+    fn derivation_path(id: Id) -> eyre::Result<CachePath> {
+        CACHE_PATH_ROOT.join(&format!("{id}.drv"))
     }
 
-    async fn store(self, pool: &SqlitePool) -> eyre::Result<Self> {
-        let mut tx = pool.begin().await?;
-        sqlx::query(r#"INSERT INTO "derivation" ("derivation_id", "details") VALUES ($1, $2) ON CONFLICT DO NOTHING"#)
-            .bind(self.output.to_string())
-            .bind(self.to_string())
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
+    fn output_path(&self) -> eyre::Result<CachePath> {
+        CACHE_PATH_ROOT.join(&format!("{}.out", self.id()))
+    }
+
+    fn load(id: Id) -> eyre::Result<Self> {
+        Ok(serde_json::from_reader(File::open(
+            Self::derivation_path(id)?,
+        )?)?)
+    }
+
+    fn store(self) -> eyre::Result<Self> {
+        let mut file = AtomicWriteFile::open(Self::derivation_path(self.id())?)?;
+        serde_json::to_writer(&mut file, &self)?;
+        file.commit()?;
 
         Ok(self)
     }
 
-    async fn realise(&self, pool: &SqlitePool) -> eyre::Result<Vec<u8>> {
+    fn realise(&self) -> eyre::Result<Vec<u8>> {
         // realise any derivations this derivation depends on.
         let mut input_derivations = vec![];
         for id in &self.input_derivations {
-            input_derivations.push(
-                Box::pin(async {
-                    let derivation = Self::load(*id, pool).await?;
-                    let content = derivation.realise(pool).await?;
-                    Ok::<_, eyre::Report>((derivation, content))
-                })
-                .await?,
-            );
+            let derivation = Self::load(*id)?;
+            let content = derivation.realise()?;
+            input_derivations.push((derivation, content));
         }
         // use cached output, if previously realised.
-        let mut tx = pool.begin().await?;
-        if let Some(row) = sqlx::query(r#"SELECT "content" FROM "output" WHERE "output_id" = $1"#)
-            .bind(self.output.to_string())
-            .fetch_optional(&mut *tx)
-            .await?
-        {
-            return Ok(row.get("content"));
+        if let Ok(result) = read(self.output_path()?) {
+            return Ok(result);
         }
         // build the derivation and cache its output.
-        let result = async {
+        let result = (|| {
             let content = match self.builder {
                 Builder::ReadFile => {
                     let [path] = self.input_sources.iter().collect::<Vec<_>>()[..] else {
@@ -220,36 +208,17 @@ impl Derivation {
                     serde_json::to_vec(&post)?
                 }
             };
-            sqlx::query(r#"INSERT INTO "output" ("output_id", "content") VALUES ($1, $2)"#)
-                .bind(self.output.to_string())
-                .bind(content.clone())
-                .execute(&mut *tx)
-                .await?;
-            tx.commit().await?;
+            let mut file = AtomicWriteFile::open(self.output_path()?)?;
+            file.write_all(&content)?;
+            file.commit()?;
             Ok(content)
-        };
-        result
-            .await
-            .wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+        })();
+        result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
     }
 
-    async fn realise_string(&self, pool: &SqlitePool) -> eyre::Result<String> {
-        Ok(String::from_utf8(self.realise(pool).await?)?)
+    fn realise_string(&self) -> eyre::Result<String> {
+        Ok(String::from_utf8(self.realise()?)?)
     }
-}
-async fn pool() -> eyre::Result<SqlitePool> {
-    run_migrations().await?;
-    let result = PoolOptions::new()
-        .min_connections(available_parallelism()?.get().try_into()?)
-        .max_connections(available_parallelism()?.get().try_into()?)
-        .connect("autost.sqlite")
-        // .connect(":memory:")
-        .await?;
-    result.set_connect_options(SqliteConnectOptions::new().journal_mode(SqliteJournalMode::Wal));
-    // let mut conn = result.acquire().await?;
-    // sqlx::migrate!().run(&mut conn).await?;
-
-    Ok(result)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -260,28 +229,20 @@ enum Builder {
 impl Builder {}
 
 pub async fn test() -> eyre::Result<()> {
-    let pool = pool().await?;
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-    let runtime = Runtime::new()?;
     let results = top_level_post_paths
         .par_iter()
         .enumerate()
         .map(|(i, path)| -> eyre::Result<_> {
-            runtime.block_on(async {
-                dbg!(i);
-                let post_file = Derivation::read_file(path.to_dynamic_path())
-                    .store(&pool)
-                    .await?;
-                let post_meta = Derivation::filtered_post(&post_file).store(&pool).await?;
-                let output = post_meta.realise_string(&pool).await?;
-                Ok(output.len())
-            })
+            let post_file = Derivation::read_file(path.to_dynamic_path()).store()?;
+            let post_meta = Derivation::filtered_post(&post_file).store()?;
+            let output = post_meta.realise_string()?;
+            Ok((i, output.len()))
         })
         .collect::<Vec<_>>();
     for result in results {
-        let _ = dbg!(result);
+        dbg!(result?);
     }
-    runtime.shutdown_timeout(Duration::from_secs(60));
 
     Ok(())
 }

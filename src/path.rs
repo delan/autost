@@ -16,6 +16,7 @@ use crate::SETTINGS;
 pub type PostsPath = RelativePath<PostsKind>;
 pub type SitePath = RelativePath<SiteKind>;
 pub type AttachmentsPath = RelativePath<AttachmentsKind>;
+pub type CachePath = RelativePath<CacheKind>;
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[allow(private_bounds)]
@@ -50,10 +51,14 @@ pub enum SiteKind {
 pub struct AttachmentsKind {}
 
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct CacheKind {}
+
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum DynamicPath {
     Posts(PostsPath),
     Site(SitePath),
     Attachments(AttachmentsPath),
+    Cache(CachePath),
 }
 
 impl PathKind for PostsKind {
@@ -161,6 +166,18 @@ impl PathKind for AttachmentsKind {
 
     fn dynamic_path_variant() -> fn(RelativePath<Self>) -> DynamicPath {
         DynamicPath::Attachments
+    }
+}
+
+impl PathKind for CacheKind {
+    const ROOT: &'static str = "cache";
+
+    fn new(_path: &Path) -> eyre::Result<Self> {
+        Ok(Self {})
+    }
+
+    fn dynamic_path_variant() -> fn(RelativePath<Self>) -> DynamicPath {
+        DynamicPath::Cache
     }
 }
 
@@ -410,6 +427,10 @@ impl AttachmentsPath {
     }
 }
 
+pub static CACHE_PATH_ROOT: LazyLock<CachePath> =
+    LazyLock::new(|| CachePath::new(CacheKind::ROOT.into()).expect("guaranteed by argument"));
+impl CachePath {}
+
 #[allow(private_bounds)]
 impl<Kind: PathKind> RelativePath<Kind> {
     #[tracing::instrument]
@@ -624,6 +645,7 @@ impl DynamicPath {
             DynamicPath::Posts(path) => path.site_root_relative_path_for_db(),
             DynamicPath::Site(path) => path.site_root_relative_path_for_db(),
             DynamicPath::Attachments(path) => path.site_root_relative_path_for_db(),
+            DynamicPath::Cache(path) => path.site_root_relative_path_for_db(),
         }
     }
 }
@@ -634,6 +656,7 @@ impl AsRef<Path> for DynamicPath {
             DynamicPath::Posts(path) => path.as_ref(),
             DynamicPath::Site(path) => path.as_ref(),
             DynamicPath::Attachments(path) => path.as_ref(),
+            DynamicPath::Cache(path) => path.as_ref(),
         }
     }
 }
