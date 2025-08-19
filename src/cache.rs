@@ -8,14 +8,14 @@ use std::{
     sync::LazyLock,
 };
 
-use atomic_write_file::AtomicWriteFile;
+use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
 use jane_eyre::eyre::{self, bail, Context};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
 
 use crate::{
-    path::{CachePath, DynamicPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
+    path::{DynamicPath, POSTS_PATH_ROOT},
     FilteredPost, UnsafePost,
 };
 
@@ -150,23 +150,23 @@ impl Derivation {
         self.output
     }
 
-    fn derivation_path(id: Id) -> eyre::Result<CachePath> {
-        CACHE_PATH_ROOT.join(&format!("{id}.drv"))
+    fn derivation_path(id: Id) -> String {
+        format!("cache/{id}.drv")
     }
 
-    fn output_path(&self) -> eyre::Result<CachePath> {
-        CACHE_PATH_ROOT.join(&format!("{}.out", self.id()))
+    fn output_path(&self) -> String {
+        format!("cache/{}.out", self.id())
     }
 
     fn load(id: Id) -> eyre::Result<Self> {
         Ok(bincode::serde::decode_from_std_read(
-            &mut File::open(Self::derivation_path(id)?)?,
+            &mut File::open(Self::derivation_path(id))?,
             standard(),
         )?)
     }
 
     fn store(self) -> eyre::Result<Self> {
-        let mut file = AtomicWriteFile::open(Self::derivation_path(self.id())?)?;
+        let mut file = atomic_writer(Self::derivation_path(self.id()))?;
         bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
         file.commit()?;
 
@@ -182,7 +182,7 @@ impl Derivation {
             input_derivations.push((derivation, content));
         }
         // use cached output, if previously realised.
-        if let Ok(result) = read(self.output_path()?) {
+        if let Ok(result) = read(self.output_path()) {
             return Ok(result);
         }
         // build the derivation and cache its output.
@@ -206,9 +206,7 @@ impl Derivation {
                     bincode::serde::encode_to_vec(&post, standard())?
                 }
             };
-            let mut file = AtomicWriteFile::open(self.output_path()?)?;
-            file.write_all(&content)?;
-            file.commit()?;
+            atomic_write(self.output_path(), &content)?;
             Ok(content)
         })();
         result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
@@ -237,6 +235,22 @@ pub async fn test() -> eyre::Result<()> {
     for result in results {
         eprintln!("{:x?}", result?);
     }
+
+    Ok(())
+}
+
+fn atomic_writer(path: impl AsRef<Path>) -> eyre::Result<AtomicWriteFile> {
+    Ok(AtomicWriteFile::options()
+        .preserve_mode(false)
+        .preserve_owner(false)
+        .try_preserve_owner(false)
+        .open(path)?)
+}
+
+fn atomic_write(path: impl AsRef<Path>, content: impl AsRef<[u8]>) -> eyre::Result<()> {
+    let mut file = atomic_writer(path)?;
+    file.write_all(content.as_ref())?;
+    file.commit()?;
 
     Ok(())
 }
