@@ -9,7 +9,7 @@ use sqlx::{Row, SqlitePool};
 use crate::{
     migrations::run_migrations,
     path::{DynamicPath, POSTS_PATH_ROOT},
-    UnsafeExtractedPost, UnsafePost,
+    FilteredPost, UnsafePost,
 };
 
 pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
@@ -135,11 +135,11 @@ impl Derivation {
         })
     }
 
-    fn post_meta(post_file: &Derivation) -> Self {
+    fn filtered_post(post_file: &Derivation) -> Self {
         Self::from(DerivationInit {
             input_derivations: [post_file.id()].into_iter().collect(),
             input_sources: [].into_iter().collect(),
-            builder: Builder::PostMeta,
+            builder: Builder::FilteredPost,
         })
     }
 
@@ -201,7 +201,7 @@ impl Derivation {
                     };
                     read(path)?
                 }
-                Builder::PostMeta => {
+                Builder::FilteredPost => {
                     let [(_derivation, source)] = input_derivations.iter().collect::<Vec<_>>()[..]
                     else {
                         bail!("expected exactly one derivation in `input_derivations`");
@@ -209,8 +209,8 @@ impl Derivation {
                     // TODO: handle html case
                     let source = str::from_utf8(source)?;
                     let post = UnsafePost::with_markdown(source);
-                    let post = UnsafeExtractedPost::new(post)?;
-                    serde_json::to_vec(&post.meta)?
+                    let post = FilteredPost::filter(post)?;
+                    serde_json::to_vec(&post)?
                 }
             };
             sqlx::query(r#"INSERT INTO "output" ("output_id", "content") VALUES ($1, $2)"#)
@@ -238,20 +238,27 @@ async fn pool() -> eyre::Result<SqlitePool> {
 #[derive(Debug, Deserialize, Serialize)]
 enum Builder {
     ReadFile,
-    PostMeta,
+    FilteredPost,
 }
 impl Builder {}
 
 pub async fn test() -> eyre::Result<()> {
     let pool = pool().await?;
-    for path in POSTS_PATH_ROOT.read_dir_flat()? {
-        let post_file = Derivation::read_file(path.into_dynamic_path())
+    let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
+    for (i, path) in top_level_post_paths.iter().enumerate() {
+        let post_file = Derivation::read_file(path.to_dynamic_path())
             .store(&pool)
             .await?;
-        let post_meta = Derivation::post_meta(&post_file).store(&pool).await?;
+        let post_meta = Derivation::filtered_post(&post_file).store(&pool).await?;
         let output = post_meta.realise_string(&pool).await?;
-        dbg!(output);
+        eprint!(
+            "... {}/{} (last output len = {})\r",
+            i,
+            top_level_post_paths.len(),
+            output.len()
+        );
     }
+    eprintln!();
 
     Ok(())
 }

@@ -11,7 +11,6 @@ use sqlx::{Row, SqliteConnection};
 use tracing::{debug, info};
 
 use crate::{
-    cache::parse_hash_hex,
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
@@ -239,17 +238,11 @@ pub async fn render(
 
 fn render_single_post(
     path: PostsPath,
-    threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
+    _threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
 ) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
     let post = FilteredPost::load(&path)?;
-    let tail_path = post
-        .post
-        .path
-        .clone()
-        .expect("Guaranteed by FilteredPost::load()");
-    let tail_hash = post.post.hash;
     let Some(rendered_path) = path.rendered_path()? else {
         bail!("post has no rendered path");
     };
@@ -319,23 +312,17 @@ fn render_single_post(
         }
     }
 
-    let threads_content = threads_content_cache
-        .get(&tail_path.to_dynamic_path().db_dep_table_path())
-        .filter(|(hash, _content)| parse_hash_hex(hash).ok() == Some(tail_hash))
-        .map(|(_hash, content)| Ok(content.clone()))
-        .unwrap_or_else(|| -> eyre::Result<CachedThreadsContent> {
-            let normal = ThreadsContentTemplate::render_normal(&thread)?;
-            let simple = ThreadsContentTemplate::render_simple(&thread)?;
-            debug!("writing post page: {rendered_path:?}");
-            let threads_page = ThreadsPageTemplate::render_single_thread(
-                &thread,
-                &normal,
-                &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
-                &None,
-            )?;
-            writeln!(File::create(rendered_path)?, "{threads_page}")?;
-            Ok(CachedThreadsContent { normal, simple })
-        })?;
+    let normal = ThreadsContentTemplate::render_normal(&thread)?;
+    let simple = ThreadsContentTemplate::render_simple(&thread)?;
+    let threads_content = CachedThreadsContent { normal, simple };
+    debug!("writing post page: {rendered_path:?}");
+    let threads_page = ThreadsPageTemplate::render_single_thread(
+        &thread,
+        &threads_content.normal,
+        &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
+        &None,
+    )?;
+    writeln!(File::create(rendered_path)?, "{threads_page}")?;
 
     let result = CacheableRenderResult {
         render_result: result,
