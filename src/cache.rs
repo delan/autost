@@ -11,7 +11,7 @@ use std::{
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
 use jane_eyre::eyre::{self, bail, Context, OptionExt};
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
 
 use crate::{
@@ -282,18 +282,30 @@ enum Builder {
 impl Builder {}
 
 pub async fn test() -> eyre::Result<()> {
+    // HACK: realise() all the FilteredPost in parallel first, so we can realise() all the Thread in parallel
+    // TODO: avoid doing this somehow
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
     let results = top_level_post_paths
         .par_iter()
-        .enumerate()
-        .map(|(i, path)| -> eyre::Result<_> {
-            let thread = Derivation::thread(path.to_dynamic_path())?.store()?;
-            let output = thread.realise()?;
-            Ok((i, output.len()))
+        .map(|path| {
+            Derivation::filtered_post(path.to_dynamic_path())?
+                .store()?
+                .realise()
         })
-        .collect::<Vec<_>>();
-    for result in results {
-        eprintln!("{:x?}", result?);
+        .collect::<eyre::Result<Vec<_>>>()?;
+    for (i, result) in results.iter().enumerate() {
+        eprintln!("{i}/{}: {}", results.len(), result.len());
+    }
+    let results = top_level_post_paths
+        .par_iter()
+        .map(|path| {
+            Derivation::thread(path.to_dynamic_path())?
+                .store()?
+                .realise()
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
+    for (i, result) in results.iter().enumerate() {
+        eprintln!("{i}/{}: {}", results.len(), result.len());
     }
 
     Ok(())
