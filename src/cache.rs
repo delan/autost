@@ -1,10 +1,17 @@
 use std::{
     collections::BTreeSet, env::current_exe, fmt::Display, fs::read, path::Path, sync::LazyLock,
+    thread::available_parallelism, time::Duration,
 };
 
 use jane_eyre::eyre::{self, bail, Context};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
-use sqlx::{Row, SqlitePool};
+use sqlx::{
+    pool::PoolOptions,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode},
+    Row, SqlitePool,
+};
+use tokio::runtime::Runtime;
 
 use crate::{
     migrations::run_migrations,
@@ -232,7 +239,17 @@ impl Derivation {
 }
 async fn pool() -> eyre::Result<SqlitePool> {
     run_migrations().await?;
-    Ok(SqlitePool::connect("autost.sqlite").await?)
+    let result = PoolOptions::new()
+        .min_connections(available_parallelism()?.get().try_into()?)
+        .max_connections(available_parallelism()?.get().try_into()?)
+        .connect("autost.sqlite")
+        // .connect(":memory:")
+        .await?;
+    result.set_connect_options(SqliteConnectOptions::new().journal_mode(SqliteJournalMode::Wal));
+    // let mut conn = result.acquire().await?;
+    // sqlx::migrate!().run(&mut conn).await?;
+
+    Ok(result)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -245,20 +262,26 @@ impl Builder {}
 pub async fn test() -> eyre::Result<()> {
     let pool = pool().await?;
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-    for (i, path) in top_level_post_paths.iter().enumerate() {
-        let post_file = Derivation::read_file(path.to_dynamic_path())
-            .store(&pool)
-            .await?;
-        let post_meta = Derivation::filtered_post(&post_file).store(&pool).await?;
-        let output = post_meta.realise_string(&pool).await?;
-        eprint!(
-            "... {}/{} (last output len = {})\r",
-            i,
-            top_level_post_paths.len(),
-            output.len()
-        );
+    let runtime = Runtime::new()?;
+    let results = top_level_post_paths
+        .par_iter()
+        .enumerate()
+        .map(|(i, path)| -> eyre::Result<_> {
+            runtime.block_on(async {
+                dbg!(i);
+                let post_file = Derivation::read_file(path.to_dynamic_path())
+                    .store(&pool)
+                    .await?;
+                let post_meta = Derivation::filtered_post(&post_file).store(&pool).await?;
+                let output = post_meta.realise_string(&pool).await?;
+                Ok(output.len())
+            })
+        })
+        .collect::<Vec<_>>();
+    for result in results {
+        let _ = dbg!(result);
     }
-    eprintln!();
+    runtime.shutdown_timeout(Duration::from_secs(60));
 
     Ok(())
 }

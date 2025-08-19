@@ -2,8 +2,9 @@ use std::fs::{create_dir_all, exists, read_dir};
 
 use jane_eyre::eyre::{self, bail};
 use sqlx::{
-    migrate::Migrate as _, sqlite::SqliteConnectOptions, ConnectOptions as _, Connection as _,
-    Sqlite, SqliteConnection, Transaction,
+    migrate::Migrate as _,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode},
+    ConnectOptions as _, Connection as _, Sqlite, SqliteConnection, Transaction,
 };
 use tracing::{info, trace};
 
@@ -57,6 +58,7 @@ pub async fn run_migrations() -> eyre::Result<SqliteConnection> {
     info!("running database migrations (or creating database)");
     let mut conn = SqliteConnectOptions::new()
         .filename("autost.sqlite")
+        .journal_mode(SqliteJournalMode::Wal)
         .create_if_missing(true)
         .connect()
         .await?;
