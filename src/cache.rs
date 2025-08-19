@@ -2,7 +2,7 @@ use std::{
     collections::BTreeSet,
     env::current_exe,
     fmt::Display,
-    fs::{read, File},
+    fs::{exists, read, File},
     io::Write,
     path::Path,
     sync::LazyLock,
@@ -166,9 +166,12 @@ impl Derivation {
     }
 
     fn store(self) -> eyre::Result<Self> {
-        let mut file = atomic_writer(Self::derivation_path(self.id()))?;
-        bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
-        file.commit()?;
+        let path = Self::derivation_path(self.id());
+        if !exists(&path)? {
+            let mut file = atomic_writer(path)?;
+            bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
+            file.commit()?;
+        }
 
         Ok(self)
     }
