@@ -16,7 +16,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT},
-    FilteredPost, UnsafePost,
+    render_markdown, FilteredPost, UnsafePost,
 };
 
 pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
@@ -130,20 +130,36 @@ impl From<DerivationInit> for Derivation {
     }
 }
 impl Derivation {
-    fn read_file(path: DynamicPath) -> Self {
-        Self::from(DerivationInit {
+    fn read_file(path: DynamicPath) -> eyre::Result<Self> {
+        Ok(Self::from(DerivationInit {
             input_derivations: [].into_iter().collect(),
             input_sources: [path].into_iter().collect(),
             builder: Builder::ReadFile,
-        })
+        }))
     }
 
-    fn filtered_post(post_file: &Derivation) -> Self {
-        Self::from(DerivationInit {
-            input_derivations: [post_file.id()].into_iter().collect(),
+    fn render_markdown(path: DynamicPath) -> eyre::Result<Self> {
+        Ok(Self::from(DerivationInit {
+            input_derivations: [Self::read_file(path)?.store()?.id()].into_iter().collect(),
+            input_sources: [].into_iter().collect(),
+            builder: Builder::RenderMarkdown,
+        }))
+    }
+
+    fn filtered_post(path: DynamicPath) -> eyre::Result<Self> {
+        let DynamicPath::Posts(posts_path) = &path else {
+            bail!("path is not a posts path")
+        };
+        let input_derivations = if posts_path.is_markdown_post() {
+            [Self::render_markdown(path)?.store()?.id()]
+        } else {
+            [Self::read_file(path)?.store()?.id()]
+        };
+        Ok(Self::from(DerivationInit {
+            input_derivations: input_derivations.into_iter().collect(),
             input_sources: [].into_iter().collect(),
             builder: Builder::FilteredPost,
-        })
+        }))
     }
 
     fn id(&self) -> Id {
@@ -197,14 +213,22 @@ impl Derivation {
                     };
                     read(path)?
                 }
-                Builder::FilteredPost => {
-                    let [(_derivation, source)] = input_derivations.iter().collect::<Vec<_>>()[..]
+                Builder::RenderMarkdown => {
+                    let [(_derivation, unsafe_markdown)] =
+                        input_derivations.iter().collect::<Vec<_>>()[..]
                     else {
                         bail!("expected exactly one derivation in `input_derivations`");
                     };
-                    // TODO: handle html case
-                    let source = str::from_utf8(source)?;
-                    let post = UnsafePost::with_markdown(source);
+                    render_markdown(str::from_utf8(unsafe_markdown)?).into_bytes()
+                }
+                Builder::FilteredPost => {
+                    let [(_derivation, unsafe_html)] =
+                        input_derivations.iter().collect::<Vec<_>>()[..]
+                    else {
+                        bail!("expected exactly one derivation in `input_derivations`");
+                    };
+                    let unsafe_html = str::from_utf8(unsafe_html)?;
+                    let post = UnsafePost::with_html(unsafe_html);
                     let post = FilteredPost::filter(post)?;
                     bincode::serde::encode_to_vec(&post, standard())?
                 }
@@ -219,6 +243,7 @@ impl Derivation {
 #[derive(Debug, Deserialize, Serialize)]
 enum Builder {
     ReadFile,
+    RenderMarkdown,
     FilteredPost,
 }
 impl Builder {}
@@ -229,8 +254,7 @@ pub async fn test() -> eyre::Result<()> {
         .par_iter()
         .enumerate()
         .map(|(i, path)| -> eyre::Result<_> {
-            let post_file = Derivation::read_file(path.to_dynamic_path()).store()?;
-            let post_meta = Derivation::filtered_post(&post_file).store()?;
+            let post_meta = Derivation::filtered_post(path.to_dynamic_path())?.store()?;
             let output = post_meta.realise()?;
             Ok((i, output.len()))
         })
@@ -266,7 +290,8 @@ mod test {
 
     #[test]
     fn test_derivation() -> eyre::Result<()> {
-        let derivation = Derivation::read_file(DynamicPath::from_site_root_relative_path("posts")?);
+        let derivation =
+            Derivation::read_file(DynamicPath::from_site_root_relative_path("posts")?)?;
         assert_eq!(serde_json::to_string(&derivation)?, "{\"output\":\"01faec63b93c60e5d3696931e4d17bab7ce863619b4f37bf8c68af28673b0927\",\"input_derivations\":[],\"input_sources\":[\"posts\"],\"builder\":\"ReadFile\"}");
 
         Ok(())
