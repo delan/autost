@@ -156,7 +156,7 @@ pub struct FilteredPost {
     pub safe_html: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Thread {
     pub path: Option<PostsPath>,
     pub posts: Vec<FilteredPost>,
@@ -288,6 +288,71 @@ fn test_is_main_self_author() -> eyre::Result<()> {
 }
 
 impl Thread {
+    pub fn new(mut post: FilteredPost, references: Vec<FilteredPost>) -> Self {
+        let path = post.post.path.clone();
+        let extra_tags = SETTINGS
+            .extra_archived_thread_tags(&post)
+            .iter()
+            .filter(|tag| !post.meta.front_matter.tags.contains(tag))
+            .map(|tag| tag.to_owned())
+            .collect::<Vec<_>>();
+        let combined_tags = extra_tags
+            .into_iter()
+            .chain(post.meta.front_matter.tags)
+            .collect();
+        let resolved_tags = SETTINGS.resolve_tags(combined_tags);
+        post.meta.front_matter.tags = resolved_tags;
+        let mut meta = post.meta.clone();
+
+        let mut posts = references;
+        posts.push(post);
+
+        // TODO: skip threads with other authors?
+        // TODO: skip threads with private or logged-in-only authors?
+        // TODO: gate sensitive posts behind an interaction?
+
+        // for thread metadata, take the last post that is not a transparent share (which MAY have
+        // tags, but SHOULD NOT have a title and MUST NOT have a body), and use its metadata if any.
+        let last_non_transparent_share_post = posts
+            .iter()
+            .rev()
+            .find(|post| !post.meta.front_matter.is_transparent_share);
+        meta.front_matter.title = last_non_transparent_share_post.map(|post| {
+            if let Some(title) = post
+                .meta
+                .front_matter
+                .title
+                .clone()
+                .filter(|t| !t.is_empty())
+            {
+                title
+            } else if let Some(author) = post.meta.front_matter.author.as_ref() {
+                format!("untitled post by {}", author.display_handle)
+            } else {
+                "untitled post".to_owned()
+            }
+        });
+
+        let og_image = last_non_transparent_share_post
+            .and_then(|post| post.meta.og_image.as_deref())
+            .map(|og_image| SETTINGS.base_url_relativise(og_image));
+        let og_description =
+            last_non_transparent_share_post.and_then(|post| post.meta.og_description.to_owned());
+        let needs_attachments = posts
+            .iter()
+            .flat_map(|post| post.meta.needs_attachments.iter())
+            .map(|attachment_path| attachment_path.to_owned())
+            .collect();
+        let meta = PostMeta {
+            front_matter: meta.front_matter,
+            needs_attachments,
+            og_image,
+            og_description,
+        };
+
+        Self { path, posts, meta }
+    }
+
     pub fn reverse_chronological(p: &Thread, q: &Thread) -> Ordering {
         p.meta
             .front_matter
@@ -383,75 +448,16 @@ pub struct PostInThread {
 impl TryFrom<FilteredPost> for Thread {
     type Error = eyre::Report;
 
-    fn try_from(mut post: FilteredPost) -> eyre::Result<Self> {
-        let path = post.post.path.clone();
-        let extra_tags = SETTINGS
-            .extra_archived_thread_tags(&post)
-            .iter()
-            .filter(|tag| !post.meta.front_matter.tags.contains(tag))
-            .map(|tag| tag.to_owned())
-            .collect::<Vec<_>>();
-        let combined_tags = extra_tags
-            .into_iter()
-            .chain(post.meta.front_matter.tags)
-            .collect();
-        let resolved_tags = SETTINGS.resolve_tags(combined_tags);
-        post.meta.front_matter.tags = resolved_tags;
-        let mut meta = post.meta.clone();
-
-        let mut posts = post
+    fn try_from(post: FilteredPost) -> eyre::Result<Self> {
+        let references = post
             .meta
             .front_matter
             .references
             .iter()
             .map(FilteredPost::load)
             .collect::<Result<Vec<_>, _>>()?;
-        posts.push(post);
 
-        // TODO: skip threads with other authors?
-        // TODO: skip threads with private or logged-in-only authors?
-        // TODO: gate sensitive posts behind an interaction?
-
-        // for thread metadata, take the last post that is not a transparent share (which MAY have
-        // tags, but SHOULD NOT have a title and MUST NOT have a body), and use its metadata if any.
-        let last_non_transparent_share_post = posts
-            .iter()
-            .rev()
-            .find(|post| !post.meta.front_matter.is_transparent_share);
-        meta.front_matter.title = last_non_transparent_share_post.map(|post| {
-            if let Some(title) = post
-                .meta
-                .front_matter
-                .title
-                .clone()
-                .filter(|t| !t.is_empty())
-            {
-                title
-            } else if let Some(author) = post.meta.front_matter.author.as_ref() {
-                format!("untitled post by {}", author.display_handle)
-            } else {
-                "untitled post".to_owned()
-            }
-        });
-
-        let og_image = last_non_transparent_share_post
-            .and_then(|post| post.meta.og_image.as_deref())
-            .map(|og_image| SETTINGS.base_url_relativise(og_image));
-        let og_description =
-            last_non_transparent_share_post.and_then(|post| post.meta.og_description.to_owned());
-        let needs_attachments = posts
-            .iter()
-            .flat_map(|post| post.meta.needs_attachments.iter())
-            .map(|attachment_path| attachment_path.to_owned())
-            .collect();
-        let meta = PostMeta {
-            front_matter: meta.front_matter,
-            needs_attachments,
-            og_image,
-            og_description,
-        };
-
-        Ok(Thread { path, posts, meta })
+        Ok(Self::new(post, references))
     }
 }
 
