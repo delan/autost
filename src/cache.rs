@@ -9,6 +9,7 @@ use std::{
 };
 
 use atomic_write_file::AtomicWriteFile;
+use bincode::config::standard;
 use jane_eyre::eyre::{self, bail, Context};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
@@ -105,7 +106,8 @@ struct DerivationInit {
 }
 impl ComputeId for DerivationInit {
     fn compute_id(&self) -> Id {
-        let result = serde_json::to_vec(self).expect("guaranteed by derive Serialize");
+        let result = bincode::serde::encode_to_vec(self, standard())
+            .expect("guaranteed by derive Serialize");
         Id(blake3::hash(&result))
     }
 }
@@ -125,11 +127,6 @@ impl From<DerivationInit> for Derivation {
             input_sources: value.input_sources,
             builder: value.builder,
         }
-    }
-}
-impl Display for Derivation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&serde_json::to_string(self).expect("guaranteed by derive Serialize"))
     }
 }
 impl Derivation {
@@ -162,14 +159,15 @@ impl Derivation {
     }
 
     fn load(id: Id) -> eyre::Result<Self> {
-        Ok(serde_json::from_reader(File::open(
-            Self::derivation_path(id)?,
-        )?)?)
+        Ok(bincode::serde::decode_from_std_read(
+            &mut File::open(Self::derivation_path(id)?)?,
+            standard(),
+        )?)
     }
 
     fn store(self) -> eyre::Result<Self> {
         let mut file = AtomicWriteFile::open(Self::derivation_path(self.id())?)?;
-        serde_json::to_writer(&mut file, &self)?;
+        bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
         file.commit()?;
 
         Ok(self)
@@ -205,7 +203,7 @@ impl Derivation {
                     let source = str::from_utf8(source)?;
                     let post = UnsafePost::with_markdown(source);
                     let post = FilteredPost::filter(post)?;
-                    serde_json::to_vec(&post)?
+                    bincode::serde::encode_to_vec(&post, standard())?
                 }
             };
             let mut file = AtomicWriteFile::open(self.output_path()?)?;
@@ -214,10 +212,6 @@ impl Derivation {
             Ok(content)
         })();
         result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
-    }
-
-    fn realise_string(&self) -> eyre::Result<String> {
-        Ok(String::from_utf8(self.realise()?)?)
     }
 }
 
@@ -236,12 +230,12 @@ pub async fn test() -> eyre::Result<()> {
         .map(|(i, path)| -> eyre::Result<_> {
             let post_file = Derivation::read_file(path.to_dynamic_path()).store()?;
             let post_meta = Derivation::filtered_post(&post_file).store()?;
-            let output = post_meta.realise_string()?;
+            let output = post_meta.realise()?;
             Ok((i, output.len()))
         })
         .collect::<Vec<_>>();
     for result in results {
-        dbg!(result?);
+        eprintln!("{:x?}", result?);
     }
 
     Ok(())
@@ -256,7 +250,7 @@ mod test {
     #[test]
     fn test_derivation() -> eyre::Result<()> {
         let derivation = Derivation::read_file(DynamicPath::from_site_root_relative_path("posts")?);
-        assert_eq!(serde_json::to_string(&derivation)?, "{\"output\":\"9f4a6eab337807103c4b31e7f1cfb30706e5662f6af4ce060db12d6625075247\",\"input_derivations\":[],\"input_sources\":[\"posts\"],\"builder\":\"ReadFile\"}");
+        assert_eq!(serde_json::to_string(&derivation)?, "{\"output\":\"01faec63b93c60e5d3696931e4d17bab7ce863619b4f37bf8c68af28673b0927\",\"input_derivations\":[],\"input_sources\":[\"posts\"],\"builder\":\"ReadFile\"}");
 
         Ok(())
     }
