@@ -3,17 +3,17 @@ use std::{
     fmt::{Debug, Display},
     fs::{exists, read, File},
     io::Write,
-    mem::take,
     path::Path,
     sync::LazyLock,
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
+use dashmap::DashMap;
 use jane_eyre::eyre::{self, bail, Context};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
-use tracing::{debug, trace};
+use tracing::debug;
 
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT},
@@ -30,6 +30,9 @@ pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
     hasher
 });
 
+static DERIVATION_CACHE: LazyLock<DashMap<Id, Derivation>> = LazyLock::new(DashMap::new);
+static FILTERED_POST_CACHE: LazyLock<DashMap<Id, FilteredPost>> = LazyLock::new(DashMap::new);
+
 pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> blake3::Hash {
     HASHER.clone().update(bytes.as_ref()).finalize()
 }
@@ -45,7 +48,7 @@ pub fn parse_hash_hex(input: &str) -> eyre::Result<blake3::Hash> {
     Ok(blake3::Hash::from_hex(input)?)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 struct Hash(blake3::Hash);
 impl PartialOrd for Hash {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -97,7 +100,7 @@ impl<'de> Visitor<'de> for HashVisitor {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct Id(Hash);
 trait ComputeId {
     fn compute_id(&self) -> Id;
@@ -166,8 +169,8 @@ struct FilteredPostInput {
 }
 #[derive(Debug)]
 struct ThreadInput {
-    post: Vec<u8>,
-    references: Vec<Vec<u8>>,
+    post: FilteredPost,
+    references: Vec<FilteredPost>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct Derivation {
@@ -229,8 +232,12 @@ impl Derivation {
         let post_derivation = Self::filtered_post(path)?.store()?;
         // TODO: can we avoid realise() during evaluation?
         // (probably not, because it’s like we’re forced to do an IFD in this situation?)
-        let post = post_derivation.realise()?;
-        let (post, _): (FilteredPost, _) = bincode::serde::decode_from_slice(&post, standard())?;
+        let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
+            post.clone()
+        } else {
+            let post = Self::load(post_derivation.id())?.expect()?;
+            bincode::serde::decode_from_slice(&post, standard())?.0
+        };
         let mut references = vec![];
         for path in post.meta.front_matter.references.iter() {
             references.push(Self::filtered_post(path.to_dynamic_path())?.store()?);
@@ -267,10 +274,14 @@ impl Derivation {
     }
 
     fn load(id: Id) -> eyre::Result<Self> {
-        Ok(bincode::serde::decode_from_std_read(
-            &mut File::open(Self::derivation_path(id))?,
-            standard(),
-        )?)
+        if let Some(result) = DERIVATION_CACHE.get(&id) {
+            Ok(result.clone())
+        } else {
+            Ok(bincode::serde::decode_from_std_read(
+                &mut File::open(Self::derivation_path(id))?,
+                standard(),
+            )?)
+        }
     }
 
     fn store(self) -> eyre::Result<Self> {
@@ -279,6 +290,7 @@ impl Derivation {
             let mut file = atomic_writer(path)?;
             bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
             file.commit()?;
+            DERIVATION_CACHE.insert(self.id(), self.clone());
         }
 
         Ok(self)
@@ -320,24 +332,27 @@ impl Derivation {
                     let unsafe_html = str::from_utf8(&unsafe_html)?;
                     let post = UnsafePost::with_html(unsafe_html);
                     let post = FilteredPost::filter(post)?;
-                    bincode::serde::encode_to_vec(&post, standard())?
+                    let output = bincode::serde::encode_to_vec(&post, standard())?;
+                    FILTERED_POST_CACHE.insert(self.id(), post);
+                    output
                 }
                 Builder::Thread { post, references } => {
+                    let load_filtered_post_cached = |id| -> eyre::Result<_> {
+                        if let Some(post) = FILTERED_POST_CACHE.get(&id) {
+                            Ok(post.clone())
+                        } else {
+                            let post = Self::load(id)?.expect()?;
+                            Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
+                        }
+                    };
                     let input = ThreadInput {
-                        post: Self::load(post.id())?.expect()?,
+                        post: load_filtered_post_cached(post.id())?,
                         references: references
                             .iter()
-                            .map(|post| Self::load(post.id())?.expect())
+                            .map(|post| load_filtered_post_cached(post.id()))
                             .collect::<eyre::Result<_>>()?,
                     };
-                    let (post, _): (FilteredPost, _) =
-                        bincode::serde::decode_from_slice(&input.post, standard())?;
-                    let references = input
-                        .references
-                        .iter()
-                        .map(|post| Ok(bincode::serde::decode_from_slice(post, standard())?.0))
-                        .collect::<eyre::Result<Vec<FilteredPost>>>()?;
-                    let thread = Thread::new(post, references);
+                    let thread = Thread::new(input.post, input.references);
                     bincode::serde::encode_to_vec(&thread, standard())?
                 }
             };
@@ -364,32 +379,20 @@ pub async fn test() -> eyre::Result<()> {
     Ok(())
 }
 
-fn build(mut new_derivations: Vec<Derivation>) -> eyre::Result<()> {
-    // TODO: do we need to avoid cycles somehow?
-    let mut derivation_tiers = Vec::default();
-    for depth in 0.. {
-        if new_derivations.is_empty() {
-            break;
-        }
-        let mut derivation_tier = vec![];
-        // TODO: parallel?
-        for derivation in take(&mut new_derivations) {
-            new_derivations.extend(derivation.needs().into_iter().cloned());
-            trace!("[{depth}] {derivation:?}");
-            derivation_tier.push(derivation);
-        }
-        derivation_tiers.push(derivation_tier);
-    }
-    for (i, tier) in derivation_tiers.into_iter().enumerate().rev() {
-        let results = tier
+fn build(derivations: Vec<Derivation>) -> eyre::Result<()> {
+    fn build(derivation: &Derivation) -> eyre::Result<()> {
+        let _needs = derivation
+            .needs()
             .into_par_iter()
-            .map(|derivation| derivation.realise())
-            .collect::<Vec<_>>();
-        trace!("tier {}, len {}", i, results.len());
-        for result in results {
-            result?;
-        }
+            .map(build)
+            .collect::<eyre::Result<Vec<_>>>()?;
+        derivation.realise()?;
+        Ok(())
     }
+    derivations
+        .par_iter()
+        .map(build)
+        .collect::<eyre::Result<Vec<_>>>()?;
 
     Ok(())
 }
