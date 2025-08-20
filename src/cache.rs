@@ -1,6 +1,6 @@
 use std::{
     env::current_exe,
-    fmt::Display,
+    fmt::{Debug, Display},
     fs::{exists, read, File},
     io::Write,
     mem::take,
@@ -13,7 +13,7 @@ use bincode::config::standard;
 use jane_eyre::eyre::{self, bail, Context};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::{debug, trace};
 
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT},
@@ -59,7 +59,8 @@ impl Ord for Hash {
 }
 impl Display for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.to_hex().as_str())
+        let hash = self.0.to_hex();
+        write!(f, "{}...", &hash.as_str()[0..13])
     }
 }
 impl Serialize for Hash {
@@ -103,7 +104,7 @@ trait ComputeId {
 }
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -123,6 +124,30 @@ enum Builder {
         post: Box<Derivation>,
         references: Vec<Derivation>,
     },
+}
+impl Display for Builder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Builder::ReadFile { path, hash } => f
+                .debug_struct("ReadFile")
+                .field("path", &UseDisplay(path))
+                .field("hash", &UseDisplay(hash))
+                .finish(),
+            Builder::RenderMarkdown { file } => f
+                .debug_struct("RenderMarkdown")
+                .field("file", &UseDisplay(&**file))
+                .finish(),
+            Builder::FilteredPost { file } => f
+                .debug_struct("FilteredPost")
+                .field("file", &UseDisplay(&**file))
+                .finish(),
+            Builder::Thread { post, references } => f
+                .debug_struct("Thread")
+                .field("post", &UseDisplay(&**post))
+                .field("references", &VecDisplay(references))
+                .finish(),
+        }
+    }
 }
 impl ComputeId for Builder {
     fn compute_id(&self) -> Id {
@@ -148,6 +173,25 @@ struct ThreadInput {
 struct Derivation {
     output: Id,
     builder: Builder,
+}
+impl Display for Derivation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Derivation({} -> {})", self.output.0, self.builder)
+    }
+}
+struct UseDisplay<'d, D: Display>(&'d D);
+struct VecDisplay<'d, D: Display>(&'d [D]);
+impl<'d, D: Display> Debug for UseDisplay<'d, D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl<'d, D: Display> Debug for VecDisplay<'d, D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list()
+            .entries(self.0.iter().map(|value| UseDisplay(value)))
+            .finish()
+    }
 }
 impl From<Builder> for Derivation {
     fn from(builder: Builder) -> Self {
@@ -250,7 +294,7 @@ impl Derivation {
             return Ok(result);
         }
         // build the derivation and cache its output.
-        info!("building {self:?}");
+        debug!("building {self}");
         let result = (|| {
             let content = match &self.builder {
                 Builder::ReadFile { path, hash } => {
@@ -331,7 +375,7 @@ fn build(mut new_derivations: Vec<Derivation>) -> eyre::Result<()> {
         // TODO: parallel?
         for derivation in take(&mut new_derivations) {
             new_derivations.extend(derivation.needs().into_iter().cloned());
-            debug!("[{depth}] {derivation:?}");
+            trace!("[{depth}] {derivation:?}");
             derivation_tier.push(derivation);
         }
         derivation_tiers.push(derivation_tier);
@@ -341,7 +385,7 @@ fn build(mut new_derivations: Vec<Derivation>) -> eyre::Result<()> {
             .into_par_iter()
             .map(|derivation| derivation.realise())
             .collect::<Vec<_>>();
-        info!("tier {}, len {}", i, results.len());
+        trace!("tier {}, len {}", i, results.len());
         for result in results {
             result?;
         }

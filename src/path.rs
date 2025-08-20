@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     fs::{hard_link, read_dir, DirEntry},
     io::ErrorKind,
     marker::PhantomData,
@@ -589,6 +590,12 @@ impl<Kind: PathKind> RelativePath<Kind> {
 
         components.join("/")
     }
+
+    fn site_root_relative_path_for_display(&self) -> &str {
+        self.inner
+            .to_str()
+            .expect("guaranteed by RelativePath::new")
+    }
 }
 
 impl<Kind: PathKind> Serialize for RelativePath<Kind> {
@@ -646,6 +653,25 @@ impl DynamicPath {
             DynamicPath::Site(path) => path.site_root_relative_path_for_db(),
             DynamicPath::Attachments(path) => path.site_root_relative_path_for_db(),
             DynamicPath::Cache(path) => path.site_root_relative_path_for_db(),
+        }
+    }
+}
+
+impl Display for DynamicPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DynamicPath::Posts(path) => {
+                write!(f, "{:?}", path.site_root_relative_path_for_display())
+            }
+            DynamicPath::Site(path) => {
+                write!(f, "{:?}", path.site_root_relative_path_for_display())
+            }
+            DynamicPath::Attachments(path) => {
+                write!(f, "{:?}", path.site_root_relative_path_for_display())
+            }
+            DynamicPath::Cache(path) => {
+                write!(f, "{:?}", path.site_root_relative_path_for_display())
+            }
         }
     }
 }
