@@ -1,18 +1,19 @@
 use std::{
-    collections::BTreeSet,
     env::current_exe,
     fmt::Display,
     fs::{exists, read, File},
     io::Write,
+    mem::take,
     path::Path,
     sync::LazyLock,
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
-use jane_eyre::eyre::{self, bail, Context, OptionExt};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator as _};
+use jane_eyre::eyre::{self, bail, Context};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
+use tracing::{debug, info};
 
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT},
@@ -45,26 +46,23 @@ pub fn parse_hash_hex(input: &str) -> eyre::Result<blake3::Hash> {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Id(blake3::Hash);
-trait ComputeId {
-    fn compute_id(&self) -> Id;
-}
-impl PartialOrd for Id {
+struct Hash(blake3::Hash);
+impl PartialOrd for Hash {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
-impl Ord for Id {
+impl Ord for Hash {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.0.as_bytes().cmp(other.0.as_bytes())
     }
 }
-impl Display for Id {
+impl Display for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.to_hex().as_str())
     }
 }
-impl Serialize for Id {
+impl Serialize for Hash {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -72,17 +70,17 @@ impl Serialize for Id {
         serializer.serialize_str(self.0.to_hex().as_str())
     }
 }
-impl<'de> Deserialize<'de> for Id {
+impl<'de> Deserialize<'de> for Hash {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        deserializer.deserialize_str(IdVisitor)
+        deserializer.deserialize_str(HashVisitor)
     }
 }
-struct IdVisitor;
-impl<'de> Visitor<'de> for IdVisitor {
-    type Value = Id;
+struct HashVisitor;
+impl<'de> Visitor<'de> for HashVisitor {
+    type Value = Hash;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str("a string that is 64 hex digits")
@@ -94,55 +92,78 @@ impl<'de> Visitor<'de> for IdVisitor {
     {
         let result = blake3::Hash::from_hex(v)
             .map_err(|e| E::custom(format!("failed to parse hash: {e:?}")))?;
-        Ok(Id(result))
+        Ok(Hash(result))
     }
 }
 
-#[derive(Debug, Serialize)]
-struct DerivationInit {
-    input_derivations: Vec<Id>,
-    input_sources: BTreeSet<DynamicPath>,
-    builder: Builder,
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct Id(Hash);
+trait ComputeId {
+    fn compute_id(&self) -> Id;
 }
-impl ComputeId for DerivationInit {
+impl Display for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+enum Builder {
+    ReadFile {
+        path: DynamicPath,
+        hash: Hash,
+    },
+    RenderMarkdown {
+        file: Box<Derivation>,
+    },
+    FilteredPost {
+        file: Box<Derivation>,
+    },
+    Thread {
+        post: Box<Derivation>,
+        references: Vec<Derivation>,
+    },
+}
+impl ComputeId for Builder {
     fn compute_id(&self) -> Id {
         let result = bincode::serde::encode_to_vec(self, standard())
             .expect("guaranteed by derive Serialize");
-        Id(blake3::hash(&result))
+        Id(Hash(blake3::hash(&result)))
     }
 }
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug)]
+struct RenderMarkdownInput {
+    file: Vec<u8>,
+}
+#[derive(Debug)]
+struct FilteredPostInput {
+    file: Vec<u8>,
+}
+#[derive(Debug)]
+struct ThreadInput {
+    post: Vec<u8>,
+    references: Vec<Vec<u8>>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct Derivation {
     output: Id,
-    input_derivations: Vec<Id>,
-    input_sources: BTreeSet<DynamicPath>,
     builder: Builder,
 }
-impl From<DerivationInit> for Derivation {
-    fn from(value: DerivationInit) -> Self {
-        let output = value.compute_id();
-        Self {
-            output,
-            input_derivations: value.input_derivations,
-            input_sources: value.input_sources,
-            builder: value.builder,
-        }
+impl From<Builder> for Derivation {
+    fn from(builder: Builder) -> Self {
+        let output = builder.compute_id();
+        Self { output, builder }
     }
 }
 impl Derivation {
     fn read_file(path: DynamicPath) -> eyre::Result<Self> {
-        Ok(Self::from(DerivationInit {
-            input_derivations: [].into_iter().collect(),
-            input_sources: [path].into_iter().collect(),
-            builder: Builder::ReadFile,
-        }))
+        let hash = Hash(blake3::hash(&read(&path)?));
+        Ok(Self::from(Builder::ReadFile { path, hash }))
     }
 
     fn render_markdown(path: DynamicPath) -> eyre::Result<Self> {
-        Ok(Self::from(DerivationInit {
-            input_derivations: [Self::read_file(path)?.store()?.id()].into_iter().collect(),
-            input_sources: [].into_iter().collect(),
-            builder: Builder::RenderMarkdown,
+        Ok(Self::from(Builder::RenderMarkdown {
+            file: Self::read_file(path)?.store()?.into(),
         }))
     }
 
@@ -150,32 +171,29 @@ impl Derivation {
         let DynamicPath::Posts(posts_path) = &path else {
             bail!("path is not a posts path")
         };
-        let input_derivations = if posts_path.is_markdown_post() {
-            [Self::render_markdown(path)?.store()?.id()]
+        let file = if posts_path.is_markdown_post() {
+            Self::render_markdown(path)?
         } else {
-            [Self::read_file(path)?.store()?.id()]
+            Self::read_file(path)?
         };
-        Ok(Self::from(DerivationInit {
-            input_derivations: input_derivations.into_iter().collect(),
-            input_sources: [].into_iter().collect(),
-            builder: Builder::FilteredPost,
+        Ok(Self::from(Builder::FilteredPost {
+            file: file.store()?.into(),
         }))
     }
 
     fn thread(path: DynamicPath) -> eyre::Result<Self> {
         let post_derivation = Self::filtered_post(path)?.store()?;
         // TODO: can we avoid realise() during evaluation?
+        // (probably not, because it’s like we’re forced to do an IFD in this situation?)
         let post = post_derivation.realise()?;
         let (post, _): (FilteredPost, _) = bincode::serde::decode_from_slice(&post, standard())?;
-        // first input is `post`, other inputs are `references`
-        let mut input_derivations = vec![post_derivation.id()];
+        let mut references = vec![];
         for path in post.meta.front_matter.references.iter() {
-            input_derivations.push(Self::filtered_post(path.to_dynamic_path())?.store()?.id());
+            references.push(Self::filtered_post(path.to_dynamic_path())?.store()?);
         }
-        Ok(Self::from(DerivationInit {
-            input_derivations,
-            input_sources: [].into_iter().collect(),
-            builder: Builder::Thread,
+        Ok(Self::from(Builder::Thread {
+            post: post_derivation.into(),
+            references,
         }))
     }
 
@@ -189,6 +207,19 @@ impl Derivation {
 
     fn output_path(&self) -> String {
         format!("cache/{}.out", self.id())
+    }
+
+    fn needs(&self) -> Vec<&Derivation> {
+        match &self.builder {
+            Builder::ReadFile { .. } => vec![],
+            Builder::RenderMarkdown { file } => vec![&**file],
+            Builder::FilteredPost { file } => vec![&**file],
+            Builder::Thread { post, references } => {
+                let mut result = vec![&**post];
+                result.extend(references.iter());
+                result
+            }
+        }
     }
 
     fn load(id: Id) -> eyre::Result<Self> {
@@ -209,57 +240,58 @@ impl Derivation {
         Ok(self)
     }
 
+    fn expect(&self) -> eyre::Result<Vec<u8>> {
+        Ok(read(self.output_path())?)
+    }
+
     fn realise(&self) -> eyre::Result<Vec<u8>> {
-        // realise any derivations this derivation depends on.
-        let mut input_derivations = vec![];
-        for id in &self.input_derivations {
-            let derivation = Self::load(*id)?;
-            let content = derivation.realise()?;
-            input_derivations.push((derivation, content));
-        }
         // use cached output, if previously realised.
         if let Ok(result) = read(self.output_path()) {
             return Ok(result);
         }
         // build the derivation and cache its output.
+        info!("building {self:?}");
         let result = (|| {
-            let content = match self.builder {
-                Builder::ReadFile => {
-                    let [path] = self.input_sources.iter().collect::<Vec<_>>()[..] else {
-                        bail!("expected exactly one path in `input_sources`");
-                    };
-                    read(path)?
+            let content = match &self.builder {
+                Builder::ReadFile { path, hash } => {
+                    let output = read(path)?;
+                    let actual_hash = Hash(blake3::hash(&output));
+                    if &actual_hash != hash {
+                        bail!("hash mismatch! expected {hash}, actual {actual_hash}");
+                    }
+                    output
                 }
-                Builder::RenderMarkdown => {
-                    let [(_derivation, unsafe_markdown)] =
-                        input_derivations.iter().collect::<Vec<_>>()[..]
-                    else {
-                        bail!("expected exactly one derivation in `input_derivations`");
+                Builder::RenderMarkdown { file } => {
+                    let input = RenderMarkdownInput {
+                        file: Self::load(file.id())?.expect()?,
                     };
-                    render_markdown(str::from_utf8(unsafe_markdown)?).into_bytes()
+                    let unsafe_markdown = input.file;
+                    render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes()
                 }
-                Builder::FilteredPost => {
-                    let [(_derivation, unsafe_html)] =
-                        input_derivations.iter().collect::<Vec<_>>()[..]
-                    else {
-                        bail!("expected exactly one derivation in `input_derivations`");
+                Builder::FilteredPost { file } => {
+                    let input = FilteredPostInput {
+                        file: Self::load(file.id())?.expect()?,
                     };
-                    let unsafe_html = str::from_utf8(unsafe_html)?;
+                    let unsafe_html = input.file;
+                    let unsafe_html = str::from_utf8(&unsafe_html)?;
                     let post = UnsafePost::with_html(unsafe_html);
                     let post = FilteredPost::filter(post)?;
                     bincode::serde::encode_to_vec(&post, standard())?
                 }
-                Builder::Thread => {
-                    let ((_derivation, post), references) = input_derivations
-                        .split_first()
-                        .ok_or_eyre("expected at least one derivation in `input_derivations`")?;
+                Builder::Thread { post, references } => {
+                    let input = ThreadInput {
+                        post: Self::load(post.id())?.expect()?,
+                        references: references
+                            .iter()
+                            .map(|post| Self::load(post.id())?.expect())
+                            .collect::<eyre::Result<_>>()?,
+                    };
                     let (post, _): (FilteredPost, _) =
-                        bincode::serde::decode_from_slice(post, standard())?;
-                    let references = references
+                        bincode::serde::decode_from_slice(&input.post, standard())?;
+                    let references = input
+                        .references
                         .iter()
-                        .map(|(_derivation, post)| {
-                            Ok(bincode::serde::decode_from_slice(post, standard())?.0)
-                        })
+                        .map(|post| Ok(bincode::serde::decode_from_slice(post, standard())?.0))
                         .collect::<eyre::Result<Vec<FilteredPost>>>()?;
                     let thread = Thread::new(post, references);
                     bincode::serde::encode_to_vec(&thread, standard())?
@@ -272,40 +304,47 @@ impl Derivation {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-enum Builder {
-    ReadFile,
-    RenderMarkdown,
-    FilteredPost,
-    Thread,
-}
-impl Builder {}
-
 pub async fn test() -> eyre::Result<()> {
-    // HACK: realise() all the FilteredPost in parallel first, so we can realise() all the Thread in parallel
-    // TODO: avoid doing this somehow
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-    let results = top_level_post_paths
+    let filtered_posts = top_level_post_paths
         .par_iter()
-        .map(|path| {
-            Derivation::filtered_post(path.to_dynamic_path())?
-                .store()?
-                .realise()
-        })
+        .map(|path| Derivation::filtered_post(path.to_dynamic_path()))
         .collect::<eyre::Result<Vec<_>>>()?;
-    for (i, result) in results.iter().enumerate() {
-        eprintln!("{i}/{}: {}", results.len(), result.len());
+    build(filtered_posts)?;
+    let threads = top_level_post_paths
+        .par_iter()
+        .map(|path| Derivation::thread(path.to_dynamic_path()))
+        .collect::<eyre::Result<Vec<_>>>()?;
+    build(threads)?;
+
+    Ok(())
+}
+
+fn build(mut new_derivations: Vec<Derivation>) -> eyre::Result<()> {
+    // TODO: do we need to avoid cycles somehow?
+    let mut derivation_tiers = Vec::default();
+    for depth in 0.. {
+        if new_derivations.is_empty() {
+            break;
+        }
+        let mut derivation_tier = vec![];
+        // TODO: parallel?
+        for derivation in take(&mut new_derivations) {
+            new_derivations.extend(derivation.needs().into_iter().cloned());
+            debug!("[{depth}] {derivation:?}");
+            derivation_tier.push(derivation);
+        }
+        derivation_tiers.push(derivation_tier);
     }
-    let results = top_level_post_paths
-        .par_iter()
-        .map(|path| {
-            Derivation::thread(path.to_dynamic_path())?
-                .store()?
-                .realise()
-        })
-        .collect::<eyre::Result<Vec<_>>>()?;
-    for (i, result) in results.iter().enumerate() {
-        eprintln!("{i}/{}: {}", results.len(), result.len());
+    for (i, tier) in derivation_tiers.into_iter().enumerate().rev() {
+        let results = tier
+            .into_par_iter()
+            .map(|derivation| derivation.realise())
+            .collect::<Vec<_>>();
+        info!("tier {}, len {}", i, results.len());
+        for result in results {
+            result?;
+        }
     }
 
     Ok(())
@@ -325,20 +364,4 @@ fn atomic_write(path: impl AsRef<Path>, content: impl AsRef<[u8]>) -> eyre::Resu
     file.commit()?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use jane_eyre::eyre;
-
-    use crate::{cache::Derivation, path::DynamicPath};
-
-    #[test]
-    fn test_derivation() -> eyre::Result<()> {
-        let derivation =
-            Derivation::read_file(DynamicPath::from_site_root_relative_path("posts")?)?;
-        assert_eq!(serde_json::to_string(&derivation)?, "{\"output\":\"01faec63b93c60e5d3696931e4d17bab7ce863619b4f37bf8c68af28673b0927\",\"input_derivations\":[],\"input_sources\":[\"posts\"],\"builder\":\"ReadFile\"}");
-
-        Ok(())
-    }
 }
