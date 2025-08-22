@@ -1,5 +1,5 @@
 use std::{
-    env::current_exe, fmt::{Debug, Display}, fs::{exists, read, File}, io::Write, path::Path, pin::Pin, sync::LazyLock
+    env::current_exe, fmt::{Debug, Display}, fs::{exists}, io::Write, path::Path, pin::Pin, sync::LazyLock
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
@@ -7,9 +7,8 @@ use bincode::config::standard;
 use dashmap::DashMap;
 use futures::FutureExt;
 use jane_eyre::eyre::{self, bail, Context};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
-use tokio::spawn;
+use tokio::{fs::read, spawn};
 use tracing::debug;
 
 use crate::{
@@ -201,7 +200,7 @@ impl From<Builder> for Derivation {
 }
 impl Derivation {
     async fn read_file(path: DynamicPath) -> eyre::Result<Self> {
-        let hash = Hash(blake3::hash(&read(&path)?));
+        let hash = Hash(blake3::hash(&read(&path).await?));
         Ok(Self::from(Builder::ReadFile { path, hash }))
     }
 
@@ -232,7 +231,7 @@ impl Derivation {
         let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
             post.clone()
         } else {
-            let post = Self::load(post_derivation.id())?.expect()?;
+            let post = Self::load(post_derivation.id()).await?.expect().await?;
             bincode::serde::decode_from_slice(&post, standard())?.0
         };
         let mut references = vec![];
@@ -270,14 +269,14 @@ impl Derivation {
         }
     }
 
-    fn load(id: Id) -> eyre::Result<Self> {
+    async fn load(id: Id) -> eyre::Result<Self> {
         if let Some(result) = DERIVATION_CACHE.get(&id) {
             Ok(result.clone())
         } else {
-            Ok(bincode::serde::decode_from_std_read(
-                &mut File::open(Self::derivation_path(id))?,
+            Ok(bincode::serde::decode_from_slice(
+                &read(Self::derivation_path(id)).await?,
                 standard(),
-            )?)
+            )?.0)
         }
     }
 
@@ -293,21 +292,21 @@ impl Derivation {
         Ok(self)
     }
 
-    fn expect(&self) -> eyre::Result<Vec<u8>> {
-        Ok(read(self.output_path())?)
+    async fn expect(&self) -> eyre::Result<Vec<u8>> {
+        Ok(read(self.output_path()).await?)
     }
 
     async fn realise(&self) -> eyre::Result<Vec<u8>> {
         // use cached output, if previously realised.
-        if let Ok(result) = read(self.output_path()) {
+        if let Ok(result) = read(self.output_path()).await {
             return Ok(result);
         }
         // build the derivation and cache its output.
         debug!("building {self}");
-        let result = (|| {
+        let result = (async || {
             let content = match &self.builder {
                 Builder::ReadFile { path, hash } => {
-                    let output = read(path)?;
+                    let output = read(path).await?;
                     let actual_hash = Hash(blake3::hash(&output));
                     if &actual_hash != hash {
                         bail!("hash mismatch! expected {hash}, actual {actual_hash}");
@@ -316,14 +315,14 @@ impl Derivation {
                 }
                 Builder::RenderMarkdown { file } => {
                     let input = RenderMarkdownInput {
-                        file: Self::load(file.id())?.expect()?,
+                        file: Self::load(file.id()).await?.expect().await?,
                     };
                     let unsafe_markdown = input.file;
                     render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes()
                 }
                 Builder::FilteredPost { file } => {
                     let input = FilteredPostInput {
-                        file: Self::load(file.id())?.expect()?,
+                        file: Self::load(file.id()).await?.expect().await?,
                     };
                     let unsafe_html = input.file;
                     let unsafe_html = str::from_utf8(&unsafe_html)?;
@@ -334,20 +333,25 @@ impl Derivation {
                     output
                 }
                 Builder::Thread { post, references } => {
-                    let load_filtered_post_cached = |id| -> eyre::Result<_> {
+                    let load_filtered_post_cached = async |id| -> eyre::Result<_> {
                         if let Some(post) = FILTERED_POST_CACHE.get(&id) {
                             Ok(post.clone())
                         } else {
-                            let post = Self::load(id)?.expect()?;
+                            let post = Self::load(id).await?.expect().await?;
                             Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
                         }
                     };
+                    let post_result = spawn(load_filtered_post_cached(post.id()));
+                    let mut references_results = vec![];
+                    for post in references
+                        .iter()
+                        .map(|post| spawn(load_filtered_post_cached(post.id())))
+                        .collect::<Vec<_>>() {
+                        references_results.push(post.await??);
+                    }
                     let input = ThreadInput {
-                        post: load_filtered_post_cached(post.id())?,
-                        references: references
-                            .iter()
-                            .map(|post| load_filtered_post_cached(post.id()))
-                            .collect::<eyre::Result<_>>()?,
+                        post: post_result.await??,
+                        references: references_results,
                     };
                     let thread = Thread::new(input.post, input.references);
                     bincode::serde::encode_to_vec(&thread, standard())?
@@ -356,7 +360,7 @@ impl Derivation {
             atomic_write(self.output_path(), &content)?;
             Ok(content)
         })();
-        result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+        result.await.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
     }
 }
 
