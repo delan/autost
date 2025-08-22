@@ -1,18 +1,15 @@
 use std::{
-    env::current_exe,
-    fmt::{Debug, Display},
-    fs::{exists, read, File},
-    io::Write,
-    path::Path,
-    sync::LazyLock,
+    env::current_exe, fmt::{Debug, Display}, fs::{exists, read, File}, io::Write, path::Path, pin::Pin, sync::LazyLock
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
 use dashmap::DashMap;
+use futures::FutureExt;
 use jane_eyre::eyre::{self, bail, Context};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
 use serde::{de::Visitor, Deserialize, Serialize};
+use tokio::spawn;
 use tracing::debug;
 
 use crate::{
@@ -203,33 +200,33 @@ impl From<Builder> for Derivation {
     }
 }
 impl Derivation {
-    fn read_file(path: DynamicPath) -> eyre::Result<Self> {
+    async fn read_file(path: DynamicPath) -> eyre::Result<Self> {
         let hash = Hash(blake3::hash(&read(&path)?));
         Ok(Self::from(Builder::ReadFile { path, hash }))
     }
 
-    fn render_markdown(path: DynamicPath) -> eyre::Result<Self> {
+    async fn render_markdown(path: DynamicPath) -> eyre::Result<Self> {
         Ok(Self::from(Builder::RenderMarkdown {
-            file: Self::read_file(path)?.store()?.into(),
+            file: Self::read_file(path).await?.store()?.into(),
         }))
     }
 
-    fn filtered_post(path: DynamicPath) -> eyre::Result<Self> {
+    async fn filtered_post(path: DynamicPath) -> eyre::Result<Self> {
         let DynamicPath::Posts(posts_path) = &path else {
             bail!("path is not a posts path")
         };
         let file = if posts_path.is_markdown_post() {
-            Self::render_markdown(path)?
+            Self::render_markdown(path).await?
         } else {
-            Self::read_file(path)?
+            Self::read_file(path).await?
         };
         Ok(Self::from(Builder::FilteredPost {
             file: file.store()?.into(),
         }))
     }
 
-    fn thread(path: DynamicPath) -> eyre::Result<Self> {
-        let post_derivation = Self::filtered_post(path)?.store()?;
+    async fn thread(path: DynamicPath) -> eyre::Result<Self> {
+        let post_derivation = Self::filtered_post(path).await?.store()?;
         // TODO: can we avoid realise() during evaluation?
         // (probably not, because it’s like we’re forced to do an IFD in this situation?)
         let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
@@ -240,7 +237,7 @@ impl Derivation {
         };
         let mut references = vec![];
         for path in post.meta.front_matter.references.iter() {
-            references.push(Self::filtered_post(path.to_dynamic_path())?.store()?);
+            references.push(Self::filtered_post(path.to_dynamic_path()).await?.store()?);
         }
         Ok(Self::from(Builder::Thread {
             post: post_derivation.into(),
@@ -300,7 +297,7 @@ impl Derivation {
         Ok(read(self.output_path())?)
     }
 
-    fn realise(&self) -> eyre::Result<Vec<u8>> {
+    async fn realise(&self) -> eyre::Result<Vec<u8>> {
         // use cached output, if previously realised.
         if let Ok(result) = read(self.output_path()) {
             return Ok(result);
@@ -366,35 +363,38 @@ impl Derivation {
 pub async fn test() -> eyre::Result<()> {
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
     let filtered_posts = top_level_post_paths
-        .par_iter()
-        .map(|path| Derivation::filtered_post(path.to_dynamic_path()))
-        .collect::<eyre::Result<Vec<_>>>()?;
-    build(filtered_posts)?;
+        .clone()
+        .into_iter()
+        .map(|path| spawn(async move { Derivation::filtered_post(path.to_dynamic_path()).await.map(build) }))
+        .collect::<Vec<_>>();
+    for post in filtered_posts {
+        post.await??.await?;
+    }
     let threads = top_level_post_paths
-        .par_iter()
-        .map(|path| Derivation::thread(path.to_dynamic_path()))
-        .collect::<eyre::Result<Vec<_>>>()?;
-    build(threads)?;
+        .clone()
+        .into_iter()
+        .map(|path| spawn(async move { Derivation::thread(path.to_dynamic_path()).await.map(build) }))
+        .collect::<Vec<_>>();
+    for thread in threads {
+        thread.await??.await?;
+    }
 
     Ok(())
 }
 
-fn build(derivations: Vec<Derivation>) -> eyre::Result<()> {
-    fn build(derivation: &Derivation) -> eyre::Result<()> {
-        let _needs = derivation
+fn build(derivation: Derivation) -> Pin<Box<dyn futures::Future<Output = eyre::Result<()>> + std::marker::Send>> {
+    async move {
+        let needs = derivation
             .needs()
-            .into_par_iter()
-            .map(build)
-            .collect::<eyre::Result<Vec<_>>>()?;
-        derivation.realise()?;
+            .into_iter()
+            .map(|dependency| spawn(build(dependency.clone())))
+            .collect::<Vec<_>>();
+        for dependency in needs {
+            dependency.await??;
+        }
+        derivation.realise().await?;
         Ok(())
-    }
-    derivations
-        .par_iter()
-        .map(build)
-        .collect::<eyre::Result<Vec<_>>>()?;
-
-    Ok(())
+    }.boxed()
 }
 
 fn atomic_writer(path: impl AsRef<Path>) -> eyre::Result<AtomicWriteFile> {

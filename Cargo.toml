@@ -32,6 +32,7 @@ clap = { version = "4.5.23", features = ["derive"] }
 comrak = "0.28.0"
 cssparser = "0.34.0"
 dashmap = "6.1.0"
+futures = "0.3.31"
 html5ever = "0.27.0"
 http = "0.2.12"
 indexmap = { version = "2.7.0", features = ["serde"] }
