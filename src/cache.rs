@@ -369,19 +369,27 @@ pub async fn test() -> eyre::Result<()> {
     let filtered_posts = top_level_post_paths
         .clone()
         .into_iter()
-        .map(|path| spawn(async move { Derivation::filtered_post(path.to_dynamic_path()).await.map(build) }))
+        .enumerate()
+        .map(|(i, path)| (i, spawn(async move { Derivation::filtered_post(path.to_dynamic_path()).await.map(build) })))
         .collect::<Vec<_>>();
-    for post in filtered_posts {
+    let len = filtered_posts.len();
+    for (i, post) in filtered_posts {
+        eprint!("... {i}/{len}\r");
         post.await??.await?;
     }
+    eprintln!();
     let threads = top_level_post_paths
         .clone()
         .into_iter()
-        .map(|path| spawn(async move { Derivation::thread(path.to_dynamic_path()).await.map(build) }))
+        .enumerate()
+        .map(|(i, path)| (i, spawn(async move { Derivation::thread(path.to_dynamic_path()).await.map(build) })))
         .collect::<Vec<_>>();
-    for thread in threads {
+    let len = threads.len();
+    for (i, thread) in threads {
+        eprint!("... {i}/{len}\r");
         thread.await??.await?;
     }
+    eprintln!();
 
     Ok(())
 }
