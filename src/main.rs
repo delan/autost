@@ -9,14 +9,9 @@ use clap::Parser;
 use jane_eyre::eyre;
 use tracing::info;
 
-fn main() -> eyre::Result<()> {
+#[tokio::main]
+async fn main() -> eyre::Result<()> {
     cli_init()?;
-    tokio::runtime::Builder::new_multi_thread()
-        .global_queue_interval(131)
-        .event_interval(131)
-        .enable_all()
-        .build()?
-        .block_on(async move {
 
     let command = Command::parse();
     info!(run_details = ?RunDetails::default());
@@ -54,6 +49,4 @@ fn main() -> eyre::Result<()> {
         }
         Command::Server(_) => command::server::main(db.expect("guaranteed by definition")).await,
     }
-
-    })
 }

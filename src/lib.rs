@@ -556,7 +556,6 @@ impl FilteredPost {
 pub fn cli_init() -> eyre::Result<()> {
     jane_eyre::install()?;
     tracing_subscriber::registry()
-        .with(console_subscriber::ConsoleLayer::builder().with_default_env().spawn())
         // FIXME: rocket launch logging would print nicer if
         // it didn't have the module path etc
         .with(tracing_subscriber::fmt::layer())
