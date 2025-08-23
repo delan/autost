@@ -40,9 +40,12 @@ struct ContextGuard<'ctx, 'scope> {
 }
 impl Context {
     fn new() -> Self {
+        let cpu_count = std::thread::available_parallelism().expect("failed to get cpu count").get();
         Self {
-            output_writer_pool: ThreadPoolBuilder::new().thread_name(|i| format!("outWriter{i}")).build().expect("failed to build thread pool"),
-            derivation_writer_pool: ThreadPoolBuilder::new().thread_name(|i| format!("drvWriter{i}")).build().expect("failed to build thread pool"),
+            output_writer_pool: ThreadPoolBuilder::new().thread_name(|i| format!("outWriter{i}"))
+                .num_threads(cpu_count * 4).build().expect("failed to build thread pool"),
+            derivation_writer_pool: ThreadPoolBuilder::new().thread_name(|i| format!("drvWriter{i}"))
+                .num_threads(cpu_count * 4).build().expect("failed to build thread pool"),
             output_cache: MemoryCache::new("output"),
             derivation_cache: MemoryCache::new("derivation"),
         }
