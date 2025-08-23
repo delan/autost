@@ -200,22 +200,42 @@ impl<'d, D: Display> Debug for VecDisplay<'d, D> {
             .finish()
     }
 }
-impl From<Builder> for Derivation {
-    fn from(builder: Builder) -> Self {
-        let output = builder.compute_id();
-        Self { output, builder }
+mod private {
+    use bincode::config::standard;
+    use jane_eyre::eyre;
+
+    use crate::cache::{atomic_writer, Builder, ComputeId as _, Derivation, DERIVATION_CACHE};
+
+    impl Derivation {
+        pub fn instantiate(builder: Builder) -> eyre::Result<Self> {
+            let output = builder.compute_id();
+            Self { output, builder }.store()
+        }
+
+        fn store(self) -> eyre::Result<Self> {
+            let id = self.id();
+            if !DERIVATION_CACHE.contains_key(&id) {
+                let path = Self::derivation_path(id);
+                let mut file = atomic_writer(path)?;
+                bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
+                file.commit()?;
+                DERIVATION_CACHE.insert(id, self.clone());
+            }
+
+            Ok(self)
+        }
     }
 }
 impl Derivation {
     fn read_file(path: DynamicPath) -> eyre::Result<Self> {
         let hash = Hash(blake3::hash(&read(&path)?));
-        Ok(Self::from(Builder::ReadFile { path, hash }))
+        Self::instantiate(Builder::ReadFile { path, hash })
     }
 
     fn render_markdown(path: DynamicPath) -> eyre::Result<Self> {
-        Ok(Self::from(Builder::RenderMarkdown {
-            file: Self::read_file(path)?.store()?.into(),
-        }))
+        Self::instantiate(Builder::RenderMarkdown {
+            file: Self::read_file(path)?.into(),
+        })
     }
 
     fn filtered_post(path: DynamicPath) -> eyre::Result<Self> {
@@ -227,13 +247,13 @@ impl Derivation {
         } else {
             Self::read_file(path)?
         };
-        Ok(Self::from(Builder::FilteredPost {
-            file: file.store()?.into(),
-        }))
+        Self::instantiate(Builder::FilteredPost {
+            file: file.into(),
+        })
     }
 
     fn thread(path: DynamicPath) -> eyre::Result<Self> {
-        let post_derivation = Self::filtered_post(path)?.store()?;
+        let post_derivation = Self::filtered_post(path)?;
         // TODO: can we avoid realise() during evaluation?
         // (probably not, because it’s like we’re forced to do an IFD in this situation?)
         let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
@@ -244,12 +264,12 @@ impl Derivation {
         };
         let mut references = vec![];
         for path in post.meta.front_matter.references.iter() {
-            references.push(Self::filtered_post(path.to_dynamic_path())?.store()?);
+            references.push(Self::filtered_post(path.to_dynamic_path())?);
         }
-        Ok(Self::from(Builder::Thread {
+        Self::instantiate(Builder::Thread {
             post: post_derivation.into(),
             references,
-        }))
+        })
     }
 
     fn id(&self) -> Id {
@@ -288,19 +308,6 @@ impl Derivation {
             DERIVATION_CACHE.insert(result.id(), result.clone());
             Ok(result)
         }
-    }
-
-    fn store(self) -> eyre::Result<Self> {
-        let id = self.id();
-        if !DERIVATION_CACHE.contains_key(&id) {
-            let path = Self::derivation_path(id);
-            let mut file = atomic_writer(path)?;
-            bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
-            file.commit()?;
-            DERIVATION_CACHE.insert(id, self.clone());
-        }
-
-        Ok(self)
     }
 
     fn expect(&self) -> eyre::Result<Vec<u8>> {
