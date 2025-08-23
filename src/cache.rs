@@ -11,9 +11,9 @@ use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
 use dashmap::DashMap;
 use jane_eyre::eyre::{self, bail, Context};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _};
+use rayon::{iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _}};
 use serde::{de::Visitor, Deserialize, Serialize};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT},
@@ -30,9 +30,63 @@ pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
     hasher
 });
 
-static DERIVATION_CACHE: LazyLock<DashMap<Id, Derivation>> = LazyLock::new(DashMap::new);
-static DERIVATION_CACHE_HITS: AtomicUsize = AtomicUsize::new(0);
+static OUTPUT_CACHE: LazyLock<MemoryCache<Id, Vec<u8>>> = LazyLock::new(|| MemoryCache::new("output"));
+static DERIVATION_CACHE: LazyLock<MemoryCache<Id, Derivation>> = LazyLock::new(|| MemoryCache::new("derivation"));
 static FILTERED_POST_CACHE: LazyLock<DashMap<Id, FilteredPost>> = LazyLock::new(DashMap::new);
+struct MemoryCache<K, V> {
+    inner: DashMap<K, V>,
+    label: &'static str,
+    hits: AtomicUsize,
+    read_misses: AtomicUsize,
+    read_write_misses: AtomicUsize,
+    write_write_misses: AtomicUsize,
+}
+impl<K: Eq + std::hash::Hash, V> Debug for MemoryCache<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MemoryCache {} (len {}, hits {}, reads {}, read writes {}, write writes {})", self.label, self.inner.len(), self.hits.load(SeqCst), self.read_misses.load(SeqCst), self.read_write_misses.load(SeqCst), self.write_write_misses.load(SeqCst))
+    }
+}
+impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
+    fn new(label: &'static str) -> Self {
+        Self {
+            inner: DashMap::new(),
+            label,
+            hits: AtomicUsize::new(0),
+            read_misses: AtomicUsize::new(0),
+            read_write_misses: AtomicUsize::new(0),
+            write_write_misses: AtomicUsize::new(0),
+        }
+    }
+    fn get_or_insert_as_read(&self, key: K, default: impl FnOnce(&K) -> eyre::Result<V>) -> eyre::Result<V> {
+        debug!(target: "autost::cache::memory", ?self, "query");
+        if let Some(value) = self.inner.get(&key) {
+            self.hits.fetch_add(1, SeqCst);
+            Ok(value.clone())
+        } else {
+            self.read_misses.fetch_add(1, SeqCst);
+            let value = default(&key)?;
+            self.inner.insert(key, value.clone());
+            Ok(value)
+        }
+    }
+    fn get_or_insert_as_write(&self, key: K, read: impl FnOnce(&K) -> eyre::Result<V>, write: impl FnOnce(&K) -> eyre::Result<V>) -> eyre::Result<V> {
+        debug!(target: "autost::cache::memory", ?self, "query");
+        if let Some(value) = self.inner.get(&key) {
+            self.hits.fetch_add(1, SeqCst);
+            return Ok(value.clone());
+        }
+        let value = if let Ok(value) = read(&key) {
+            self.read_write_misses.fetch_add(1, SeqCst);
+            value
+        } else {
+            warn!(target: "autost::cache::memory", ?self, ?key, "write");
+            self.write_write_misses.fetch_add(1, SeqCst);
+            write(&key)?
+        };
+        self.inner.insert(key, value.clone());
+        Ok(value)
+    }
+}
 
 pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> blake3::Hash {
     HASHER.clone().update(bytes.as_ref()).finalize()
@@ -202,12 +256,10 @@ impl<'d, D: Display> Debug for VecDisplay<'d, D> {
     }
 }
 mod private {
-    use std::sync::atomic::Ordering::SeqCst;
-
     use bincode::config::standard;
     use jane_eyre::eyre;
 
-    use crate::cache::{atomic_writer, Builder, ComputeId as _, Derivation, DERIVATION_CACHE, DERIVATION_CACHE_HITS};
+    use crate::cache::{atomic_writer, Builder, ComputeId as _, Derivation, DERIVATION_CACHE};
 
     impl Derivation {
         pub fn instantiate(builder: Builder) -> eyre::Result<Self> {
@@ -216,17 +268,13 @@ mod private {
         }
 
         fn store(self) -> eyre::Result<Self> {
-            let id = self.id();
-            if Self::load(id).is_err() {
+            DERIVATION_CACHE.get_or_insert_as_write(self.id(), |id| Self::load(*id), |id| {
                 let path = Self::derivation_path(id);
                 let mut file = atomic_writer(path)?;
                 bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
                 file.commit()?;
-                DERIVATION_CACHE.insert(id, self.clone());
-                eprint!("... derivation cache insert (store) {} (+{} hits)\r", DERIVATION_CACHE.len(), DERIVATION_CACHE_HITS.load(SeqCst));
-            }
-
-            Ok(self)
+                Ok(self)
+            })
         }
     }
 }
@@ -263,7 +311,7 @@ impl Derivation {
         let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
             post.clone()
         } else {
-            let post = Self::load(post_derivation.id())?.expect()?;
+            let post = Self::load(post_derivation.id())?.output()?;
             bincode::serde::decode_from_slice(&post, standard())?.0
         };
         let mut references = vec![];
@@ -280,7 +328,7 @@ impl Derivation {
         self.output
     }
 
-    fn derivation_path(id: Id) -> String {
+    fn derivation_path(id: &Id) -> String {
         format!("cache/{id}.drv")
     }
 
@@ -302,84 +350,77 @@ impl Derivation {
     }
 
     fn load(id: Id) -> eyre::Result<Self> {
-        if let Some(result) = DERIVATION_CACHE.get(&id) {
-            DERIVATION_CACHE_HITS.fetch_add(1, SeqCst);
-            Ok(result.clone())
-        } else {
-            let result: Derivation = bincode::serde::decode_from_std_read(
+        DERIVATION_CACHE.get_or_insert_as_read(id, |id| {
+            Ok(bincode::serde::decode_from_std_read(
                 &mut File::open(Self::derivation_path(id))?,
                 standard(),
-            )?;
-            DERIVATION_CACHE.insert(result.id(), result.clone());
-            eprint!("... derivation cache insert (load) {} (+{} hits)\r", DERIVATION_CACHE.len(), DERIVATION_CACHE_HITS.load(SeqCst));
-            Ok(result)
-        }
+            )?)
+        })
     }
 
-    fn expect(&self) -> eyre::Result<Vec<u8>> {
-        Ok(read(self.output_path())?)
+    fn output(&self) -> eyre::Result<Vec<u8>> {
+        OUTPUT_CACHE.get_or_insert_as_read(self.id(), |_id| {
+            Ok(read(self.output_path())?)
+        })
     }
 
     fn realise(&self) -> eyre::Result<Vec<u8>> {
-        // use cached output, if previously realised.
-        if let Ok(result) = read(self.output_path()) {
-            return Ok(result);
-        }
-        // build the derivation and cache its output.
-        debug!("building {self}");
-        let result = (|| {
-            let content = match &self.builder {
-                Builder::ReadFile { path, hash } => {
-                    let output = read(path)?;
-                    let actual_hash = Hash(blake3::hash(&output));
-                    if &actual_hash != hash {
-                        bail!("hash mismatch! expected {hash}, actual {actual_hash}");
-                    }
-                    output
-                }
-                Builder::RenderMarkdown { file } => {
-                    let input = RenderMarkdownInput {
-                        file: Self::load(file.id())?.expect()?,
-                    };
-                    let unsafe_markdown = input.file;
-                    render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes()
-                }
-                Builder::FilteredPost { file } => {
-                    let input = FilteredPostInput {
-                        file: Self::load(file.id())?.expect()?,
-                    };
-                    let unsafe_html = input.file;
-                    let unsafe_html = str::from_utf8(&unsafe_html)?;
-                    let post = UnsafePost::with_html(unsafe_html);
-                    let post = FilteredPost::filter(post)?;
-                    let output = bincode::serde::encode_to_vec(&post, standard())?;
-                    FILTERED_POST_CACHE.insert(self.id(), post);
-                    output
-                }
-                Builder::Thread { post, references } => {
-                    let load_filtered_post_cached = |id| -> eyre::Result<_> {
-                        if let Some(post) = FILTERED_POST_CACHE.get(&id) {
-                            Ok(post.clone())
-                        } else {
-                            let post = Self::load(id)?.expect()?;
-                            Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
+        OUTPUT_CACHE.get_or_insert_as_write(self.id(), |_id| Ok(read(self.output_path())?), |_id| {
+            debug!("building {self}");
+            let result = (|| {
+                let content = match &self.builder {
+                    Builder::ReadFile { path, hash } => {
+                        let output = read(path)?;
+                        let actual_hash = Hash(blake3::hash(&output));
+                        if &actual_hash != hash {
+                            bail!("hash mismatch! expected {hash}, actual {actual_hash}");
                         }
-                    };
-                    let input = ThreadInput {
-                        post: load_filtered_post_cached(post.id())?,
-                        references: references
-                            .iter()
-                            .map(|post| load_filtered_post_cached(post.id()))
-                            .collect::<eyre::Result<_>>()?,
-                    };
-                    let thread = Thread::new(input.post, input.references);
-                    bincode::serde::encode_to_vec(&thread, standard())?
-                }
-            };
-            atomic_write(self.output_path(), &content)?;
-            Ok(content)
-        })();
-        result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+                        output
+                    }
+                    Builder::RenderMarkdown { file } => {
+                        let input = RenderMarkdownInput {
+                            file: Self::load(file.id())?.output()?,
+                        };
+                        let unsafe_markdown = input.file;
+                        render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes()
+                    }
+                    Builder::FilteredPost { file } => {
+                        let input = FilteredPostInput {
+                            file: Self::load(file.id())?.output()?,
+                        };
+                        let unsafe_html = input.file;
+                        let unsafe_html = str::from_utf8(&unsafe_html)?;
+                        let post = UnsafePost::with_html(unsafe_html);
+                        let post = FilteredPost::filter(post)?;
+                        let output = bincode::serde::encode_to_vec(&post, standard())?;
+                        FILTERED_POST_CACHE.insert(self.id(), post);
+                        output
+                    }
+                    Builder::Thread { post, references } => {
+                        let load_filtered_post_cached = |id| -> eyre::Result<_> {
+                            if let Some(post) = FILTERED_POST_CACHE.get(&id) {
+                                Ok(post.clone())
+                            } else {
+                                let post = Self::load(id)?.output()?;
+                                Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
+                            }
+                        };
+                        let input = ThreadInput {
+                            post: load_filtered_post_cached(post.id())?,
+                            references: references
+                                .iter()
+                                .map(|post| load_filtered_post_cached(post.id()))
+                                .collect::<eyre::Result<_>>()?,
+                        };
+                        let thread = Thread::new(input.post, input.references);
+                        bincode::serde::encode_to_vec(&thread, standard())?
+                    }
+                };
+                atomic_write(self.output_path(), &content)?;
+                Ok(content)
+            })();
+            result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+        })
     }
 }
 
@@ -393,7 +434,6 @@ pub async fn test() -> eyre::Result<()> {
         })
         .collect::<eyre::Result<Vec<_>>>()?;
     eprintln!();
-    eprintln!("derivation cache: {} hits", DERIVATION_CACHE_HITS.load(SeqCst));
     eprintln!("building threads");
     top_level_post_paths
         .par_iter()
@@ -402,7 +442,6 @@ pub async fn test() -> eyre::Result<()> {
         })
         .collect::<eyre::Result<Vec<_>>>()?;
     eprintln!();
-    eprintln!("derivation cache: {} hits", DERIVATION_CACHE_HITS.load(SeqCst));
 
     Ok(())
 }
