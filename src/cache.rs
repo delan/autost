@@ -346,12 +346,11 @@ impl Derivation {
 
     fn thread(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let post_derivation = Self::filtered_post(ctx, path)?;
-        // TODO: can we avoid realise() during evaluation?
-        // (probably not, because it’s like we’re forced to do an IFD in this situation?)
         let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
             post.clone()
         } else {
-            let post = Self::load(ctx, post_derivation.id())?.output(ctx)?;
+            // effectively an IFD
+            let post = post_derivation.realise_recursive(ctx)?;
             bincode::serde::decode_from_slice(&post, standard())?.0
         };
         let references = post.meta.front_matter.references
@@ -468,24 +467,26 @@ impl Derivation {
             result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
         })
     }
+    
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        let _needs = self
+            .needs()
+            .into_par_iter()
+            .map(|dependency| dependency.realise_recursive(ctx))
+            .collect::<eyre::Result<Vec<_>>>()?;
+        self.realise(ctx)
+    }
 }
 
 pub async fn test() -> eyre::Result<()> {
     Context::run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-        eprintln!("building filtered posts");
-        top_level_post_paths
-            .par_iter()
-            .map(|path| -> eyre::Result<()> {
-                build(&ctx, &Derivation::filtered_post(&ctx, path.to_dynamic_path())?)
-            })
-            .collect::<eyre::Result<Vec<_>>>()?;
-        eprintln!();
         eprintln!("building threads");
         top_level_post_paths
             .par_iter()
             .map(|path| -> eyre::Result<()> {
-                build(&ctx, &Derivation::thread(&ctx, path.to_dynamic_path())?)
+                Derivation::thread(&ctx, path.to_dynamic_path())?.realise_recursive(&ctx)?;
+                Ok(())
             })
             .collect::<eyre::Result<Vec<_>>>()?;
         eprintln!();
@@ -493,16 +494,6 @@ pub async fn test() -> eyre::Result<()> {
         Ok(())
     })?;
 
-    Ok(())
-}
-
-fn build(ctx: &ContextGuard, derivation: &Derivation) -> eyre::Result<()> {
-    let _needs = derivation
-        .needs()
-        .into_par_iter()
-        .map(|dependency| build(ctx, dependency))
-        .collect::<eyre::Result<Vec<_>>>()?;
-    derivation.realise(ctx)?;
     Ok(())
 }
 
