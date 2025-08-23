@@ -62,8 +62,12 @@ impl Ord for Hash {
 }
 impl Display for Hash {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let hash = self.0.to_hex();
-        write!(f, "{}...", &hash.as_str()[0..13])
+        if f.alternate() {
+            let hash = self.0.to_hex();
+            write!(f, "{}...", &hash.as_str()[0..13])
+        } else {
+            write!(f, "{}", self.0.to_hex().as_str())
+        }
     }
 }
 impl Serialize for Hash {
