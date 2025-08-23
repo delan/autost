@@ -354,10 +354,10 @@ impl Derivation {
             let post = Self::load(ctx, post_derivation.id())?.output(ctx)?;
             bincode::serde::decode_from_slice(&post, standard())?.0
         };
-        let mut references = vec![];
-        for path in post.meta.front_matter.references.iter() {
-            references.push(Self::filtered_post(ctx, path.to_dynamic_path())?);
-        }
+        let references = post.meta.front_matter.references
+            .par_iter()
+            .map(|path| Self::filtered_post(ctx, path.to_dynamic_path()))
+            .collect::<eyre::Result<Vec<_>>>()?;
         Self::instantiate(ctx, Builder::Thread {
             post: post_derivation.into(),
             references,
