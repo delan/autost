@@ -277,10 +277,12 @@ impl Derivation {
         if let Some(result) = DERIVATION_CACHE.get(&id) {
             Ok(result.clone())
         } else {
-            Ok(bincode::serde::decode_from_std_read(
+            let result: Derivation = bincode::serde::decode_from_std_read(
                 &mut File::open(Self::derivation_path(id))?,
                 standard(),
-            )?)
+            )?;
+            DERIVATION_CACHE.insert(result.id(), result.clone());
+            Ok(result)
         }
     }
 
