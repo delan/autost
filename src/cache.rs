@@ -214,7 +214,7 @@ mod private {
 
         fn store(self) -> eyre::Result<Self> {
             let id = self.id();
-            if !DERIVATION_CACHE.contains_key(&id) {
+            if Self::load(id).is_err() {
                 let path = Self::derivation_path(id);
                 let mut file = atomic_writer(path)?;
                 bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
