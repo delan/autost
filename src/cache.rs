@@ -4,7 +4,7 @@ use std::{
     fs::{read, File},
     io::Write,
     path::Path,
-    sync::LazyLock,
+    sync::{atomic::{AtomicUsize, Ordering::SeqCst}, LazyLock},
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
@@ -31,6 +31,7 @@ pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
 });
 
 static DERIVATION_CACHE: LazyLock<DashMap<Id, Derivation>> = LazyLock::new(DashMap::new);
+static DERIVATION_CACHE_HITS: AtomicUsize = AtomicUsize::new(0);
 static FILTERED_POST_CACHE: LazyLock<DashMap<Id, FilteredPost>> = LazyLock::new(DashMap::new);
 
 pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> blake3::Hash {
@@ -201,10 +202,12 @@ impl<'d, D: Display> Debug for VecDisplay<'d, D> {
     }
 }
 mod private {
+    use std::sync::atomic::Ordering::SeqCst;
+
     use bincode::config::standard;
     use jane_eyre::eyre;
 
-    use crate::cache::{atomic_writer, Builder, ComputeId as _, Derivation, DERIVATION_CACHE};
+    use crate::cache::{atomic_writer, Builder, ComputeId as _, Derivation, DERIVATION_CACHE, DERIVATION_CACHE_HITS};
 
     impl Derivation {
         pub fn instantiate(builder: Builder) -> eyre::Result<Self> {
@@ -220,6 +223,7 @@ mod private {
                 bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
                 file.commit()?;
                 DERIVATION_CACHE.insert(id, self.clone());
+                eprint!("... derivation cache insert (store) {} (+{} hits)\r", DERIVATION_CACHE.len(), DERIVATION_CACHE_HITS.load(SeqCst));
             }
 
             Ok(self)
@@ -299,6 +303,7 @@ impl Derivation {
 
     fn load(id: Id) -> eyre::Result<Self> {
         if let Some(result) = DERIVATION_CACHE.get(&id) {
+            DERIVATION_CACHE_HITS.fetch_add(1, SeqCst);
             Ok(result.clone())
         } else {
             let result: Derivation = bincode::serde::decode_from_std_read(
@@ -306,6 +311,7 @@ impl Derivation {
                 standard(),
             )?;
             DERIVATION_CACHE.insert(result.id(), result.clone());
+            eprint!("... derivation cache insert (load) {} (+{} hits)\r", DERIVATION_CACHE.len(), DERIVATION_CACHE_HITS.load(SeqCst));
             Ok(result)
         }
     }
@@ -379,18 +385,24 @@ impl Derivation {
 
 pub async fn test() -> eyre::Result<()> {
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
+    eprintln!("building filtered posts");
     top_level_post_paths
         .par_iter()
         .map(|path| -> eyre::Result<()> {
             build(&Derivation::filtered_post(path.to_dynamic_path())?)
         })
         .collect::<eyre::Result<Vec<_>>>()?;
+    eprintln!();
+    eprintln!("derivation cache: {} hits", DERIVATION_CACHE_HITS.load(SeqCst));
+    eprintln!("building threads");
     top_level_post_paths
         .par_iter()
         .map(|path| -> eyre::Result<()> {
             build(&Derivation::thread(path.to_dynamic_path())?)
         })
         .collect::<eyre::Result<Vec<_>>>()?;
+    eprintln!();
+    eprintln!("derivation cache: {} hits", DERIVATION_CACHE_HITS.load(SeqCst));
 
     Ok(())
 }
