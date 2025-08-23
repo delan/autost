@@ -365,35 +365,29 @@ impl Derivation {
 
 pub async fn test() -> eyre::Result<()> {
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-    let filtered_posts = top_level_post_paths
+    top_level_post_paths
         .par_iter()
-        .map(|path| Derivation::filtered_post(path.to_dynamic_path()))
+        .map(|path| -> eyre::Result<()> {
+            build(&Derivation::filtered_post(path.to_dynamic_path())?)
+        })
         .collect::<eyre::Result<Vec<_>>>()?;
-    build(filtered_posts)?;
-    let threads = top_level_post_paths
+    top_level_post_paths
         .par_iter()
-        .map(|path| Derivation::thread(path.to_dynamic_path()))
+        .map(|path| -> eyre::Result<()> {
+            build(&Derivation::thread(path.to_dynamic_path())?)
+        })
         .collect::<eyre::Result<Vec<_>>>()?;
-    build(threads)?;
 
     Ok(())
 }
 
-fn build(derivations: Vec<Derivation>) -> eyre::Result<()> {
-    fn build(derivation: &Derivation) -> eyre::Result<()> {
-        let _needs = derivation
-            .needs()
-            .into_par_iter()
-            .map(build)
-            .collect::<eyre::Result<Vec<_>>>()?;
-        derivation.realise()?;
-        Ok(())
-    }
-    derivations
-        .par_iter()
+fn build(derivation: &Derivation) -> eyre::Result<()> {
+    let _needs = derivation
+        .needs()
+        .into_par_iter()
         .map(build)
         .collect::<eyre::Result<Vec<_>>>()?;
-
+    derivation.realise()?;
     Ok(())
 }
 
