@@ -1,7 +1,7 @@
 use std::{
     env::current_exe,
     fmt::{Debug, Display},
-    fs::{exists, read, File},
+    fs::{read, File},
     io::Write,
     path::Path,
     sync::LazyLock,
@@ -291,12 +291,13 @@ impl Derivation {
     }
 
     fn store(self) -> eyre::Result<Self> {
-        let path = Self::derivation_path(self.id());
-        if !exists(&path)? {
+        let id = self.id();
+        if !DERIVATION_CACHE.contains_key(&id) {
+            let path = Self::derivation_path(id);
             let mut file = atomic_writer(path)?;
             bincode::serde::encode_into_std_write(&self, &mut file, standard())?;
             file.commit()?;
-            DERIVATION_CACHE.insert(self.id(), self.clone());
+            DERIVATION_CACHE.insert(id, self.clone());
         }
 
         Ok(self)
