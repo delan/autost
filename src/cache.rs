@@ -11,8 +11,7 @@ use serde::{de::Visitor, Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use crate::{
-    path::{DynamicPath, POSTS_PATH_ROOT},
-    render_markdown, FilteredPost, Thread, UnsafePost,
+    path::{DynamicPath, POSTS_PATH_ROOT}, render_markdown, FilteredPost, Thread, UnsafePost
 };
 
 pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
@@ -204,39 +203,51 @@ impl Display for Id {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoReadFile {
+    path: DynamicPath,
+    hash: Hash,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoRenderMarkdown {
+    file: Box<Derivation>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoFilteredPost {
+    file: Box<Derivation>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoThread {
+    post: Box<Derivation>,
+    references: Vec<Derivation>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 enum Builder {
-    ReadFile {
-        path: DynamicPath,
-        hash: Hash,
-    },
-    RenderMarkdown {
-        file: Box<Derivation>,
-    },
-    FilteredPost {
-        file: Box<Derivation>,
-    },
-    Thread {
-        post: Box<Derivation>,
-        references: Vec<Derivation>,
-    },
+    ReadFile(DoReadFile),
+    RenderMarkdown(DoRenderMarkdown),
+    FilteredPost(DoFilteredPost),
+    Thread(DoThread),
 }
 impl Display for Builder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Builder::ReadFile { path, hash } => f
+            Builder::ReadFile(DoReadFile { path, hash }) => f
                 .debug_struct("ReadFile")
                 .field("path", &UseDisplay(path))
                 .field("hash", &UseDisplay(hash))
                 .finish(),
-            Builder::RenderMarkdown { file } => f
+            Builder::RenderMarkdown(DoRenderMarkdown { file }) => f
                 .debug_struct("RenderMarkdown")
                 .field("file", &UseDisplay(&**file))
                 .finish(),
-            Builder::FilteredPost { file } => f
+            Builder::FilteredPost(DoFilteredPost { file }) => f
                 .debug_struct("FilteredPost")
                 .field("file", &UseDisplay(&**file))
                 .finish(),
-            Builder::Thread { post, references } => f
+            Builder::Thread(DoThread { post, references }) => f
                 .debug_struct("Thread")
                 .field("post", &UseDisplay(&**post))
                 .field("references", &VecDisplay(references))
@@ -324,13 +335,13 @@ mod private {
 impl Derivation {
     fn read_file(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let hash = Hash(blake3::hash(&read(&path)?));
-        Self::instantiate(ctx, Builder::ReadFile { path, hash })
+        Self::instantiate(ctx, Builder::ReadFile(DoReadFile { path, hash }))
     }
 
     fn render_markdown(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
-        Self::instantiate(ctx, Builder::RenderMarkdown {
+        Self::instantiate(ctx, Builder::RenderMarkdown(DoRenderMarkdown {
             file: Self::read_file(ctx, path)?.into(),
-        })
+        }))
     }
 
     fn filtered_post(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
@@ -342,9 +353,9 @@ impl Derivation {
         } else {
             Self::read_file(ctx, path)?
         };
-        Self::instantiate(ctx, Builder::FilteredPost {
+        Self::instantiate(ctx, Builder::FilteredPost(DoFilteredPost {
             file: file.into(),
-        })
+        }))
     }
 
     fn thread(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
@@ -360,10 +371,10 @@ impl Derivation {
             .par_iter()
             .map(|path| Self::filtered_post(ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<Vec<_>>>()?;
-        Self::instantiate(ctx, Builder::Thread {
+        Self::instantiate(ctx, Builder::Thread(DoThread {
             post: post_derivation.into(),
             references,
-        })
+        }))
     }
 
     fn id(&self) -> Id {
@@ -380,10 +391,10 @@ impl Derivation {
 
     fn needs(&self) -> Vec<&Derivation> {
         match &self.builder {
-            Builder::ReadFile { .. } => vec![],
-            Builder::RenderMarkdown { file } => vec![&**file],
-            Builder::FilteredPost { file } => vec![&**file],
-            Builder::Thread { post, references } => {
+            Builder::ReadFile(DoReadFile { .. }) => vec![],
+            Builder::RenderMarkdown(DoRenderMarkdown { file }) => vec![&**file],
+            Builder::FilteredPost(DoFilteredPost { file }) => vec![&**file],
+            Builder::Thread(DoThread { post, references }) => {
                 let mut result = vec![&**post];
                 result.extend(references.iter());
                 result
@@ -411,7 +422,7 @@ impl Derivation {
             debug!("building {self}");
             let result = (|| {
                 let content = match &self.builder {
-                    Builder::ReadFile { path, hash } => {
+                    Builder::ReadFile(DoReadFile { path, hash }) => {
                         let output = read(path)?;
                         let actual_hash = Hash(blake3::hash(&output));
                         if &actual_hash != hash {
@@ -419,14 +430,14 @@ impl Derivation {
                         }
                         output
                     }
-                    Builder::RenderMarkdown { file } => {
+                    Builder::RenderMarkdown(DoRenderMarkdown { file }) => {
                         let input = RenderMarkdownInput {
                             file: Self::load(ctx, file.id())?.output(ctx)?,
                         };
                         let unsafe_markdown = input.file;
                         render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes()
                     }
-                    Builder::FilteredPost { file } => {
+                    Builder::FilteredPost(DoFilteredPost { file }) => {
                         let input = FilteredPostInput {
                             file: Self::load(ctx, file.id())?.output(ctx)?,
                         };
@@ -438,7 +449,7 @@ impl Derivation {
                         FILTERED_POST_CACHE.insert(self.id(), post);
                         output
                     }
-                    Builder::Thread { post, references } => {
+                    Builder::Thread(DoThread { post, references }) => {
                         let load_filtered_post_cached = |id| -> eyre::Result<_> {
                             if let Some(post) = FILTERED_POST_CACHE.get(&id) {
                                 Ok(post.clone())
