@@ -273,10 +273,12 @@ impl Derivation {
         if let Some(result) = DERIVATION_CACHE.get(&id) {
             Ok(result.clone())
         } else {
-            Ok(bincode::serde::decode_from_slice(
+            let result: Derivation = bincode::serde::decode_from_slice(
                 &read(Self::derivation_path(id)).await?,
                 standard(),
-            )?.0)
+            )?.0;
+            DERIVATION_CACHE.insert(result.id(), result.clone());
+            Ok(result)
         }
     }
 
@@ -365,12 +367,24 @@ impl Derivation {
 }
 
 pub async fn test() -> eyre::Result<()> {
+    let monitor = tokio_metrics::TaskMonitor::new();
+    {
+        let frequency = std::time::Duration::from_millis(30000);
+        let monitor = monitor.clone();
+        tokio::spawn(async move {
+            for metrics in monitor.intervals() {
+                println!("{:#?}", metrics);
+                tokio::time::sleep(frequency).await;
+            }
+        });
+    }
+
     let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
     let filtered_posts = top_level_post_paths
         .clone()
         .into_iter()
         .enumerate()
-        .map(|(i, path)| (i, spawn(async move { Derivation::filtered_post(path.to_dynamic_path()).await.map(build) })))
+        .map(|(i, path)| (i, spawn(monitor.instrument(async move { Derivation::filtered_post(path.to_dynamic_path()).await.map(build) }))))
         .collect::<Vec<_>>();
     let len = filtered_posts.len();
     for (i, post) in filtered_posts {
@@ -382,7 +396,7 @@ pub async fn test() -> eyre::Result<()> {
         .clone()
         .into_iter()
         .enumerate()
-        .map(|(i, path)| (i, spawn(async move { Derivation::thread(path.to_dynamic_path()).await.map(build) })))
+        .map(|(i, path)| (i, spawn(monitor.instrument(async move { Derivation::thread(path.to_dynamic_path()).await.map(build) }))))
         .collect::<Vec<_>>();
     let len = threads.len();
     for (i, thread) in threads {
