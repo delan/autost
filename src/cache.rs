@@ -6,9 +6,9 @@ use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::config::standard;
 use dashmap::DashMap;
 use jane_eyre::eyre::{self, bail, Context as _};
-use rayon::{iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _}, Scope, ThreadPool, ThreadPoolBuilder};
+use rayon::{in_place_scope, iter::{IntoParallelRefIterator, ParallelIterator as _}, Scope, ThreadPool, ThreadPoolBuilder};
 use serde::{de::Visitor, Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT}, render_markdown, FilteredPost, Thread, UnsafePost
@@ -27,13 +27,15 @@ pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
 static FILTERED_POST_CACHE: LazyLock<DashMap<Id, FilteredPost>> = LazyLock::new(DashMap::new);
 struct Context {
     output_cache: MemoryCache<Id, Vec<u8>>,
-    derivation_cache: MemoryCache<Id, Derivation>,
     output_writer_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
+    read_file_derivation_cache: MemoryCache<Id, ReadFileDrv>,
+    render_markdown_derivation_cache: MemoryCache<Id, RenderMarkdownDrv>,
+    filtered_post_derivation_cache: MemoryCache<Id, FilteredPostDrv>,
+    thread_derivation_cache: MemoryCache<Id, ThreadDrv>,
 }
 struct ContextGuard<'ctx, 'scope> {
-    output_cache: &'ctx MemoryCache<Id, Vec<u8>>,
-    derivation_cache: &'ctx MemoryCache<Id, Derivation>,
+    context: &'ctx Context,
     output_writer_scope: &'ctx Scope<'scope>,
     derivation_writer_scope: &'ctx Scope<'scope>,
 }
@@ -41,12 +43,15 @@ impl Context {
     fn new() -> Self {
         let cpu_count = std::thread::available_parallelism().expect("failed to get cpu count").get();
         Self {
+            output_cache: MemoryCache::new("output"),
             output_writer_pool: ThreadPoolBuilder::new().thread_name(|i| format!("outWriter{i}"))
                 .num_threads(cpu_count * 4).build().expect("failed to build thread pool"),
             derivation_writer_pool: ThreadPoolBuilder::new().thread_name(|i| format!("drvWriter{i}"))
                 .num_threads(cpu_count * 4).build().expect("failed to build thread pool"),
-            output_cache: MemoryCache::new("output"),
-            derivation_cache: MemoryCache::new("derivation"),
+            read_file_derivation_cache: MemoryCache::new("ReadFileDrv"),
+            render_markdown_derivation_cache: MemoryCache::new("RenderMarkdownDrv"),
+            filtered_post_derivation_cache: MemoryCache::new("FilteredPostDrv"),
+            thread_derivation_cache: MemoryCache::new("ThreadDrv"),
         }
     }
     fn run<R: Send>(fun: impl FnOnce(ContextGuard) -> R + Send) -> R {
@@ -56,8 +61,7 @@ impl Context {
         self.output_writer_pool.scope(move |output_writer_scope| {
             self.derivation_writer_pool.scope(move |derivation_writer_scope| {
                 fun(ContextGuard {
-                    output_cache: &self.output_cache,
-                    derivation_cache: &self.derivation_cache,
+                    context: &self,
                     output_writer_scope,
                     derivation_writer_scope,
                 })
@@ -65,6 +69,7 @@ impl Context {
         })
     }
 }
+
 struct MemoryCache<K, V> {
     inner: DashMap<K, V>,
     label: &'static str,
@@ -193,75 +198,242 @@ impl<'de> Visitor<'de> for HashVisitor {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct Id(Hash);
-trait ComputeId {
-    fn compute_id(&self) -> Id;
-}
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct DoReadFile {
-    path: DynamicPath,
-    hash: Hash,
-}
+trait Derivation: Debug + Display + Sized {
+    fn id(&self) -> Id;
+    fn derivation_path(id: &Id) -> String {
+        format!("cache/{id}.drv")
+    }
+    fn output_path(&self) -> String {
+        format!("cache/{}.out", self.id())
+    }
+    fn output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        ctx.context.output_cache.get_or_insert_as_read(self.id(), |_id| {
+            Ok(read(self.output_path())?)
+        })
+    }
+    fn realise_self_only(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        ctx.context.output_cache.get_or_insert_as_write(self.id(), |_id| Ok(read(self.output_path())?), |_id| {
+            debug!("building {self}");
+            let result = (|| -> eyre::Result<_> {
+                let content = self.compute_output(ctx)?;
+                let output_path = self.output_path();
+                let content_for_write = content.clone();
+                ctx.output_writer_scope.spawn(move |_| {
+                    if let Err(error) = atomic_write(output_path, content_for_write) {
+                        warn!(?error, "failed to write derivation output");
+                    }
+                });
+                Ok(content)
+            })();
+            result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+        })
+    }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct DoRenderMarkdown {
-    file: Box<Derivation>,
+    fn derivation_cache<'ctx>(ctx: &'ctx Context) -> &'ctx MemoryCache<Id, Self>;
+    /// only to be called by [`Derivation::realise_self_only()`]. do not call this method elsewhere.
+    fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>>;
+    /// default impl where `Self` has no dependencies: `self.realise_self_only(ctx)`
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>>;
 }
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct DoFilteredPost {
-    file: Box<Derivation>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct DoThread {
-    post: Box<Derivation>,
-    references: Vec<Derivation>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-enum Builder {
-    ReadFile(DoReadFile),
-    RenderMarkdown(DoRenderMarkdown),
-    FilteredPost(DoFilteredPost),
-    Thread(DoThread),
-}
-impl Display for Builder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Builder::ReadFile(DoReadFile { path, hash }) => f
-                .debug_struct("ReadFile")
-                .field("path", &UseDisplay(path))
-                .field("hash", &UseDisplay(hash))
-                .finish(),
-            Builder::RenderMarkdown(DoRenderMarkdown { file }) => f
-                .debug_struct("RenderMarkdown")
-                .field("file", &UseDisplay(&**file))
-                .finish(),
-            Builder::FilteredPost(DoFilteredPost { file }) => f
-                .debug_struct("FilteredPost")
-                .field("file", &UseDisplay(&**file))
-                .finish(),
-            Builder::Thread(DoThread { post, references }) => f
-                .debug_struct("Thread")
-                .field("post", &UseDisplay(&**post))
-                .field("references", &VecDisplay(references))
-                .finish(),
+impl Derivation for ReadFileDrv {
+    fn id(&self) -> Id {
+        self.output
+    }
+    fn derivation_cache<'ctx>(ctx: &'ctx Context) -> &'ctx MemoryCache<Id, Self> {
+        &ctx.read_file_derivation_cache
+    }
+    fn compute_output(&self, _ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        let output = read(&self.inner.path)?;
+        let expected_hash = self.inner.hash;
+        let actual_hash = Hash(blake3::hash(&output));
+        if actual_hash != expected_hash {
+            bail!("hash mismatch! expected {expected_hash}, actual {actual_hash}");
         }
+        Ok(output)
+    }
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        self.realise_self_only(ctx)
     }
 }
-impl ComputeId for Builder {
+impl Derivation for RenderMarkdownDrv {
+    fn id(&self) -> Id {
+        self.output
+    }
+    fn derivation_cache<'ctx>(ctx: &'ctx Context) -> &'ctx MemoryCache<Id, Self> {
+        &ctx.render_markdown_derivation_cache
+    }
+    fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        let input = RenderMarkdownInput {
+            file: Self::load(ctx, self.inner.file.id())?.output(ctx)?,
+        };
+        let unsafe_markdown = input.file;
+        Ok(render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes())
+    }
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        self.inner.file.realise_recursive(ctx)?;
+        self.realise_self_only(ctx)
+    }
+}
+impl Derivation for FilteredPostDrv {
+    fn id(&self) -> Id {
+        self.output
+    }
+    fn derivation_cache<'ctx>(ctx: &'ctx Context) -> &'ctx MemoryCache<Id, Self> {
+        &ctx.filtered_post_derivation_cache
+    }
+    fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        let input = FilteredPostInput {
+            file: match &self.inner {
+                DoFilteredPost::Html(file) => Self::load(ctx, file.id())?.output(ctx)?,
+                DoFilteredPost::Markdown(file) => Self::load(ctx, file.id())?.output(ctx)?,
+            },
+        };
+        let unsafe_html = input.file;
+        let unsafe_html = str::from_utf8(&unsafe_html)?;
+        let post = UnsafePost::with_html(unsafe_html);
+        let post = FilteredPost::filter(post)?;
+        let output = bincode::serde::encode_to_vec(&post, standard())?;
+        FILTERED_POST_CACHE.insert(self.id(), post);
+        Ok(output)
+    }
+    #[tracing::instrument(skip(ctx))]
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        info!("");
+        match &self.inner {
+            DoFilteredPost::Html(file) => file.realise_recursive(ctx)?,
+            DoFilteredPost::Markdown(file) => file.realise_recursive(ctx)?,
+        };
+        self.realise_self_only(ctx)
+    }
+}
+impl Derivation for ThreadDrv {
+    fn id(&self) -> Id {
+        self.output
+    }
+    fn derivation_cache<'ctx>(ctx: &'ctx Context) -> &'ctx MemoryCache<Id, Self> {
+        &ctx.thread_derivation_cache
+    }
+    fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        let load_filtered_post_cached = |id| -> eyre::Result<_> {
+            if let Some(post) = FILTERED_POST_CACHE.get(&id) {
+                Ok(post.clone())
+            } else {
+                let post = Self::load(ctx, id)?.output(ctx)?;
+                Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
+            }
+        };
+        let input = ThreadInput {
+            post: load_filtered_post_cached(self.inner.post.id())?,
+            references: self.inner.references
+                .iter()
+                .map(|post| load_filtered_post_cached(post.id()))
+                .collect::<eyre::Result<_>>()?,
+        };
+        let thread = Thread::new(input.post, input.references);
+        Ok(bincode::serde::encode_to_vec(&thread, standard())?)
+    }
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        in_place_scope(|scope| {
+            scope.spawn(move |_| {
+                self.inner.post.realise_recursive(ctx).unwrap();
+            });
+            for post in self.inner.references.iter() {
+                scope.spawn(move |_| {
+                    post.realise_recursive(ctx).unwrap();
+                });
+            }
+        });
+        self.realise_self_only(ctx)
+    }
+}
+
+trait DerivationInner: Clone + Debug + Display + Send + Serialize + 'static
+where for<'de> Self: Deserialize<'de> {
     fn compute_id(&self) -> Id {
         let result = bincode::serde::encode_to_vec(self, standard())
             .expect("guaranteed by derive Serialize");
         Id(Hash(blake3::hash(&result)))
     }
 }
+impl DerivationInner for DoReadFile {}
+impl DerivationInner for DoRenderMarkdown {}
+impl DerivationInner for DoFilteredPost {}
+impl DerivationInner for DoThread {}
+
+impl Display for DoReadFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f
+            .debug_struct("ReadFile")
+            .field("path", &UseDisplay(&self.path))
+            .field("hash", &UseDisplay(&self.hash))
+            .finish()
+    }
+}
+impl Display for DoRenderMarkdown {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f
+            .debug_struct("RenderMarkdown")
+            .field("file", &UseDisplay(&*self.file))
+            .finish()
+    }
+}
+impl Display for DoFilteredPost {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DoFilteredPost::Html(file) =>
+                f
+                    .debug_struct("FilteredPost")
+                    .field("file", &UseDisplay(&**file))
+                    .finish(),
+            DoFilteredPost::Markdown(file) =>
+                f
+                    .debug_struct("FilteredPost")
+                    .field("file", &UseDisplay(&**file))
+                    .finish(),
+        }
+    }
+}
+impl Display for DoThread {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f
+            .debug_struct("Thread")
+            .field("post", &UseDisplay(&*self.post))
+            .field("references", &VecDisplay(&self.references))
+            .finish()
+    }
+}
+
+type ReadFileDrv = Drv<DoReadFile>;
+type RenderMarkdownDrv = Drv<DoRenderMarkdown>;
+type FilteredPostDrv = Drv<DoFilteredPost>;
+type ThreadDrv = Drv<DoThread>;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoReadFile {
+    path: DynamicPath,
+    hash: Hash,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoRenderMarkdown {
+    file: Box<ReadFileDrv>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+enum DoFilteredPost {
+    Html(Box<ReadFileDrv>),
+    Markdown(Box<RenderMarkdownDrv>),
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct DoThread {
+    post: Box<FilteredPostDrv>,
+    references: Vec<FilteredPostDrv>,
+}
+
 #[derive(Debug)]
 struct RenderMarkdownInput {
     file: Vec<u8>,
@@ -276,13 +448,13 @@ struct ThreadInput {
     references: Vec<FilteredPost>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
-struct Derivation {
+struct Drv<Inner> {
     output: Id,
-    builder: Builder,
+    inner: Inner,
 }
-impl Display for Derivation {
+impl<Inner: Display> Display for Drv<Inner> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Derivation({} -> {})", self.output.0, self.builder)
+        write!(f, "Derivation({} -> {})", self.output.0, self.inner)
     }
 }
 struct UseDisplay<'d, D: Display>(&'d D);
@@ -304,16 +476,16 @@ mod private {
     use jane_eyre::eyre;
     use tracing::warn;
 
-    use crate::cache::{atomic_writer, Builder, ComputeId as _, ContextGuard, Derivation};
+    use crate::cache::{atomic_writer, ContextGuard, Drv, Derivation, DerivationInner};
 
-    impl Derivation {
-        pub fn instantiate(ctx: &ContextGuard, builder: Builder) -> eyre::Result<Self> {
-            let output = builder.compute_id();
-            Self { output, builder }.store(ctx)
+    impl<Inner: DerivationInner> Drv<Inner> where Self: Derivation {
+        pub fn instantiate(ctx: &ContextGuard, inner: Inner) -> eyre::Result<Self> {
+            let output = inner.compute_id();
+            Self { output, inner }.store(ctx)
         }
 
         fn store(self, ctx: &ContextGuard) -> eyre::Result<Self> {
-            ctx.derivation_cache.get_or_insert_as_write(self.id(), |id| Self::load(ctx, *id), |id| {
+            Self::derivation_cache(ctx.context).get_or_insert_as_write(self.id(), |id| Self::load(ctx, *id), |id| {
                 let path = Self::derivation_path(id);
                 let self_for_write = self.clone();
                 ctx.derivation_writer_scope.spawn(move |_| {
@@ -332,34 +504,36 @@ mod private {
         }
     }
 }
-impl Derivation {
-    fn read_file(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+
+impl ReadFileDrv {
+    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let hash = Hash(blake3::hash(&read(&path)?));
-        Self::instantiate(ctx, Builder::ReadFile(DoReadFile { path, hash }))
+        Self::instantiate(ctx, DoReadFile { path, hash })
     }
-
-    fn render_markdown(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
-        Self::instantiate(ctx, Builder::RenderMarkdown(DoRenderMarkdown {
-            file: Self::read_file(ctx, path)?.into(),
-        }))
+}
+impl RenderMarkdownDrv {
+    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+        Self::instantiate(ctx, DoRenderMarkdown {
+            file: ReadFileDrv::new(ctx, path)?.into(),
+        })
     }
-
-    fn filtered_post(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+}
+impl FilteredPostDrv {
+    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let DynamicPath::Posts(posts_path) = &path else {
             bail!("path is not a posts path")
         };
-        let file = if posts_path.is_markdown_post() {
-            Self::render_markdown(ctx, path)?
+        let inner = if posts_path.is_markdown_post() {
+            DoFilteredPost::Markdown(RenderMarkdownDrv::new(ctx, path)?.into())
         } else {
-            Self::read_file(ctx, path)?
+            DoFilteredPost::Html(ReadFileDrv::new(ctx, path)?.into())
         };
-        Self::instantiate(ctx, Builder::FilteredPost(DoFilteredPost {
-            file: file.into(),
-        }))
+        Self::instantiate(ctx, inner)
     }
-
-    fn thread(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
-        let post_derivation = Self::filtered_post(ctx, path)?;
+}
+impl ThreadDrv {
+    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+        let post_derivation = FilteredPostDrv::new(ctx, path)?;
         let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
             post.clone()
         } else {
@@ -369,126 +543,23 @@ impl Derivation {
         };
         let references = post.meta.front_matter.references
             .par_iter()
-            .map(|path| Self::filtered_post(ctx, path.to_dynamic_path()))
+            .map(|path| FilteredPostDrv::new(ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<Vec<_>>>()?;
-        Self::instantiate(ctx, Builder::Thread(DoThread {
+        Self::instantiate(ctx, DoThread {
             post: post_derivation.into(),
             references,
-        }))
+        })
     }
+}
 
-    fn id(&self) -> Id {
-        self.output
-    }
-
-    fn derivation_path(id: &Id) -> String {
-        format!("cache/{id}.drv")
-    }
-
-    fn output_path(&self) -> String {
-        format!("cache/{}.out", self.id())
-    }
-
-    fn needs(&self) -> Vec<&Derivation> {
-        match &self.builder {
-            Builder::ReadFile(DoReadFile { .. }) => vec![],
-            Builder::RenderMarkdown(DoRenderMarkdown { file }) => vec![&**file],
-            Builder::FilteredPost(DoFilteredPost { file }) => vec![&**file],
-            Builder::Thread(DoThread { post, references }) => {
-                let mut result = vec![&**post];
-                result.extend(references.iter());
-                result
-            }
-        }
-    }
-
+impl<Inner: DerivationInner> Drv<Inner> where Self: Derivation {
     fn load(ctx: &ContextGuard, id: Id) -> eyre::Result<Self> {
-        ctx.derivation_cache.get_or_insert_as_read(id, |id| {
+        Self::derivation_cache(ctx.context).get_or_insert_as_read(id, |id| {
             Ok(bincode::serde::decode_from_std_read(
                 &mut File::open(Self::derivation_path(id))?,
                 standard(),
             )?)
         })
-    }
-
-    fn output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        ctx.output_cache.get_or_insert_as_read(self.id(), |_id| {
-            Ok(read(self.output_path())?)
-        })
-    }
-
-    fn realise(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        ctx.output_cache.get_or_insert_as_write(self.id(), |_id| Ok(read(self.output_path())?), |_id| {
-            debug!("building {self}");
-            let result = (|| {
-                let content = match &self.builder {
-                    Builder::ReadFile(DoReadFile { path, hash }) => {
-                        let output = read(path)?;
-                        let actual_hash = Hash(blake3::hash(&output));
-                        if &actual_hash != hash {
-                            bail!("hash mismatch! expected {hash}, actual {actual_hash}");
-                        }
-                        output
-                    }
-                    Builder::RenderMarkdown(DoRenderMarkdown { file }) => {
-                        let input = RenderMarkdownInput {
-                            file: Self::load(ctx, file.id())?.output(ctx)?,
-                        };
-                        let unsafe_markdown = input.file;
-                        render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes()
-                    }
-                    Builder::FilteredPost(DoFilteredPost { file }) => {
-                        let input = FilteredPostInput {
-                            file: Self::load(ctx, file.id())?.output(ctx)?,
-                        };
-                        let unsafe_html = input.file;
-                        let unsafe_html = str::from_utf8(&unsafe_html)?;
-                        let post = UnsafePost::with_html(unsafe_html);
-                        let post = FilteredPost::filter(post)?;
-                        let output = bincode::serde::encode_to_vec(&post, standard())?;
-                        FILTERED_POST_CACHE.insert(self.id(), post);
-                        output
-                    }
-                    Builder::Thread(DoThread { post, references }) => {
-                        let load_filtered_post_cached = |id| -> eyre::Result<_> {
-                            if let Some(post) = FILTERED_POST_CACHE.get(&id) {
-                                Ok(post.clone())
-                            } else {
-                                let post = Self::load(ctx, id)?.output(ctx)?;
-                                Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
-                            }
-                        };
-                        let input = ThreadInput {
-                            post: load_filtered_post_cached(post.id())?,
-                            references: references
-                                .iter()
-                                .map(|post| load_filtered_post_cached(post.id()))
-                                .collect::<eyre::Result<_>>()?,
-                        };
-                        let thread = Thread::new(input.post, input.references);
-                        bincode::serde::encode_to_vec(&thread, standard())?
-                    }
-                };
-                let output_path = self.output_path();
-                let content_for_write = content.clone();
-                ctx.output_writer_scope.spawn(move |_| {
-                    if let Err(error) = atomic_write(output_path, content_for_write) {
-                        warn!(?error, "failed to write derivation output");
-                    }
-                });
-                Ok(content)
-            })();
-            result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
-        })
-    }
-    
-    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        let _needs = self
-            .needs()
-            .into_par_iter()
-            .map(|dependency| dependency.realise_recursive(ctx))
-            .collect::<eyre::Result<Vec<_>>>()?;
-        self.realise(ctx)
     }
 }
 
@@ -498,8 +569,9 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("building threads");
         top_level_post_paths
             .par_iter()
+            .filter(|path| path.db_post_table_path() == "5777093.html")
             .map(|path| -> eyre::Result<()> {
-                Derivation::thread(&ctx, path.to_dynamic_path())?.realise_recursive(&ctx)?;
+                ThreadDrv::new(&ctx, path.to_dynamic_path())?.realise_recursive(&ctx)?;
                 Ok(())
             })
             .collect::<eyre::Result<Vec<_>>>()?;
