@@ -205,6 +205,7 @@ impl Display for Id {
 }
 
 trait Derivation: Debug + Display + Sized {
+    fn function_name() -> &'static str;
     fn id(&self) -> Id;
     fn derivation_path(id: &Id) -> String {
         format!("cache/{id}.drv")
@@ -216,6 +217,18 @@ trait Derivation: Debug + Display + Sized {
         ctx.context.output_cache.get_or_insert_as_read(self.id(), |_id| {
             Ok(read(self.output_path())?)
         })
+    }
+    /// same as [`Derivation::realise_recursive()`], but traced at info level.
+    #[tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
+    fn realise_recursive_info(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        info!("building");
+        self.realise_recursive(ctx)
+    }
+    /// same as [`Derivation::realise_recursive()`], but traced at debug level.
+    #[tracing::instrument(level = "debug", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
+    fn realise_recursive_debug(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
+        debug!("building");
+        self.realise_recursive(ctx)
     }
     fn realise_self_only(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         ctx.context.output_cache.get_or_insert_as_write(self.id(), |_id| Ok(read(self.output_path())?), |_id| {
@@ -238,10 +251,14 @@ trait Derivation: Debug + Display + Sized {
     fn derivation_cache<'ctx>(ctx: &'ctx Context) -> &'ctx MemoryCache<Id, Self>;
     /// only to be called by [`Derivation::realise_self_only()`]. do not call this method elsewhere.
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>>;
-    /// default impl where `Self` has no dependencies: `self.realise_self_only(ctx)`
+    /// implementations should call `dep.realise_recursive_debug(ctx)` for each dependency, then call `self.realise_self_only(ctx)`.
+    /// in other words, the default impl where `Self` has no dependencies should be: `self.realise_self_only(ctx)`
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>>;
 }
 impl Derivation for ReadFileDrv {
+    fn function_name() -> &'static str {
+        "ReadFile"
+    }
     fn id(&self) -> Id {
         self.output
     }
@@ -257,11 +274,15 @@ impl Derivation for ReadFileDrv {
         }
         Ok(output)
     }
+    #[tracing::instrument(skip_all, fields(id = %self.id()))]
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         self.realise_self_only(ctx)
     }
 }
 impl Derivation for RenderMarkdownDrv {
+    fn function_name() -> &'static str {
+        "RenderMarkdown"
+    }
     fn id(&self) -> Id {
         self.output
     }
@@ -276,11 +297,14 @@ impl Derivation for RenderMarkdownDrv {
         Ok(render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes())
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        self.inner.file.realise_recursive(ctx)?;
+        self.inner.file.realise_recursive_debug(ctx)?;
         self.realise_self_only(ctx)
     }
 }
 impl Derivation for FilteredPostDrv {
+    fn function_name() -> &'static str {
+        "FilteredPost"
+    }
     fn id(&self) -> Id {
         self.output
     }
@@ -303,15 +327,17 @@ impl Derivation for FilteredPostDrv {
         Ok(output)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        info!("");
         match &self.inner {
-            DoFilteredPost::Html(file) => file.realise_recursive(ctx)?,
-            DoFilteredPost::Markdown(file) => file.realise_recursive(ctx)?,
+            DoFilteredPost::Html(file) => file.realise_recursive_debug(ctx)?,
+            DoFilteredPost::Markdown(file) => file.realise_recursive_debug(ctx)?,
         };
         self.realise_self_only(ctx)
     }
 }
 impl Derivation for ThreadDrv {
+    fn function_name() -> &'static str {
+        "Thread"
+    }
     fn id(&self) -> Id {
         self.output
     }
@@ -340,11 +366,11 @@ impl Derivation for ThreadDrv {
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         in_place_scope(|scope| {
             scope.spawn(move |_| {
-                self.inner.post.realise_recursive(ctx).unwrap();
+                self.inner.post.realise_recursive_debug(ctx).unwrap();
             });
             for post in self.inner.references.iter() {
                 scope.spawn(move |_| {
-                    post.realise_recursive(ctx).unwrap();
+                    post.realise_recursive_debug(ctx).unwrap();
                 });
             }
         });
@@ -569,7 +595,7 @@ pub async fn test() -> eyre::Result<()> {
         top_level_post_paths
             .par_iter()
             .map(|path| -> eyre::Result<()> {
-                ThreadDrv::new(&ctx, path.to_dynamic_path())?.realise_recursive(&ctx)?;
+                ThreadDrv::new(&ctx, path.to_dynamic_path())?.realise_recursive_info(&ctx)?;
                 Ok(())
             })
             .collect::<eyre::Result<Vec<_>>>()?;
