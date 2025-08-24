@@ -19,6 +19,7 @@ use rayon::{
 use tracing::{debug, info, warn};
 
 use crate::{
+    cache::mem::MemoryCache,
     path::{DynamicPath, POSTS_PATH_ROOT},
     render_markdown, FilteredPost, Thread, UnsafePost,
 };
@@ -26,14 +27,14 @@ use crate::{
 struct Context {
     output_writer_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
-    read_file_derivation_cache: mem::MemoryCache<Id, ReadFileDrv>,
-    read_file_output_cache: mem::MemoryCache<Id, Vec<u8>>,
-    render_markdown_derivation_cache: mem::MemoryCache<Id, RenderMarkdownDrv>,
-    render_markdown_output_cache: mem::MemoryCache<Id, String>,
-    filtered_post_derivation_cache: mem::MemoryCache<Id, FilteredPostDrv>,
-    filtered_post_output_cache: mem::MemoryCache<Id, FilteredPost>,
-    thread_derivation_cache: mem::MemoryCache<Id, ThreadDrv>,
-    thread_output_cache: mem::MemoryCache<Id, Thread>,
+    read_file_derivation_cache: MemoryCache<Id, ReadFileDrv>,
+    read_file_output_cache: MemoryCache<Id, Vec<u8>>,
+    render_markdown_derivation_cache: MemoryCache<Id, RenderMarkdownDrv>,
+    render_markdown_output_cache: MemoryCache<Id, String>,
+    filtered_post_derivation_cache: MemoryCache<Id, FilteredPostDrv>,
+    filtered_post_output_cache: MemoryCache<Id, FilteredPost>,
+    thread_derivation_cache: MemoryCache<Id, ThreadDrv>,
+    thread_output_cache: MemoryCache<Id, Thread>,
 }
 struct ContextGuard<'ctx, 'scope> {
     context: &'ctx Context,
@@ -56,14 +57,14 @@ impl Context {
                 .num_threads(cpu_count * 4)
                 .build()
                 .expect("failed to build thread pool"),
-            read_file_derivation_cache: mem::MemoryCache::new("ReadFileDrv"),
-            read_file_output_cache: mem::MemoryCache::new("ReadFileOut"),
-            render_markdown_derivation_cache: mem::MemoryCache::new("RenderMarkdownDrv"),
-            render_markdown_output_cache: mem::MemoryCache::new("RenderMarkdownOut"),
-            filtered_post_derivation_cache: mem::MemoryCache::new("FilteredPostDrv"),
-            filtered_post_output_cache: mem::MemoryCache::new("FilteredPostOut"),
-            thread_derivation_cache: mem::MemoryCache::new("ThreadDrv"),
-            thread_output_cache: mem::MemoryCache::new("ThreadOut"),
+            read_file_derivation_cache: MemoryCache::new("ReadFileDrv"),
+            read_file_output_cache: MemoryCache::new("ReadFileOut"),
+            render_markdown_derivation_cache: MemoryCache::new("RenderMarkdownDrv"),
+            render_markdown_output_cache: MemoryCache::new("RenderMarkdownOut"),
+            filtered_post_derivation_cache: MemoryCache::new("FilteredPostDrv"),
+            filtered_post_output_cache: MemoryCache::new("FilteredPostOut"),
+            thread_derivation_cache: MemoryCache::new("ThreadDrv"),
+            thread_output_cache: MemoryCache::new("ThreadOut"),
         }
     }
     fn run<R: Send>(fun: impl FnOnce(ContextGuard) -> R + Send) -> R {
@@ -84,7 +85,7 @@ impl Context {
 }
 
 #[derive(Clone, Copy, Debug, Decode, Encode, Hash, PartialEq, Eq, PartialOrd, Ord)]
-struct Id(hash::Hash);
+struct Id(self::hash::Hash);
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -95,8 +96,8 @@ trait Derivation: Debug + Display + Sized {
     type Output: Clone + Decode<()> + Encode;
     fn function_name() -> &'static str;
     fn id(&self) -> Id;
-    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self>;
-    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output>;
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self>;
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output>;
     /// only to be called by [`Derivation::realise_self_only()`]. do not call this method elsewhere.
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output>;
     /// implementations should call `dep.realise_recursive_debug(ctx)` for each dependency, then call `self.realise_self_only(ctx)`.
@@ -165,16 +166,16 @@ impl Derivation for ReadFileDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
         &ctx.read_file_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
         &ctx.read_file_output_cache
     }
     fn compute_output(&self, _ctx: &ContextGuard) -> eyre::Result<Self::Output> {
         let output = read(&self.inner.path)?;
         let expected_hash = self.inner.hash;
-        let actual_hash = hash::Hash(blake3::hash(&output));
+        let actual_hash = self::hash::Hash(blake3::hash(&output));
         if actual_hash != expected_hash {
             bail!("hash mismatch! expected {expected_hash}, actual {actual_hash}");
         }
@@ -193,10 +194,10 @@ impl Derivation for RenderMarkdownDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
         &ctx.render_markdown_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
         &ctx.render_markdown_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -216,10 +217,10 @@ impl Derivation for FilteredPostDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
         &ctx.filtered_post_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
         &ctx.filtered_post_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -255,10 +256,10 @@ impl Derivation for ThreadDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
         &ctx.thread_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
         &ctx.thread_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -291,7 +292,7 @@ trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 's
     fn compute_id(&self) -> Id {
         let result =
             bincode::encode_to_vec(self, standard()).expect("guaranteed by derive Serialize");
-        Id(hash::Hash(blake3::hash(&result)))
+        Id(self::hash::Hash(blake3::hash(&result)))
     }
 }
 impl DerivationInner for DoReadFile {}
@@ -345,7 +346,7 @@ type ThreadDrv = Drv<DoThread>;
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 struct DoReadFile {
     path: DynamicPath,
-    hash: hash::Hash,
+    hash: self::hash::Hash,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 struct DoRenderMarkdown {
@@ -429,7 +430,7 @@ mod private {
 
 impl ReadFileDrv {
     fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
-        let hash = hash::Hash(blake3::hash(&read(&path)?));
+        let hash = self::hash::Hash(blake3::hash(&read(&path)?));
         Self::instantiate(ctx, DoReadFile { path, hash })
     }
 }

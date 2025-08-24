@@ -6,13 +6,13 @@ use std::fmt::Debug;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 
-pub(crate) struct MemoryCache<K, V> {
-    pub(crate) inner: DashMap<K, V>,
-    pub(crate) label: &'static str,
-    pub(crate) hits: AtomicUsize,
-    pub(crate) read_misses: AtomicUsize,
-    pub(crate) read_write_misses: AtomicUsize,
-    pub(crate) write_write_misses: AtomicUsize,
+pub struct MemoryCache<K, V> {
+    inner: DashMap<K, V>,
+    label: &'static str,
+    hits: AtomicUsize,
+    read_misses: AtomicUsize,
+    read_write_misses: AtomicUsize,
+    write_write_misses: AtomicUsize,
 }
 
 impl<K: Eq + std::hash::Hash, V> Debug for MemoryCache<K, V> {
@@ -31,7 +31,7 @@ impl<K: Eq + std::hash::Hash, V> Debug for MemoryCache<K, V> {
 }
 
 impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
-    pub(crate) fn new(label: &'static str) -> Self {
+    pub fn new(label: &'static str) -> Self {
         Self {
             inner: DashMap::new(),
             label,
@@ -41,7 +41,7 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
             write_write_misses: AtomicUsize::new(0),
         }
     }
-    pub(crate) fn get_or_insert_as_read(
+    pub fn get_or_insert_as_read(
         &self,
         key: K,
         default: impl FnOnce(&K) -> eyre::Result<V>,
@@ -57,7 +57,7 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
             Ok(value)
         }
     }
-    pub(crate) fn get_or_insert_as_write(
+    pub fn get_or_insert_as_write(
         &self,
         key: K,
         read: impl FnOnce(&K) -> eyre::Result<V>,
