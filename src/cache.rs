@@ -3,10 +3,11 @@ use std::{
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
-use bincode::{config::standard, de::{BorrowDecoder, Decoder}, enc::Encoder, error::DecodeError, BorrowDecode, Decode, Encode};
+use bincode::config::standard;
 use dashmap::DashMap;
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{in_place_scope, iter::{IntoParallelRefIterator, ParallelIterator as _}, Scope, ThreadPool, ThreadPoolBuilder};
+use serde::{de::Visitor, Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -161,29 +162,41 @@ impl Display for Hash {
         }
     }
 }
-impl < __Context > Decode < __Context > for Hash
-{
-    fn decode<D: Decoder<Context = __Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
-        Ok(Self(blake3::Hash::from_bytes(Decode::decode(decoder)?)))
+impl Serialize for Hash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.0.to_hex().as_str())
     }
 }
-impl < '__de, __Context >   BorrowDecode < '__de, __Context >
-for Hash
-{
-    fn borrow_decode<D: BorrowDecoder<'__de, Context = __Context>>(
-        decoder: &mut D,
-    ) -> Result<Self, DecodeError> {
-        Ok(Self(blake3::Hash::from_slice(BorrowDecode::borrow_decode(decoder)?).map_err(|e| DecodeError::OtherString(e.to_string()))?))
+impl<'de> Deserialize<'de> for Hash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_str(HashVisitor)
     }
 }
-impl  Encode for Hash
-{
-    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), bincode::error::EncodeError> {
-        Encode::encode(self.0.as_bytes(), encoder)
+struct HashVisitor;
+impl<'de> Visitor<'de> for HashVisitor {
+    type Value = Hash;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string that is 64 hex digits")
+    }
+
+    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+    where
+        E: serde::de::Error,
+    {
+        let result = blake3::Hash::from_hex(v)
+            .map_err(|e| E::custom(format!("failed to parse hash: {e:?}")))?;
+        Ok(Hash(result))
     }
 }
 
-#[derive(Clone, Copy, Debug, Decode, Encode, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct Id(Hash);
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -256,8 +269,8 @@ impl Derivation for RenderMarkdownDrv {
         &ctx.render_markdown_derivation_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        let input: RenderMarkdownInput = RenderMarkdownInput {
-            file: ReadFileDrv::load(ctx, self.inner.file.id())?.output(ctx)?,
+        let input = RenderMarkdownInput {
+            file: Self::load(ctx, self.inner.file.id())?.output(ctx)?,
         };
         let unsafe_markdown = input.file;
         Ok(render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes())
@@ -277,18 +290,19 @@ impl Derivation for FilteredPostDrv {
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         let input = FilteredPostInput {
             file: match &self.inner {
-                DoFilteredPost::Html(file) => ReadFileDrv::load(ctx, file.id())?.output(ctx)?,
-                DoFilteredPost::Markdown(file) => RenderMarkdownDrv::load(ctx, file.id())?.output(ctx)?,
+                DoFilteredPost::Html(file) => Self::load(ctx, file.id())?.output(ctx)?,
+                DoFilteredPost::Markdown(file) => Self::load(ctx, file.id())?.output(ctx)?,
             },
         };
         let unsafe_html = input.file;
         let unsafe_html = str::from_utf8(&unsafe_html)?;
         let post = UnsafePost::with_html(unsafe_html);
         let post = FilteredPost::filter(post)?;
-        let output = bincode::encode_to_vec(&post, standard())?;
+        let output = bincode::serde::encode_to_vec(&post, standard())?;
         FILTERED_POST_CACHE.insert(self.id(), post);
         Ok(output)
     }
+    #[tracing::instrument(skip(ctx))]
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         info!("");
         match &self.inner {
@@ -310,8 +324,8 @@ impl Derivation for ThreadDrv {
             if let Some(post) = FILTERED_POST_CACHE.get(&id) {
                 Ok(post.clone())
             } else {
-                let post = FilteredPostDrv::load(ctx, id)?.output(ctx)?;
-                Ok(bincode::decode_from_slice(&post, standard())?.0)
+                let post = Self::load(ctx, id)?.output(ctx)?;
+                Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
             }
         };
         let input = ThreadInput {
@@ -322,7 +336,7 @@ impl Derivation for ThreadDrv {
                 .collect::<eyre::Result<_>>()?,
         };
         let thread = Thread::new(input.post, input.references);
-        Ok(bincode::encode_to_vec(&thread, standard())?)
+        Ok(bincode::serde::encode_to_vec(&thread, standard())?)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         in_place_scope(|scope| {
@@ -339,9 +353,10 @@ impl Derivation for ThreadDrv {
     }
 }
 
-trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 'static {
+trait DerivationInner: Clone + Debug + Display + Send + Serialize + 'static
+where for<'de> Self: Deserialize<'de> {
     fn compute_id(&self) -> Id {
-        let result = bincode::encode_to_vec(self, standard())
+        let result = bincode::serde::encode_to_vec(self, standard())
             .expect("guaranteed by derive Serialize");
         Id(Hash(blake3::hash(&result)))
     }
@@ -364,7 +379,7 @@ impl Display for DoRenderMarkdown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f
             .debug_struct("RenderMarkdown")
-            .field("file", &UseDisplay(&self.file))
+            .field("file", &UseDisplay(&*self.file))
             .finish()
     }
 }
@@ -374,12 +389,12 @@ impl Display for DoFilteredPost {
             DoFilteredPost::Html(file) =>
                 f
                     .debug_struct("FilteredPost")
-                    .field("file", &UseDisplay(file))
+                    .field("file", &UseDisplay(&**file))
                     .finish(),
             DoFilteredPost::Markdown(file) =>
                 f
                     .debug_struct("FilteredPost")
-                    .field("file", &UseDisplay(file))
+                    .field("file", &UseDisplay(&**file))
                     .finish(),
         }
     }
@@ -399,21 +414,21 @@ type RenderMarkdownDrv = Drv<DoRenderMarkdown>;
 type FilteredPostDrv = Drv<DoFilteredPost>;
 type ThreadDrv = Drv<DoThread>;
 
-#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct DoReadFile {
     path: DynamicPath,
     hash: Hash,
 }
-#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct DoRenderMarkdown {
-    file: ReadFileDrv,
+    file: Box<ReadFileDrv>,
 }
-#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 enum DoFilteredPost {
-    Html(ReadFileDrv),
-    Markdown(RenderMarkdownDrv),
+    Html(Box<ReadFileDrv>),
+    Markdown(Box<RenderMarkdownDrv>),
 }
-#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct DoThread {
     post: Box<FilteredPostDrv>,
     references: Vec<FilteredPostDrv>,
@@ -432,7 +447,7 @@ struct ThreadInput {
     post: FilteredPost,
     references: Vec<FilteredPost>,
 }
-#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct Drv<Inner> {
     output: Id,
     inner: Inner,
@@ -476,7 +491,7 @@ mod private {
                 ctx.derivation_writer_scope.spawn(move |_| {
                     let result = || -> eyre::Result<()> {
                         let mut file = atomic_writer(path)?;
-                        bincode::encode_into_std_write(self_for_write, &mut file, standard())?;
+                        bincode::serde::encode_into_std_write(self_for_write, &mut file, standard())?;
                         file.commit()?;
                         Ok(())
                     }();
@@ -524,7 +539,7 @@ impl ThreadDrv {
         } else {
             // effectively an IFD
             let post = post_derivation.realise_recursive(ctx)?;
-            bincode::decode_from_slice(&post, standard())?.0
+            bincode::serde::decode_from_slice(&post, standard())?.0
         };
         let references = post.meta.front_matter.references
             .par_iter()
@@ -540,7 +555,7 @@ impl ThreadDrv {
 impl<Inner: DerivationInner> Drv<Inner> where Self: Derivation {
     fn load(ctx: &ContextGuard, id: Id) -> eyre::Result<Self> {
         Self::derivation_cache(ctx.context).get_or_insert_as_read(id, |id| {
-            Ok(bincode::decode_from_std_read(
+            Ok(bincode::serde::decode_from_std_read(
                 &mut File::open(Self::derivation_path(id))?,
                 standard(),
             )?)
@@ -554,6 +569,7 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("building threads");
         top_level_post_paths
             .par_iter()
+            .filter(|path| path.db_post_table_path() == "5777093.html")
             .map(|path| -> eyre::Result<()> {
                 ThreadDrv::new(&ctx, path.to_dynamic_path())?.realise_recursive(&ctx)?;
                 Ok(())
