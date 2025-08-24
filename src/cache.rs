@@ -1,16 +1,15 @@
 mod hash;
+mod mem;
 
 use std::{
     fmt::{Debug, Display},
     fs::{read, File},
     io::Write,
     path::Path,
-    sync::atomic::{AtomicUsize, Ordering::SeqCst},
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::{config::standard, Decode, Encode};
-use dashmap::DashMap;
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
     in_place_scope,
@@ -27,14 +26,14 @@ use crate::{
 struct Context {
     output_writer_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
-    read_file_derivation_cache: MemoryCache<Id, ReadFileDrv>,
-    read_file_output_cache: MemoryCache<Id, Vec<u8>>,
-    render_markdown_derivation_cache: MemoryCache<Id, RenderMarkdownDrv>,
-    render_markdown_output_cache: MemoryCache<Id, String>,
-    filtered_post_derivation_cache: MemoryCache<Id, FilteredPostDrv>,
-    filtered_post_output_cache: MemoryCache<Id, FilteredPost>,
-    thread_derivation_cache: MemoryCache<Id, ThreadDrv>,
-    thread_output_cache: MemoryCache<Id, Thread>,
+    read_file_derivation_cache: mem::MemoryCache<Id, ReadFileDrv>,
+    read_file_output_cache: mem::MemoryCache<Id, Vec<u8>>,
+    render_markdown_derivation_cache: mem::MemoryCache<Id, RenderMarkdownDrv>,
+    render_markdown_output_cache: mem::MemoryCache<Id, String>,
+    filtered_post_derivation_cache: mem::MemoryCache<Id, FilteredPostDrv>,
+    filtered_post_output_cache: mem::MemoryCache<Id, FilteredPost>,
+    thread_derivation_cache: mem::MemoryCache<Id, ThreadDrv>,
+    thread_output_cache: mem::MemoryCache<Id, Thread>,
 }
 struct ContextGuard<'ctx, 'scope> {
     context: &'ctx Context,
@@ -57,14 +56,14 @@ impl Context {
                 .num_threads(cpu_count * 4)
                 .build()
                 .expect("failed to build thread pool"),
-            read_file_derivation_cache: MemoryCache::new("ReadFileDrv"),
-            read_file_output_cache: MemoryCache::new("ReadFileOut"),
-            render_markdown_derivation_cache: MemoryCache::new("RenderMarkdownDrv"),
-            render_markdown_output_cache: MemoryCache::new("RenderMarkdownOut"),
-            filtered_post_derivation_cache: MemoryCache::new("FilteredPostDrv"),
-            filtered_post_output_cache: MemoryCache::new("FilteredPostOut"),
-            thread_derivation_cache: MemoryCache::new("ThreadDrv"),
-            thread_output_cache: MemoryCache::new("ThreadOut"),
+            read_file_derivation_cache: mem::MemoryCache::new("ReadFileDrv"),
+            read_file_output_cache: mem::MemoryCache::new("ReadFileOut"),
+            render_markdown_derivation_cache: mem::MemoryCache::new("RenderMarkdownDrv"),
+            render_markdown_output_cache: mem::MemoryCache::new("RenderMarkdownOut"),
+            filtered_post_derivation_cache: mem::MemoryCache::new("FilteredPostDrv"),
+            filtered_post_output_cache: mem::MemoryCache::new("FilteredPostOut"),
+            thread_derivation_cache: mem::MemoryCache::new("ThreadDrv"),
+            thread_output_cache: mem::MemoryCache::new("ThreadOut"),
         }
     }
     fn run<R: Send>(fun: impl FnOnce(ContextGuard) -> R + Send) -> R {
@@ -84,79 +83,6 @@ impl Context {
     }
 }
 
-struct MemoryCache<K, V> {
-    inner: DashMap<K, V>,
-    label: &'static str,
-    hits: AtomicUsize,
-    read_misses: AtomicUsize,
-    read_write_misses: AtomicUsize,
-    write_write_misses: AtomicUsize,
-}
-impl<K: Eq + std::hash::Hash, V> Debug for MemoryCache<K, V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "MemoryCache {} (len {}, hits {}, reads {}, read writes {}, write writes {})",
-            self.label,
-            self.inner.len(),
-            self.hits.load(SeqCst),
-            self.read_misses.load(SeqCst),
-            self.read_write_misses.load(SeqCst),
-            self.write_write_misses.load(SeqCst)
-        )
-    }
-}
-impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
-    fn new(label: &'static str) -> Self {
-        Self {
-            inner: DashMap::new(),
-            label,
-            hits: AtomicUsize::new(0),
-            read_misses: AtomicUsize::new(0),
-            read_write_misses: AtomicUsize::new(0),
-            write_write_misses: AtomicUsize::new(0),
-        }
-    }
-    fn get_or_insert_as_read(
-        &self,
-        key: K,
-        default: impl FnOnce(&K) -> eyre::Result<V>,
-    ) -> eyre::Result<V> {
-        debug!(target: "autost::cache::memory", ?self, "query");
-        if let Some(value) = self.inner.get(&key) {
-            self.hits.fetch_add(1, SeqCst);
-            Ok(value.clone())
-        } else {
-            self.read_misses.fetch_add(1, SeqCst);
-            let value = default(&key)?;
-            self.inner.insert(key, value.clone());
-            Ok(value)
-        }
-    }
-    fn get_or_insert_as_write(
-        &self,
-        key: K,
-        read: impl FnOnce(&K) -> eyre::Result<V>,
-        write: impl FnOnce(&K) -> eyre::Result<V>,
-    ) -> eyre::Result<V> {
-        debug!(target: "autost::cache::memory", ?self, "query");
-        if let Some(value) = self.inner.get(&key) {
-            self.hits.fetch_add(1, SeqCst);
-            return Ok(value.clone());
-        }
-        let value = if let Ok(value) = read(&key) {
-            self.read_write_misses.fetch_add(1, SeqCst);
-            value
-        } else {
-            warn!(target: "autost::cache::memory", ?self, ?key, "write");
-            self.write_write_misses.fetch_add(1, SeqCst);
-            write(&key)?
-        };
-        self.inner.insert(key, value.clone());
-        Ok(value)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Decode, Encode, Hash, PartialEq, Eq, PartialOrd, Ord)]
 struct Id(hash::Hash);
 impl Display for Id {
@@ -169,8 +95,8 @@ trait Derivation: Debug + Display + Sized {
     type Output: Clone + Decode<()> + Encode;
     fn function_name() -> &'static str;
     fn id(&self) -> Id;
-    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self>;
-    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output>;
+    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self>;
+    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output>;
     /// only to be called by [`Derivation::realise_self_only()`]. do not call this method elsewhere.
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output>;
     /// implementations should call `dep.realise_recursive_debug(ctx)` for each dependency, then call `self.realise_self_only(ctx)`.
@@ -239,10 +165,10 @@ impl Derivation for ReadFileDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
         &ctx.read_file_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
         &ctx.read_file_output_cache
     }
     fn compute_output(&self, _ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -267,10 +193,10 @@ impl Derivation for RenderMarkdownDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
         &ctx.render_markdown_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
         &ctx.render_markdown_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -290,10 +216,10 @@ impl Derivation for FilteredPostDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
         &ctx.filtered_post_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
         &ctx.filtered_post_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -329,10 +255,10 @@ impl Derivation for ThreadDrv {
     fn id(&self) -> Id {
         self.output
     }
-    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
+    fn derivation_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self> {
         &ctx.thread_derivation_cache
     }
-    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
+    fn output_cache(ctx: &Context) -> &mem::MemoryCache<Id, Self::Output> {
         &ctx.thread_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
