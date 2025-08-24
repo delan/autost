@@ -23,7 +23,6 @@ pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
     hasher
 });
 
-static FILTERED_POST_CACHE: LazyLock<DashMap<Id, FilteredPost>> = LazyLock::new(DashMap::new);
 struct Context {
     output_cache: MemoryCache<Id, Vec<u8>>,
     output_writer_pool: ThreadPool,
@@ -310,7 +309,6 @@ impl Derivation for FilteredPostDrv {
         let post = UnsafePost::with_html(unsafe_html);
         let post = FilteredPost::filter(post)?;
         let output = bincode::encode_to_vec(&post, standard())?;
-        FILTERED_POST_CACHE.insert(self.id(), post);
         Ok(output)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
@@ -332,19 +330,15 @@ impl Derivation for ThreadDrv {
         &ctx.thread_derivation_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
-        let load_filtered_post_cached = |id| -> eyre::Result<_> {
-            if let Some(post) = FILTERED_POST_CACHE.get(&id) {
-                Ok(post.clone())
-            } else {
-                let post = FilteredPostDrv::load(ctx, id)?.output(ctx)?;
-                Ok(bincode::decode_from_slice(&post, standard())?.0)
-            }
+        let load_filtered_post = |id| -> eyre::Result<_> {
+            let post = FilteredPostDrv::load(ctx, id)?.output(ctx)?;
+            Ok(bincode::decode_from_slice(&post, standard())?.0)
         };
         let input = ThreadInput {
-            post: load_filtered_post_cached(self.inner.post.id())?,
+            post: load_filtered_post(self.inner.post.id())?,
             references: self.inner.references
                 .iter()
-                .map(|post| load_filtered_post_cached(post.id()))
+                .map(|post| load_filtered_post(post.id()))
                 .collect::<eyre::Result<_>>()?,
         };
         let thread = Thread::new(input.post, input.references);
@@ -545,13 +539,9 @@ impl FilteredPostDrv {
 impl ThreadDrv {
     fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let post_derivation = FilteredPostDrv::new(ctx, path)?;
-        let post = if let Some(post) = FILTERED_POST_CACHE.get(&post_derivation.id()) {
-            post.clone()
-        } else {
-            // effectively an IFD
-            let post = post_derivation.realise_recursive(ctx)?;
-            bincode::decode_from_slice(&post, standard())?.0
-        };
+        // effectively an IFD
+        let post = post_derivation.realise_recursive(ctx)?;
+        let post: FilteredPost = bincode::decode_from_slice(&post, standard())?.0;
         let references = post.meta.front_matter.references
             .par_iter()
             .map(|path| FilteredPostDrv::new(ctx, path.to_dynamic_path()))
