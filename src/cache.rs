@@ -1,5 +1,5 @@
 use std::{
-    env::current_exe, fmt::{Debug, Display}, fs::{read, File}, io::Write, path::Path, sync::{atomic::{AtomicUsize, Ordering::SeqCst}, LazyLock}
+    fmt::{Debug, Display}, fs::{read, File}, io::Write, path::Path, sync::atomic::{AtomicUsize, Ordering::SeqCst}
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
@@ -12,16 +12,6 @@ use tracing::{debug, info, warn};
 use crate::{
     path::{DynamicPath, POSTS_PATH_ROOT}, render_markdown, FilteredPost, Thread, UnsafePost
 };
-
-pub static HASHER: LazyLock<blake3::Hasher> = LazyLock::new(|| {
-    let mut hasher = blake3::Hasher::new();
-    let exe = current_exe().expect("failed to get path to executable");
-    hasher
-        .update_mmap_rayon(exe)
-        .expect("failed to hash executable");
-    hasher.update(hasher.finalize().as_bytes());
-    hasher
-});
 
 struct Context {
     output_writer_pool: ThreadPool,
@@ -127,21 +117,6 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
         self.inner.insert(key, value.clone());
         Ok(value)
     }
-}
-
-pub fn hash_bytes(bytes: impl AsRef<[u8]>) -> blake3::Hash {
-    HASHER.clone().update(bytes.as_ref()).finalize()
-}
-
-pub fn hash_file(path: impl AsRef<Path>) -> eyre::Result<blake3::Hash> {
-    let mut hasher = HASHER.clone();
-    hasher.update_mmap_rayon(path)?;
-
-    Ok(hasher.finalize())
-}
-
-pub fn parse_hash_hex(input: &str) -> eyre::Result<blake3::Hash> {
-    Ok(blake3::Hash::from_hex(input)?)
 }
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
