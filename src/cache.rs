@@ -1,14 +1,12 @@
+mod fs;
 mod hash;
 mod mem;
 
 use std::{
     fmt::{Debug, Display},
     fs::{read, File},
-    io::Write,
-    path::Path,
 };
 
-use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
 use bincode::{config::standard, Decode, Encode};
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
@@ -19,7 +17,7 @@ use rayon::{
 use tracing::{debug, info, warn};
 
 use crate::{
-    cache::mem::MemoryCache,
+    cache::{fs::atomic_write, mem::MemoryCache},
     path::{DynamicPath, POSTS_PATH_ROOT},
     render_markdown, FilteredPost, Thread, UnsafePost,
 };
@@ -392,7 +390,7 @@ mod private {
     use jane_eyre::eyre;
     use tracing::warn;
 
-    use crate::cache::{atomic_writer, ContextGuard, Derivation, DerivationInner, Drv};
+    use crate::cache::{fs::atomic_writer, ContextGuard, Derivation, DerivationInner, Drv};
 
     impl<Inner: DerivationInner> Drv<Inner>
     where
@@ -508,22 +506,6 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("waiting for thread pools");
         Ok(())
     })?;
-
-    Ok(())
-}
-
-fn atomic_writer(path: impl AsRef<Path>) -> eyre::Result<AtomicWriteFile> {
-    Ok(AtomicWriteFile::options()
-        .preserve_mode(false)
-        .preserve_owner(false)
-        .try_preserve_owner(false)
-        .open(path)?)
-}
-
-fn atomic_write(path: impl AsRef<Path>, content: impl AsRef<[u8]>) -> eyre::Result<()> {
-    let mut file = atomic_writer(path)?;
-    file.write_all(content.as_ref())?;
-    file.commit()?;
 
     Ok(())
 }
