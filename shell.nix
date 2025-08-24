@@ -17,5 +17,8 @@ pkgs.mkShell {
 
     nixd
     nixfmt-rfc-style
+
+    linuxPackages.perf
+    b3sum
   ];
 }
