@@ -57,7 +57,6 @@ pub mod attachments;
 pub mod cache;
 pub mod cohost;
 pub mod css;
-pub mod db;
 pub mod dom;
 pub mod http;
 pub mod meta;

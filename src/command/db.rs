@@ -4,22 +4,15 @@ use sha2::{
     digest::{ExtendableOutput, XofReader},
     Digest,
 };
-use sqlx::{Connection, Row, SqliteConnection};
-use std::{collections::BTreeMap, fs::read, path::Path};
-use tracing::info;
+use std::{fs::read, path::Path};
 
 use crate::{
-    cache::{hash_bytes, hash_file},
-    db::build_dep_tree,
-    migrations::run_migrations,
     path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
 };
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Db {
     Benchmark(Benchmark),
-    DepTree(DepTree),
-    UpdateAttachmentCache,
 }
 
 #[derive(clap::Args, Debug)]
@@ -59,19 +52,8 @@ fn turboshake128() -> sha3::TurboShake128 {
 }
 
 pub async fn main(args: Db) -> eyre::Result<()> {
-    let db = if matches!(args, Db::DepTree(_) | Db::UpdateAttachmentCache) {
-        // fail fast if there are any settings or migration errors.
-        Some(run_migrations().await?)
-    } else {
-        None
-    };
-
     match args {
         Db::Benchmark(benchmark) => do_benchmark(benchmark).await,
-        Db::DepTree(dep_tree) => do_dep_tree(dep_tree, db.expect("Guaranteed by definition")).await,
-        Db::UpdateAttachmentCache => {
-            do_update_attachment_cache(db.expect("Guaranteed by definition")).await
-        }
     }
 }
 
@@ -217,43 +199,6 @@ async fn do_benchmark(args: Benchmark) -> eyre::Result<()> {
             dbg!(sum_blake3.finalize());
         }
     }
-
-    Ok(())
-}
-
-async fn do_dep_tree(_args: DepTree, db: SqliteConnection) -> eyre::Result<()> {
-    build_dep_tree(db).await
-}
-
-async fn do_update_attachment_cache(mut db: SqliteConnection) -> eyre::Result<()> {
-    let mut tx = db.begin().await?;
-    let cached_hash = sqlx::query(r#"SELECT "path", "hash" FROM "attachment_cache""#)
-        .fetch_all(&mut *tx)
-        .await?
-        .into_iter()
-        .map(|row| (row.get("path"), row.get("hash")))
-        .collect::<BTreeMap<String, String>>();
-    let paths = ATTACHMENTS_PATH_ROOT.read_dir_recursive()?;
-    for (i, path) in paths.iter().enumerate() {
-        let hash = hash_file(path)?;
-        if cached_hash.get(&path.to_dynamic_path().db_dep_table_path()) != Some(&hash.to_string()) {
-            let content = read(path)?;
-            // hash again with the contents, in case the file changed.
-            let hash = hash_bytes(&content);
-            sqlx::query(
-                r#"INSERT INTO "attachment_cache" ("path", "hash", "content") VALUES ($1, $2, $3) ON CONFLICT DO UPDATE SET "hash" = "excluded"."hash", "content" = "excluded"."content""#,
-            )
-            .bind(path.to_dynamic_path().db_dep_table_path())
-            .bind(hash.to_string())
-            .bind(content)
-            .execute(&mut *tx)
-            .await?;
-        }
-        eprint!("... {}/{}\r", i + 1, paths.len());
-    }
-    tx.commit().await?;
-    eprintln!();
-    info!("done!");
 
     Ok(())
 }
