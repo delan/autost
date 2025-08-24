@@ -270,7 +270,7 @@ impl Derivation for RenderMarkdownDrv {
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         let input = RenderMarkdownInput {
-            file: Self::load(ctx, self.inner.file.id())?.output(ctx)?,
+            file: ReadFileDrv::load(ctx, self.inner.file.id())?.output(ctx)?,
         };
         let unsafe_markdown = input.file;
         Ok(render_markdown(str::from_utf8(&unsafe_markdown)?).into_bytes())
@@ -290,8 +290,8 @@ impl Derivation for FilteredPostDrv {
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         let input = FilteredPostInput {
             file: match &self.inner {
-                DoFilteredPost::Html(file) => Self::load(ctx, file.id())?.output(ctx)?,
-                DoFilteredPost::Markdown(file) => Self::load(ctx, file.id())?.output(ctx)?,
+                DoFilteredPost::Html(file) => ReadFileDrv::load(ctx, file.id())?.output(ctx)?,
+                DoFilteredPost::Markdown(file) => RenderMarkdownDrv::load(ctx, file.id())?.output(ctx)?,
             },
         };
         let unsafe_html = input.file;
@@ -302,7 +302,6 @@ impl Derivation for FilteredPostDrv {
         FILTERED_POST_CACHE.insert(self.id(), post);
         Ok(output)
     }
-    #[tracing::instrument(skip(ctx))]
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Vec<u8>> {
         info!("");
         match &self.inner {
@@ -324,7 +323,7 @@ impl Derivation for ThreadDrv {
             if let Some(post) = FILTERED_POST_CACHE.get(&id) {
                 Ok(post.clone())
             } else {
-                let post = Self::load(ctx, id)?.output(ctx)?;
+                let post = FilteredPostDrv::load(ctx, id)?.output(ctx)?;
                 Ok(bincode::serde::decode_from_slice(&post, standard())?.0)
             }
         };
@@ -379,7 +378,7 @@ impl Display for DoRenderMarkdown {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f
             .debug_struct("RenderMarkdown")
-            .field("file", &UseDisplay(&*self.file))
+            .field("file", &UseDisplay(&self.file))
             .finish()
     }
 }
@@ -389,12 +388,12 @@ impl Display for DoFilteredPost {
             DoFilteredPost::Html(file) =>
                 f
                     .debug_struct("FilteredPost")
-                    .field("file", &UseDisplay(&**file))
+                    .field("file", &UseDisplay(file))
                     .finish(),
             DoFilteredPost::Markdown(file) =>
                 f
                     .debug_struct("FilteredPost")
-                    .field("file", &UseDisplay(&**file))
+                    .field("file", &UseDisplay(file))
                     .finish(),
         }
     }
@@ -403,7 +402,7 @@ impl Display for DoThread {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f
             .debug_struct("Thread")
-            .field("post", &UseDisplay(&*self.post))
+            .field("post", &UseDisplay(&self.post))
             .field("references", &VecDisplay(&self.references))
             .finish()
     }
@@ -421,16 +420,16 @@ struct DoReadFile {
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct DoRenderMarkdown {
-    file: Box<ReadFileDrv>,
+    file: ReadFileDrv,
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 enum DoFilteredPost {
-    Html(Box<ReadFileDrv>),
-    Markdown(Box<RenderMarkdownDrv>),
+    Html(ReadFileDrv),
+    Markdown(RenderMarkdownDrv),
 }
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 struct DoThread {
-    post: Box<FilteredPostDrv>,
+    post: FilteredPostDrv,
     references: Vec<FilteredPostDrv>,
 }
 
@@ -569,7 +568,6 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("building threads");
         top_level_post_paths
             .par_iter()
-            .filter(|path| path.db_post_table_path() == "5777093.html")
             .map(|path| -> eyre::Result<()> {
                 ThreadDrv::new(&ctx, path.to_dynamic_path())?.realise_recursive(&ctx)?;
                 Ok(())
