@@ -19,7 +19,7 @@ use tracing::{debug, info, warn};
 use crate::{
     cache::{fs::atomic_write, mem::MemoryCache},
     path::{DynamicPath, POSTS_PATH_ROOT},
-    render_markdown, FilteredPost, Thread, UnsafePost,
+    render_markdown, FilteredPost, TagIndex, Thread, UnsafePost,
 };
 
 struct Context {
@@ -33,6 +33,8 @@ struct Context {
     filtered_post_output_cache: MemoryCache<Id, FilteredPost>,
     thread_derivation_cache: MemoryCache<Id, ThreadDrv>,
     thread_output_cache: MemoryCache<Id, Thread>,
+    tag_index_derivation_cache: MemoryCache<Id, TagIndexDrv>,
+    tag_index_output_cache: MemoryCache<Id, TagIndex>,
 }
 struct ContextGuard<'ctx, 'scope> {
     context: &'ctx Context,
@@ -63,6 +65,8 @@ impl Context {
             filtered_post_output_cache: MemoryCache::new("FilteredPostOut"),
             thread_derivation_cache: MemoryCache::new("ThreadDrv"),
             thread_output_cache: MemoryCache::new("ThreadOut"),
+            tag_index_derivation_cache: MemoryCache::new("TagIndexDrv"),
+            tag_index_output_cache: MemoryCache::new("TagIndexOut"),
         }
     }
     fn run<R: Send>(fun: impl FnOnce(ContextGuard) -> R + Send) -> R {
@@ -284,6 +288,41 @@ impl Derivation for ThreadDrv {
         self.realise_self_only(ctx)
     }
 }
+impl Derivation for TagIndexDrv {
+    type Output = TagIndex;
+    fn function_name() -> &'static str {
+        "TagIndex"
+    }
+    fn id(&self) -> Id {
+        self.output
+    }
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
+        &ctx.tag_index_derivation_cache
+    }
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
+        &ctx.tag_index_output_cache
+    }
+    fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        let threads = self
+            .inner
+            .threads
+            .iter()
+            .map(|post| ThreadDrv::load(ctx, post.id())?.output(ctx))
+            .collect::<eyre::Result<_>>()?;
+        let thread = TagIndex::new(threads);
+        Ok(thread)
+    }
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        in_place_scope(|scope| {
+            for thread in self.inner.threads.iter() {
+                scope.spawn(move |_| {
+                    thread.realise_recursive_debug(ctx).unwrap();
+                });
+            }
+        });
+        self.realise_self_only(ctx)
+    }
+}
 
 trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 'static {
     fn compute_id(&self) -> Id {
@@ -296,6 +335,7 @@ impl DerivationInner for DoReadFile {}
 impl DerivationInner for DoRenderMarkdown {}
 impl DerivationInner for DoFilteredPost {}
 impl DerivationInner for DoThread {}
+impl DerivationInner for DoTagIndex {}
 
 impl Display for DoReadFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -334,11 +374,19 @@ impl Display for DoThread {
             .finish()
     }
 }
+impl Display for DoTagIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TagIndex")
+            .field("threads", &VecDisplay(&self.threads))
+            .finish()
+    }
+}
 
 type ReadFileDrv = Drv<DoReadFile>;
 type RenderMarkdownDrv = Drv<DoRenderMarkdown>;
 type FilteredPostDrv = Drv<DoFilteredPost>;
 type ThreadDrv = Drv<DoThread>;
+type TagIndexDrv = Drv<DoTagIndex>;
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 struct DoReadFile {
@@ -358,6 +406,10 @@ enum DoFilteredPost {
 struct DoThread {
     post: FilteredPostDrv,
     references: Vec<FilteredPostDrv>,
+}
+#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+struct DoTagIndex {
+    threads: Vec<ThreadDrv>,
 }
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
@@ -475,6 +527,11 @@ impl ThreadDrv {
         )
     }
 }
+impl TagIndexDrv {
+    fn new(ctx: &ContextGuard, threads: Vec<ThreadDrv>) -> eyre::Result<Self> {
+        Self::instantiate(ctx, DoTagIndex { threads })
+    }
+}
 
 impl<Inner: DerivationInner> Drv<Inner>
 where
@@ -494,13 +551,12 @@ pub async fn test() -> eyre::Result<()> {
     Context::run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
         eprintln!("building threads");
-        top_level_post_paths
+        let threads = top_level_post_paths
             .par_iter()
-            .map(|path| -> eyre::Result<()> {
-                ThreadDrv::new(&ctx, path.to_dynamic_path())?.realise_recursive_info(&ctx)?;
-                Ok(())
-            })
+            .map(|path| ThreadDrv::new(&ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<Vec<_>>>()?;
+        eprintln!("building tag index");
+        TagIndexDrv::new(&ctx, threads)?.realise_recursive_info(&ctx)?;
         eprintln!();
         eprintln!("waiting for thread pools");
         Ok(())

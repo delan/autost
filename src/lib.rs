@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     env,
     fs::File,
     io::{ErrorKind, Read, Write},
@@ -108,7 +108,7 @@ pub struct RunDetailsWriter {
 }
 
 /// post metadata in the front matter only.
-#[derive(Clone, Debug, Default, PartialEq, Template, Decode, Encode)]
+#[derive(Clone, Debug, Default, Template, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 #[template(path = "front-matter.html")]
 pub struct FrontMatter {
     pub archived: Option<String>,
@@ -121,7 +121,7 @@ pub struct FrontMatter {
 }
 
 /// all post metadata, including computed metadata.
-#[derive(Clone, Debug, Default, PartialEq, Decode, Encode)]
+#[derive(Clone, Debug, Default, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PostMeta {
     pub front_matter: FrontMatter,
     pub needs_attachments: BTreeSet<SitePath>,
@@ -129,7 +129,7 @@ pub struct PostMeta {
     pub og_description: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Decode, Encode, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Author {
     pub href: String,
     pub name: String,
@@ -137,7 +137,7 @@ pub struct Author {
     pub display_handle: String,
 }
 
-#[derive(Clone, Debug, Decode, Encode, PartialEq)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UnsafePost {
     pub path: Option<PostsPath>,
     pub unsafe_html: String,
@@ -149,18 +149,36 @@ pub struct UnsafeExtractedPost {
     pub meta: PostMeta,
 }
 
-#[derive(Clone, Debug, Decode, Encode)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FilteredPost {
     pub post: UnsafePost,
     pub meta: PostMeta,
     pub safe_html: String,
 }
 
-#[derive(Clone, Debug, Decode, Encode)]
+#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Thread {
     pub path: Option<PostsPath>,
     pub posts: Vec<FilteredPost>,
     pub meta: PostMeta,
+}
+
+#[derive(Clone, Debug, Decode, Encode)]
+pub struct TagIndex {
+    tags: BTreeMap<String, BTreeSet<PostsPath>>,
+}
+impl TagIndex {
+    pub fn new(threads: Vec<Thread>) -> Self {
+        let mut tags: BTreeMap<String, BTreeSet<PostsPath>> = BTreeMap::default();
+        for thread in threads.into_iter() {
+            if let Some(path) = thread.path {
+                for tag in thread.meta.front_matter.tags.iter() {
+                    tags.entry(tag.clone()).or_default().insert(path.clone());
+                }
+            }
+        }
+        Self { tags }
+    }
 }
 
 impl Default for RunDetails {
