@@ -179,7 +179,6 @@ impl Derivation for ReadFileDrv {
         }
         Ok(output)
     }
-    #[tracing::instrument(skip_all, fields(id = %self.id()))]
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
         self.realise_self_only(ctx)
     }
