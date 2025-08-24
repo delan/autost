@@ -1,3 +1,5 @@
+mod hash;
+
 use std::{
     fmt::{Debug, Display},
     fs::{read, File},
@@ -7,13 +9,7 @@ use std::{
 };
 
 use atomic_write_file::{unix::OpenOptionsExt, AtomicWriteFile};
-use bincode::{
-    config::standard,
-    de::{BorrowDecoder, Decoder},
-    enc::Encoder,
-    error::DecodeError,
-    BorrowDecode, Decode, Encode,
-};
+use bincode::{config::standard, Decode, Encode};
 use dashmap::DashMap;
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
@@ -161,51 +157,8 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-struct Hash(blake3::Hash);
-impl PartialOrd for Hash {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for Hash {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.as_bytes().cmp(other.0.as_bytes())
-    }
-}
-impl Display for Hash {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if f.alternate() {
-            let hash = self.0.to_hex();
-            write!(f, "{}...", &hash.as_str()[0..13])
-        } else {
-            write!(f, "{}", self.0.to_hex().as_str())
-        }
-    }
-}
-impl<__Context> Decode<__Context> for Hash {
-    fn decode<D: Decoder<Context = __Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
-        Ok(Self(blake3::Hash::from_bytes(Decode::decode(decoder)?)))
-    }
-}
-impl<'__de, __Context> BorrowDecode<'__de, __Context> for Hash {
-    fn borrow_decode<D: BorrowDecoder<'__de, Context = __Context>>(
-        decoder: &mut D,
-    ) -> Result<Self, DecodeError> {
-        Ok(Self(
-            blake3::Hash::from_slice(BorrowDecode::borrow_decode(decoder)?)
-                .map_err(|e| DecodeError::OtherString(e.to_string()))?,
-        ))
-    }
-}
-impl Encode for Hash {
-    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), bincode::error::EncodeError> {
-        Encode::encode(self.0.as_bytes(), encoder)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Decode, Encode, Hash, PartialEq, Eq, PartialOrd, Ord)]
-struct Id(Hash);
+struct Id(hash::Hash);
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -295,7 +248,7 @@ impl Derivation for ReadFileDrv {
     fn compute_output(&self, _ctx: &ContextGuard) -> eyre::Result<Self::Output> {
         let output = read(&self.inner.path)?;
         let expected_hash = self.inner.hash;
-        let actual_hash = Hash(blake3::hash(&output));
+        let actual_hash = hash::Hash(blake3::hash(&output));
         if actual_hash != expected_hash {
             bail!("hash mismatch! expected {expected_hash}, actual {actual_hash}");
         }
@@ -412,7 +365,7 @@ trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 's
     fn compute_id(&self) -> Id {
         let result =
             bincode::encode_to_vec(self, standard()).expect("guaranteed by derive Serialize");
-        Id(Hash(blake3::hash(&result)))
+        Id(hash::Hash(blake3::hash(&result)))
     }
 }
 impl DerivationInner for DoReadFile {}
@@ -466,7 +419,7 @@ type ThreadDrv = Drv<DoThread>;
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 struct DoReadFile {
     path: DynamicPath,
-    hash: Hash,
+    hash: hash::Hash,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 struct DoRenderMarkdown {
@@ -550,7 +503,7 @@ mod private {
 
 impl ReadFileDrv {
     fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
-        let hash = Hash(blake3::hash(&read(&path)?));
+        let hash = hash::Hash(blake3::hash(&read(&path)?));
         Self::instantiate(ctx, DoReadFile { path, hash })
     }
 }
