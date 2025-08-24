@@ -6,9 +6,7 @@ use sha2::{
 };
 use std::{fs::read, path::Path};
 
-use crate::{
-    path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT},
-};
+use crate::path::{ATTACHMENTS_PATH_ROOT, POSTS_PATH_ROOT};
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Db {

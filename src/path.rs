@@ -6,7 +6,12 @@ use std::{
     sync::LazyLock,
 };
 
-use bincode::{de::{BorrowDecoder, Decoder}, enc::Encoder, error::DecodeError, BorrowDecode, Decode, Encode};
+use bincode::{
+    de::{BorrowDecoder, Decoder},
+    enc::Encoder,
+    error::DecodeError,
+    BorrowDecode, Decode, Encode,
+};
 use jane_eyre::eyre::{self, bail, Context, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use url::Url;
@@ -597,23 +602,21 @@ impl<Kind: PathKind> RelativePath<Kind> {
     }
 }
 
-impl < __Context, Kind: PathKind > Decode < __Context > for RelativePath<Kind>
-{
+impl<__Context, Kind: PathKind> Decode<__Context> for RelativePath<Kind> {
     fn decode<D: Decoder<Context = __Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
-        Self::from_site_root_relative_path(&String::decode(decoder)?).map_err(|e| DecodeError::OtherString(e.to_string()))
+        Self::from_site_root_relative_path(&String::decode(decoder)?)
+            .map_err(|e| DecodeError::OtherString(e.to_string()))
     }
 }
-impl < '__de, __Context, Kind: PathKind >   BorrowDecode < '__de, __Context >
-for RelativePath<Kind>
-{
+impl<'__de, __Context, Kind: PathKind> BorrowDecode<'__de, __Context> for RelativePath<Kind> {
     fn borrow_decode<D: BorrowDecoder<'__de, Context = __Context>>(
         decoder: &mut D,
     ) -> Result<Self, DecodeError> {
-        Self::from_site_root_relative_path(BorrowDecode::borrow_decode(decoder)?).map_err(|e| DecodeError::OtherString(e.to_string()))
+        Self::from_site_root_relative_path(BorrowDecode::borrow_decode(decoder)?)
+            .map_err(|e| DecodeError::OtherString(e.to_string()))
     }
 }
-impl<Kind: PathKind>  Encode for RelativePath<Kind>
-{
+impl<Kind: PathKind> Encode for RelativePath<Kind> {
     fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), bincode::error::EncodeError> {
         Encode::encode(&self.to_dynamic_path().db_dep_table_path(), encoder)
     }
@@ -675,23 +678,21 @@ impl AsRef<Path> for DynamicPath {
     }
 }
 
-impl < __Context > Decode < __Context > for DynamicPath
-{
+impl<__Context> Decode<__Context> for DynamicPath {
     fn decode<D: Decoder<Context = __Context>>(decoder: &mut D) -> Result<Self, DecodeError> {
-        Self::from_site_root_relative_path(&String::decode(decoder)?).map_err(|e| DecodeError::OtherString(e.to_string()))
+        Self::from_site_root_relative_path(&String::decode(decoder)?)
+            .map_err(|e| DecodeError::OtherString(e.to_string()))
     }
 }
-impl < '__de, __Context >   BorrowDecode < '__de, __Context >
-for DynamicPath
-{
+impl<'__de, __Context> BorrowDecode<'__de, __Context> for DynamicPath {
     fn borrow_decode<D: BorrowDecoder<'__de, Context = __Context>>(
         decoder: &mut D,
     ) -> Result<Self, DecodeError> {
-        Self::from_site_root_relative_path(BorrowDecode::borrow_decode(decoder)?).map_err(|e| DecodeError::OtherString(e.to_string()))
+        Self::from_site_root_relative_path(BorrowDecode::borrow_decode(decoder)?)
+            .map_err(|e| DecodeError::OtherString(e.to_string()))
     }
 }
-impl  Encode for DynamicPath
-{
+impl Encode for DynamicPath {
     fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), bincode::error::EncodeError> {
         Encode::encode(&self.db_dep_table_path(), encoder)
     }
