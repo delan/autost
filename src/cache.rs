@@ -3,16 +3,13 @@ mod hash;
 mod mem;
 
 use std::{
-    fmt::{Debug, Display},
-    fs::{read, File},
+    collections::BTreeSet, fmt::{Debug, Display}, fs::{read, File}
 };
 
 use bincode::{config::standard, Decode, Encode};
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
-    in_place_scope,
-    iter::{IntoParallelRefIterator, ParallelIterator as _},
-    Scope, ThreadPool, ThreadPoolBuilder,
+    iter::{once, IntoParallelRefIterator, ParallelIterator as _}, Scope, ThreadPool, ThreadPoolBuilder
 };
 use tracing::{debug, info, warn};
 
@@ -75,10 +72,10 @@ impl Context {
             tag_index_output_cache: MemoryCache::new("TagIndexOut"),
         }
     }
-    fn run<R: Send>(fun: impl FnOnce(ContextGuard) -> R + Send) -> R {
+    fn run<R: Send>(fun: impl FnOnce(&ContextGuard) -> R + Send) -> R {
         Self::new().scope(fun)
     }
-    fn scope<R: Send>(&self, fun: impl FnOnce(ContextGuard) -> R + Send) -> R {
+    fn scope<R: Send>(&self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> R {
         self.output_writer_pool.scope(move |output_writer_scope| {
             self.derivation_writer_pool
                 .scope(move |derivation_writer_scope| {
@@ -86,7 +83,7 @@ impl Context {
                     // but we ignore the `Scope` argument for the compute pool, because explicitly spawning tasks into
                     // it would fail with borrow checker errors.
                     self.compute_pool.scope(move |_compute_scope| {
-                        fun(ContextGuard {
+                        fun(&ContextGuard {
                             context: self,
                             derivation_writer_scope,
                             output_writer_scope,
@@ -286,16 +283,11 @@ impl Derivation for ThreadDrv {
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        in_place_scope(|scope| {
-            scope.spawn(move |_| {
-                self.inner.post.realise_recursive_debug(ctx).unwrap();
-            });
-            for post in self.inner.references.iter() {
-                scope.spawn(move |_| {
-                    post.realise_recursive_debug(ctx).unwrap();
-                });
-            }
-        });
+        self.inner.references
+            .par_iter()
+            .chain(once(&self.inner.post))
+            .map(|post| post.realise_recursive_debug(ctx))
+            .collect::<eyre::Result<Vec<_>>>()?;
         self.realise_self_only(ctx)
     }
 }
@@ -324,13 +316,10 @@ impl Derivation for TagIndexDrv {
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        in_place_scope(|scope| {
-            for thread in self.inner.threads.iter() {
-                scope.spawn(move |_| {
-                    thread.realise_recursive_debug(ctx).unwrap();
-                });
-            }
-        });
+        self.inner.threads
+            .par_iter()
+            .map(|post| post.realise_recursive_debug(ctx))
+            .collect::<eyre::Result<Vec<_>>>()?;
         self.realise_self_only(ctx)
     }
 }
