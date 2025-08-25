@@ -34,9 +34,7 @@ use toml::{toml, Value};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
-    dom::serialize_html_fragment,
-    path::{PostsPath, SitePath},
-    settings::Settings,
+    cache::Id, dom::serialize_html_fragment, path::{PostsPath, SitePath}, settings::Settings
 };
 
 pub mod command {
@@ -165,16 +163,14 @@ pub struct Thread {
 
 #[derive(Clone, Debug, Decode, Encode)]
 pub struct TagIndex {
-    tags: BTreeMap<String, BTreeSet<PostsPath>>,
+    tags: BTreeMap<String, BTreeSet<Id>>,
 }
 impl TagIndex {
-    pub fn new(threads: BTreeSet<Thread>) -> Self {
-        let mut tags: BTreeMap<String, BTreeSet<PostsPath>> = BTreeMap::default();
-        for thread in threads.into_iter() {
-            if let Some(path) = thread.path {
-                for tag in thread.meta.front_matter.tags.iter() {
-                    tags.entry(tag.clone()).or_default().insert(path.clone());
-                }
+    pub fn new(threads: BTreeMap<Id, Thread>) -> Self {
+        let mut tags: BTreeMap<String, BTreeSet<Id>> = BTreeMap::default();
+        for (id, thread) in threads.into_iter() {
+            for tag in thread.meta.front_matter.tags.iter() {
+                tags.entry(tag.clone()).or_default().insert(id);
             }
         }
         Self { tags }

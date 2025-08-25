@@ -95,7 +95,7 @@ impl Context {
 }
 
 #[derive(Clone, Copy, Debug, Decode, Encode, Hash, PartialEq, Eq, PartialOrd, Ord)]
-struct Id(self::hash::Hash);
+pub struct Id(self::hash::Hash);
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
@@ -310,7 +310,7 @@ impl Derivation for TagIndexDrv {
             .inner
             .threads
             .iter()
-            .map(|post| ThreadDrv::load(ctx, post.id())?.output(ctx))
+            .map(|thread| Ok((thread.id(), ThreadDrv::load(ctx, thread.id())?.output(ctx)?)))
             .collect::<eyre::Result<_>>()?;
         let thread = TagIndex::new(threads);
         Ok(thread)
@@ -318,7 +318,7 @@ impl Derivation for TagIndexDrv {
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
         self.inner.threads
             .par_iter()
-            .map(|post| post.realise_recursive_debug(ctx))
+            .map(|thread| thread.realise_recursive_debug(ctx))
             .collect::<eyre::Result<Vec<_>>>()?;
         self.realise_self_only(ctx)
     }
@@ -554,7 +554,7 @@ pub async fn test() -> eyre::Result<()> {
         let threads = top_level_post_paths
             .par_iter()
             .map(|path| ThreadDrv::new(&ctx, path.to_dynamic_path()))
-            .collect::<eyre::Result<Vec<_>>>()?;
+            .collect::<eyre::Result<BTreeSet<_>>>()?;
         eprintln!("building tag index");
         TagIndexDrv::new(&ctx, threads)?.realise_recursive_info(&ctx)?;
         eprintln!();
