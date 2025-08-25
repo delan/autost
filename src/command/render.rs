@@ -7,7 +7,7 @@ use std::{
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-use sqlx::{Row, SqliteConnection};
+use sqlx::SqliteConnection;
 use tracing::{debug, info};
 
 use crate::{
@@ -22,26 +22,8 @@ pub struct Render {
     specific_post_paths: Vec<String>,
 }
 
-pub async fn main(args: Render, mut db: SqliteConnection) -> eyre::Result<()> {
-    let threads_content_cache =
-        sqlx::query(r#"SELECT "path", "hash", "normal", "simple" FROM "threads_content_cache""#)
-            .fetch_all(&mut db)
-            .await?
-            .into_iter()
-            .map(|row| {
-                (
-                    row.get("path"),
-                    (
-                        row.get("hash"),
-                        CachedThreadsContent {
-                            normal: row.get("normal"),
-                            simple: row.get("simple"),
-                        },
-                    ),
-                )
-            })
-            .collect::<BTreeMap<String, (String, CachedThreadsContent)>>();
-
+pub async fn main(args: Render, _db: SqliteConnection) -> eyre::Result<()> {
+    let threads_content_cache = BTreeMap::default();
     if !args.specific_post_paths.is_empty() {
         let specific_post_paths = args
             .specific_post_paths

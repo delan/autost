@@ -6,6 +6,7 @@ use std::{
     collections::BTreeSet,
     fmt::{Debug, Display},
     fs::{read, File},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
 };
 
 use bincode::{config::standard, Decode, Encode};
@@ -42,6 +43,9 @@ struct ContextGuard<'ctx, 'scope> {
     derivation_writer_scope: &'ctx Scope<'scope>,
     output_writer_scope: &'ctx Scope<'scope>,
 }
+static PENDING_DERIVATION_WRITES: AtomicUsize = AtomicUsize::new(0);
+static PENDING_OUTPUT_WRITES: AtomicUsize = AtomicUsize::new(0);
+static PENDING_WRITE_LOGGING: AtomicBool = AtomicBool::new(false);
 impl Context {
     fn new() -> Self {
         let cpu_count = std::thread::available_parallelism()
@@ -160,7 +164,13 @@ trait Derivation: Debug + Display + Sized {
                     let content = self.compute_output(ctx)?;
                     let output_path = self.output_path();
                     let content_for_write = bincode::encode_to_vec(&content, standard())?;
+                    PENDING_OUTPUT_WRITES.fetch_add(1, SeqCst);
                     ctx.output_writer_scope.spawn(move |_| {
+                        if PENDING_WRITE_LOGGING.load(SeqCst) {
+                            eprint!("\x1B[K... {} derivations, {} outputs\r", PENDING_DERIVATION_WRITES.load(SeqCst), PENDING_OUTPUT_WRITES.fetch_sub(1, SeqCst));
+                        } else {
+                            PENDING_OUTPUT_WRITES.fetch_sub(1, SeqCst);
+                        }
                         if let Err(error) = atomic_write(output_path, content_for_write) {
                             warn!(?error, "failed to write derivation output");
                         }
@@ -455,11 +465,16 @@ impl<'d, I: Clone + Iterator<Item = &'d D>, D: Display + 'd> Debug for Collectio
     }
 }
 mod private {
+    use std::sync::atomic::Ordering::SeqCst;
+
     use bincode::config::standard;
     use jane_eyre::eyre;
     use tracing::warn;
 
-    use crate::cache::{fs::atomic_writer, ContextGuard, Derivation, DerivationInner, Drv};
+    use crate::cache::{
+        fs::atomic_writer, ContextGuard, Derivation, DerivationInner, Drv,
+        PENDING_DERIVATION_WRITES, PENDING_OUTPUT_WRITES, PENDING_WRITE_LOGGING,
+    };
 
     impl<Inner: DerivationInner> Drv<Inner>
     where
@@ -477,7 +492,17 @@ mod private {
                 |id| {
                     let path = Self::derivation_path(id);
                     let self_for_write = self.clone();
+                    PENDING_DERIVATION_WRITES.fetch_add(1, SeqCst);
                     ctx.derivation_writer_scope.spawn(move |_| {
+                        if PENDING_WRITE_LOGGING.load(SeqCst) {
+                            eprint!(
+                                "... {} derivations, {} outputs\r",
+                                PENDING_DERIVATION_WRITES.fetch_sub(1, SeqCst),
+                                PENDING_OUTPUT_WRITES.load(SeqCst)
+                            );
+                        } else {
+                            PENDING_DERIVATION_WRITES.fetch_sub(1, SeqCst);
+                        }
                         let result = || -> eyre::Result<()> {
                             let mut file = atomic_writer(path)?;
                             bincode::encode_into_std_write(self_for_write, &mut file, standard())?;
@@ -574,12 +599,11 @@ pub async fn test() -> eyre::Result<()> {
             .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<BTreeSet<_>>>()?;
         eprintln!("building tag index");
-        println!(
-            "tags: {}",
-            TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?
-        );
+        let tags = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
+        debug!(%tags);
         eprintln!();
         eprintln!("waiting for thread pools");
+        PENDING_WRITE_LOGGING.store(true, SeqCst);
         Ok(())
     })?;
 
