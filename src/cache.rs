@@ -170,7 +170,9 @@ trait Derivation: Debug + Display + Sized {
                     });
                     Ok(content)
                 })();
-                result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))
+                let result = result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))?;
+                STATS.record_derivation_realised();
+                Ok(result)
             },
         )
     }
@@ -472,7 +474,9 @@ mod private {
     {
         pub fn instantiate(ctx: &ContextGuard, inner: Inner) -> eyre::Result<Self> {
             let output = inner.compute_id();
-            Self { output, inner }.store(ctx)
+            let result = Self { output, inner }.store(ctx)?;
+            STATS.record_derivation_instantiated();
+            Ok(result)
         }
 
         fn store(self, ctx: &ContextGuard) -> eyre::Result<Self> {
@@ -575,16 +579,15 @@ where
 pub async fn test() -> eyre::Result<()> {
     Context::run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-        eprintln!("building threads");
+        eprintln!("\x1B[Kbuilding threads");
         let threads = top_level_post_paths
             .par_iter()
             .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<BTreeSet<_>>>()?;
-        eprintln!("building tag index");
+        eprintln!("\x1B[Kbuilding tag index");
         let tags = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
         debug!(%tags);
-        eprintln!();
-        eprintln!("waiting for thread pools");
+        eprintln!("\x1B[Kwaiting for disk writes");
         STATS.enable_pending_write_logging();
         Ok(())
     })?;

@@ -3,6 +3,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
 pub static STATS: Stats = Stats::new();
 
 pub struct Stats {
+    derivations_instantiated: AtomicUsize,
+    derivations_realised: AtomicUsize,
     pending_derivation_writes: AtomicUsize,
     pending_output_writes: AtomicUsize,
     pending_write_logging_enabled: AtomicBool,
@@ -11,10 +13,28 @@ pub struct Stats {
 impl Stats {
     const fn new() -> Self {
         Self {
+            derivations_instantiated: AtomicUsize::new(0),
+            derivations_realised: AtomicUsize::new(0),
             pending_derivation_writes: AtomicUsize::new(0),
             pending_output_writes: AtomicUsize::new(0),
             pending_write_logging_enabled: AtomicBool::new(false),
         }
+    }
+
+    pub fn record_derivation_instantiated(&self) {
+        eprint!(
+            "\x1B[K... {} derivations instantiated, {} derivations realised\r",
+            self.derivations_instantiated.fetch_add(1, SeqCst),
+            self.derivations_realised.load(SeqCst)
+        );
+    }
+
+    pub fn record_derivation_realised(&self) {
+        eprint!(
+            "\x1B[K... {} derivations instantiated, {} derivations realised\r",
+            self.derivations_instantiated.load(SeqCst),
+            self.derivations_realised.fetch_add(1, SeqCst)
+        );
     }
 
     pub fn enable_pending_write_logging(&self) {
