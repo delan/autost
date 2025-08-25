@@ -34,7 +34,10 @@ use toml::{toml, Value};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::{
-    cache::Id, dom::serialize_html_fragment, path::{PostsPath, SitePath}, settings::Settings
+    cache::Id,
+    dom::serialize_html_fragment,
+    path::{PostsPath, SitePath},
+    settings::Settings,
 };
 
 pub mod command {

@@ -3,13 +3,16 @@ mod hash;
 mod mem;
 
 use std::{
-    collections::BTreeSet, fmt::{Debug, Display}, fs::{read, File}
+    collections::BTreeSet,
+    fmt::{Debug, Display},
+    fs::{read, File},
 };
 
 use bincode::{config::standard, Decode, Encode};
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
-    iter::{once, IntoParallelRefIterator, ParallelIterator as _}, Scope, ThreadPool, ThreadPoolBuilder
+    iter::{once, IntoParallelRefIterator, ParallelIterator as _},
+    Scope, ThreadPool, ThreadPoolBuilder,
 };
 use tracing::{debug, info, warn};
 
@@ -151,7 +154,7 @@ trait Derivation: Debug + Display + Sized {
                 )?)
             },
             |_id| {
-                debug!("building {self}");
+                debug!(thread = std::thread::current().name(), %self, "building");
                 let result = (|| -> eyre::Result<_> {
                     let content = self.compute_output(ctx)?;
                     let output_path = self.output_path();
@@ -283,7 +286,8 @@ impl Derivation for ThreadDrv {
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        self.inner.references
+        self.inner
+            .references
             .par_iter()
             .chain(once(&self.inner.post))
             .map(|post| post.realise_recursive_debug(ctx))
@@ -316,7 +320,8 @@ impl Derivation for TagIndexDrv {
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        self.inner.threads
+        self.inner
+            .threads
             .par_iter()
             .map(|thread| thread.realise_recursive_debug(ctx))
             .collect::<eyre::Result<Vec<_>>>()?;
@@ -553,10 +558,10 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("building threads");
         let threads = top_level_post_paths
             .par_iter()
-            .map(|path| ThreadDrv::new(&ctx, path.to_dynamic_path()))
+            .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<BTreeSet<_>>>()?;
         eprintln!("building tag index");
-        TagIndexDrv::new(&ctx, threads)?.realise_recursive_info(&ctx)?;
+        TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
         eprintln!();
         eprintln!("waiting for thread pools");
         Ok(())

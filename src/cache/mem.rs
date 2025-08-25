@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use jane_eyre::eyre;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use std::fmt::Debug;
 use std::sync::atomic::AtomicUsize;
@@ -72,7 +72,7 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
             self.read_write_misses.fetch_add(1, SeqCst);
             value
         } else {
-            warn!(target: "autost::cache::memory", ?self, ?key, "write");
+            debug!(target: "autost::cache::memory", ?self, ?key, "write");
             self.write_write_misses.fetch_add(1, SeqCst);
             write(&key)?
         };
