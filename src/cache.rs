@@ -14,7 +14,7 @@ use rayon::{
     iter::{once, IntoParallelRefIterator, ParallelIterator as _},
     Scope, ThreadPool, ThreadPoolBuilder,
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, info, span::Span, warn};
 
 use crate::{
     cache::{fs::atomic_write, mem::MemoryCache},
@@ -135,13 +135,13 @@ trait Derivation: Debug + Display + Sized {
     /// same as [`Derivation::realise_recursive()`], but traced at info level.
     #[tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
     fn realise_recursive_info(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        info!("building");
+        debug!("realising");
         self.realise_recursive(ctx)
     }
     /// same as [`Derivation::realise_recursive()`], but traced at debug level.
-    #[tracing::instrument(level = "debug", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
+    #[tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
     fn realise_recursive_debug(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        debug!("building");
+        debug!("realising");
         self.realise_recursive(ctx)
     }
     fn realise_self_only(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
@@ -154,7 +154,8 @@ trait Derivation: Debug + Display + Sized {
                 )?)
             },
             |_id| {
-                debug!(thread = std::thread::current().name(), %self, "building");
+                info!(thread = std::thread::current().name(), function = %Self::function_name(), "building");
+                debug!(%self);
                 let result = (|| -> eyre::Result<_> {
                     let content = self.compute_output(ctx)?;
                     let output_path = self.output_path();
@@ -286,11 +287,15 @@ impl Derivation for ThreadDrv {
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        let span = Span::current();
         self.inner
             .references
             .par_iter()
             .chain(once(&self.inner.post))
-            .map(|post| post.realise_recursive_debug(ctx))
+            .map(|post| {
+                let _entered = span.clone().entered();
+                post.realise_recursive_debug(ctx)
+            })
             .collect::<eyre::Result<Vec<_>>>()?;
         self.realise_self_only(ctx)
     }
@@ -310,20 +315,28 @@ impl Derivation for TagIndexDrv {
         &ctx.tag_index_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        let span = Span::current();
         let threads = self
             .inner
             .threads
             .iter()
-            .map(|thread| Ok((thread.id(), ThreadDrv::load(ctx, thread.id())?.output(ctx)?)))
+            .map(|thread| {
+                let _entered = span.clone().entered();
+                Ok((thread.id(), ThreadDrv::load(ctx, thread.id())?.output(ctx)?))
+            })
             .collect::<eyre::Result<_>>()?;
         let thread = TagIndex::new(threads);
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        let span = Span::current();
         self.inner
             .threads
             .par_iter()
-            .map(|thread| thread.realise_recursive_debug(ctx))
+            .map(|thread| {
+                let _entered = span.clone().entered();
+                thread.realise_recursive_debug(ctx)
+            })
             .collect::<eyre::Result<Vec<_>>>()?;
         self.realise_self_only(ctx)
     }
