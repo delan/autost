@@ -2,6 +2,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     env,
+    fmt::Display,
     fs::File,
     io::{ErrorKind, Read, Write},
     path::Path,
@@ -177,6 +178,16 @@ impl TagIndex {
             }
         }
         Self { tags }
+    }
+}
+impl Display for TagIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TagIndex {{")?;
+        for (tag, threads) in self.tags.iter() {
+            // ds.field(tag, &threads.len());
+            write!(f, "\n- {tag:?} ({} threads)", threads.len())?;
+        }
+        write!(f, "\n}}")
     }
 }
 

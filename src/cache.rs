@@ -561,7 +561,10 @@ pub async fn test() -> eyre::Result<()> {
             .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
             .collect::<eyre::Result<BTreeSet<_>>>()?;
         eprintln!("building tag index");
-        TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
+        println!(
+            "tags: {}",
+            TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?
+        );
         eprintln!();
         eprintln!("waiting for thread pools");
         Ok(())
