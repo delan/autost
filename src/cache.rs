@@ -553,8 +553,12 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("building threads");
         let threads = top_level_post_paths
             .par_iter()
-            .map(|path| ThreadDrv::new(&ctx, path.to_dynamic_path()))
-            .collect::<eyre::Result<Vec<_>>>()?;
+            .map(|path| {
+                let thread = ThreadDrv::new(&ctx, path.to_dynamic_path())?;
+                thread.realise_recursive(&ctx)?;
+                Ok(thread)
+            })
+            .collect::<eyre::Result<BTreeSet<_>>>()?;
         eprintln!("building tag index");
         TagIndexDrv::new(&ctx, threads)?.realise_recursive_info(&ctx)?;
         eprintln!();
