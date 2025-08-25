@@ -370,14 +370,14 @@ impl Display for DoThread {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Thread")
             .field("post", &UseDisplay(&self.post))
-            .field("references", &VecDisplay(&self.references))
+            .field("references", &CollectionDisplay(self.references.iter()))
             .finish()
     }
 }
 impl Display for DoTagIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TagIndex")
-            .field("threads", &VecDisplay(&self.threads))
+            .field("threads", &CollectionDisplay(self.threads.iter()))
             .finish()
     }
 }
@@ -409,7 +409,7 @@ struct DoThread {
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 struct DoTagIndex {
-    threads: Vec<ThreadDrv>,
+    threads: BTreeSet<ThreadDrv>,
 }
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
@@ -423,16 +423,16 @@ impl<Inner: Display> Display for Drv<Inner> {
     }
 }
 struct UseDisplay<'d, D: Display>(&'d D);
-struct VecDisplay<'d, D: Display>(&'d [D]);
+struct CollectionDisplay<'d, I: Clone + Iterator<Item = &'d D>, D: Display + 'd>(I);
 impl<'d, D: Display> Debug for UseDisplay<'d, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
-impl<'d, D: Display> Debug for VecDisplay<'d, D> {
+impl<'d, I: Clone + Iterator<Item = &'d D>, D: Display + 'd> Debug for CollectionDisplay<'d, I, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list()
-            .entries(self.0.iter().map(|value| UseDisplay(value)))
+            .entries(self.0.clone().map(|value| UseDisplay(value)))
             .finish()
     }
 }
@@ -528,7 +528,7 @@ impl ThreadDrv {
     }
 }
 impl TagIndexDrv {
-    fn new(ctx: &ContextGuard, threads: Vec<ThreadDrv>) -> eyre::Result<Self> {
+    fn new(ctx: &ContextGuard, threads: BTreeSet<ThreadDrv>) -> eyre::Result<Self> {
         Self::instantiate(ctx, DoTagIndex { threads })
     }
 }

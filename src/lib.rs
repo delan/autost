@@ -168,7 +168,7 @@ pub struct TagIndex {
     tags: BTreeMap<String, BTreeSet<PostsPath>>,
 }
 impl TagIndex {
-    pub fn new(threads: Vec<Thread>) -> Self {
+    pub fn new(threads: BTreeSet<Thread>) -> Self {
         let mut tags: BTreeMap<String, BTreeSet<PostsPath>> = BTreeMap::default();
         for thread in threads.into_iter() {
             if let Some(path) = thread.path {
