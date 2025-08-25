@@ -23,8 +23,9 @@ use crate::{
 };
 
 struct Context {
-    output_writer_pool: ThreadPool,
+    compute_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
+    output_writer_pool: ThreadPool,
     read_file_derivation_cache: MemoryCache<Id, ReadFileDrv>,
     read_file_output_cache: MemoryCache<Id, Vec<u8>>,
     render_markdown_derivation_cache: MemoryCache<Id, RenderMarkdownDrv>,
@@ -38,8 +39,8 @@ struct Context {
 }
 struct ContextGuard<'ctx, 'scope> {
     context: &'ctx Context,
-    output_writer_scope: &'ctx Scope<'scope>,
     derivation_writer_scope: &'ctx Scope<'scope>,
+    output_writer_scope: &'ctx Scope<'scope>,
 }
 impl Context {
     fn new() -> Self {
@@ -47,13 +48,18 @@ impl Context {
             .expect("failed to get cpu count")
             .get();
         Self {
-            output_writer_pool: ThreadPoolBuilder::new()
-                .thread_name(|i| format!("outWriter{i}"))
-                .num_threads(cpu_count * 4)
+            compute_pool: ThreadPoolBuilder::new()
+                .thread_name(|i| format!("compute{i}"))
+                .num_threads(cpu_count)
                 .build()
                 .expect("failed to build thread pool"),
             derivation_writer_pool: ThreadPoolBuilder::new()
                 .thread_name(|i| format!("drvWriter{i}"))
+                .num_threads(cpu_count * 4)
+                .build()
+                .expect("failed to build thread pool"),
+            output_writer_pool: ThreadPoolBuilder::new()
+                .thread_name(|i| format!("outWriter{i}"))
                 .num_threads(cpu_count * 4)
                 .build()
                 .expect("failed to build thread pool"),
@@ -76,10 +82,15 @@ impl Context {
         self.output_writer_pool.scope(move |output_writer_scope| {
             self.derivation_writer_pool
                 .scope(move |derivation_writer_scope| {
-                    fun(ContextGuard {
-                        context: self,
-                        output_writer_scope,
-                        derivation_writer_scope,
+                    // the compute pool scope is the innermost scope, so `in_place_scope()` will spawn tasks into it.
+                    // but we ignore the `Scope` argument for the compute pool, because explicitly spawning tasks into
+                    // it would fail with borrow checker errors.
+                    self.compute_pool.scope(move |_compute_scope| {
+                        fun(ContextGuard {
+                            context: self,
+                            derivation_writer_scope,
+                            output_writer_scope,
+                        })
                     })
                 })
         })
