@@ -19,11 +19,7 @@ use rayon::{
 use tracing::{debug, info, span::Span, warn};
 
 use crate::{
-    cache::{
-        fs::{atomic_write, atomic_writer},
-        mem::MemoryCache,
-        stats::STATS,
-    },
+    cache::{fs::atomic_write, mem::MemoryCache, stats::STATS},
     command::cache::Test,
     path::{DynamicPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
     render_markdown, FilteredPost, TagIndex, Thread, UnsafePost,
@@ -158,18 +154,23 @@ impl Context {
                 packs.entry(name).or_default().tag_index_output_cache = cache;
             }
             info!("writing cache packs");
-            self.derivation_writer_pool.scope(move |_| {
-                packs
-                    .into_par_iter()
-                    .map(|(name, pack)| {
-                        let mut file =
-                            atomic_writer(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?;
-                        bincode::encode_into_std_write(pack, &mut file, standard())?;
-                        file.commit()?;
-                        Ok(())
+            self.derivation_writer_pool
+                .scope(move |derivation_writer_scope| {
+                    self.compute_pool.scope(move |_| {
+                        packs
+                            .into_par_iter()
+                            .map(|(name, pack)| {
+                                let content = bincode::encode_to_vec(pack, standard())?;
+                                derivation_writer_scope.spawn(move |_| {
+                                    let path =
+                                        CACHE_PATH_ROOT.join(&format!("{name}.pack")).unwrap();
+                                    atomic_write(path, content).unwrap();
+                                });
+                                Ok(())
+                            })
+                            .collect::<eyre::Result<Vec<_>>>()
                     })
-                    .collect::<eyre::Result<Vec<_>>>()
-            })?;
+                })?;
         }
 
         Ok(result)

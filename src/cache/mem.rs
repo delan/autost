@@ -92,7 +92,7 @@ impl<K: Eq + Hash + Debug + Ord + Send, V: Clone + Send> MemoryCache<K, V> {
 impl<V: Clone + Debug + Send> MemoryCache<Id, V> {
     pub fn encodable_sharded(self) -> BTreeMap<String, BTreeMap<Id, V>> {
         let mut encodable = self.encodable();
-        let splits = (0..256).rev().map(|i| format!("{i:02x}")).map(|prefix| {
+        let splits = (0..4096).rev().map(|i| format!("{i:03x}")).map(|prefix| {
             (
                 prefix.clone(),
                 Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
