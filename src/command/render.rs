@@ -6,8 +6,9 @@ use std::{
 
 use bincode::{Decode, Encode};
 use chrono::{SecondsFormat, Utc};
+use dashmap::DashSet;
 use jane_eyre::eyre::{self, bail, OptionExt};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelExtend, ParallelIterator};
 use sqlx::SqliteConnection;
 use tokio::runtime::Runtime;
 use tracing::{debug, info};
@@ -170,7 +171,7 @@ pub async fn render(
             *tags.entry(tag).or_insert(0) += count;
         }
         collections.merge(result.collections);
-        interesting_output_paths.extend(result.interesting_output_paths);
+        interesting_output_paths.par_extend(result.interesting_output_paths);
         for (tag, threads) in result.threads_by_interesting_tag {
             threads_by_interesting_tag
                 .entry(tag)
@@ -192,31 +193,35 @@ pub async fn render(
     interesting_output_paths.insert(atom_feed_path);
 
     // generate /tagged/<tag>.feed.xml and /tagged/<tag>.html.
-    for (tag, threads) in threads_by_interesting_tag {
-        info!("writing threads page and atom feed for tag {tag:?}");
-        let atom_feed_path = SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?;
-        let cached_threads = threads
-            .iter()
-            .map(|thread| &threads_cache[&thread.path])
-            .collect::<Vec<_>>();
-        let atom_feed = AtomFeedTemplate::render(
-            cached_threads,
-            &format!("{} — {tag}", SETTINGS.site_title),
-            &now,
-        )?;
-        writeln!(File::create(&atom_feed_path)?, "{atom_feed}",)?;
-        interesting_output_paths.insert(atom_feed_path);
-        let threads_content = render_cached_threads_content(&threads_cache, &threads);
-        let threads_page = ThreadsPageTemplate::render(
-            &threads_content,
-            &format!("#{tag} — {}", SETTINGS.site_title),
-            &Some(SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?),
-        )?;
-        // TODO: move this logic into path module and check for slashes
-        let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
-        writeln!(File::create(&threads_page_path)?, "{threads_page}")?;
-        interesting_output_paths.insert(threads_page_path);
-    }
+    threads_by_interesting_tag
+        .into_par_iter()
+        .map(|(tag, threads)| {
+            info!("writing threads page and atom feed for tag {tag:?}");
+            let atom_feed_path = SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?;
+            let cached_threads = threads
+                .iter()
+                .map(|thread| &threads_cache[&thread.path])
+                .collect::<Vec<_>>();
+            let atom_feed = AtomFeedTemplate::render(
+                cached_threads,
+                &format!("{} — {tag}", SETTINGS.site_title),
+                &now,
+            )?;
+            writeln!(File::create(&atom_feed_path)?, "{atom_feed}",)?;
+            interesting_output_paths.insert(atom_feed_path);
+            let threads_content = render_cached_threads_content(&threads_cache, &threads);
+            let threads_page = ThreadsPageTemplate::render(
+                &threads_content,
+                &format!("#{tag} — {}", SETTINGS.site_title),
+                &Some(SITE_PATH_TAGGED.join(&format!("{tag}.feed.xml"))?),
+            )?;
+            // TODO: move this logic into path module and check for slashes
+            let threads_page_path = SITE_PATH_TAGGED.join(&format!("{tag}.html"))?;
+            writeln!(File::create(&threads_page_path)?, "{threads_page}")?;
+            interesting_output_paths.insert(threads_page_path);
+            Ok(())
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
 
     let mut tags = tags.into_iter().collect::<Vec<_>>();
     tags.sort_by(|p, q| p.1.cmp(&q.1).reverse().then(p.0.cmp(&q.0)));
@@ -229,19 +234,27 @@ pub async fn render(
     );
 
     // reader step: generate posts pages.
-    for key in collections.keys() {
-        info!(
-            "writing threads page for collection {key:?} ({} threads)",
-            collections.len(key),
-        );
-        // TODO: write internal collections to another dir?
-        let threads_page_path =
-            collections.write_threads_page(key, &SITE_PATH_ROOT, &threads_cache)?;
-        if collections.is_interesting(key) {
-            interesting_output_paths.insert(threads_page_path);
-        }
-    }
+    collections
+        .keys()
+        .par_bridge()
+        .map(|key| {
+            info!(
+                "writing threads page for collection {key:?} ({} threads)",
+                collections.len(key),
+            );
+            // TODO: write internal collections to another dir?
+            let threads_page_path =
+                collections.write_threads_page(key, &SITE_PATH_ROOT, &threads_cache)?;
+            if collections.is_interesting(key) {
+                interesting_output_paths.insert(threads_page_path);
+            }
+            Ok(())
+        })
+        .collect::<eyre::Result<Vec<_>>>()?;
 
+    let interesting_output_paths = interesting_output_paths
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     let interesting_output_paths = interesting_output_paths
         .into_iter()
         .map(|path| format!("{}\n", path.rsync_deploy_line()))
@@ -250,6 +263,7 @@ pub async fn render(
     if let Some(path) = &SETTINGS.interesting_output_filenames_list_path {
         File::create(path)?.write_all(interesting_output_paths.as_bytes())?;
     }
+    info!("done");
 
     Ok(())
 }
@@ -384,7 +398,7 @@ struct CacheableRenderResult {
 struct RenderResult {
     tags: HashMap<String, usize>,
     collections: Collections,
-    interesting_output_paths: BTreeSet<SitePath>,
+    interesting_output_paths: DashSet<SitePath>,
     threads_by_interesting_tag: HashMap<String, BTreeSet<ThreadInCollection>>,
 }
 
