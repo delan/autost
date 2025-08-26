@@ -4,6 +4,7 @@ use std::{
     io::Write,
 };
 
+use bincode::{Decode, Encode};
 use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
@@ -12,7 +13,7 @@ use tokio::runtime::Runtime;
 use tracing::{debug, info};
 
 use crate::{
-    cache::{Context, ContextGuard, Derivation as _, ThreadDrv},
+    cache::{CachedThreadsContentDrv, Context, ContextGuard, Derivation as _, ThreadDrv},
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
@@ -126,10 +127,13 @@ pub async fn render(
         post_paths
             .into_par_iter()
             .map(|path| -> eyre::Result<_> {
+                let thread_drv = ThreadDrv::new(ctx, path.to_dynamic_path())?;
                 render_single_post(
                     args,
                     path.clone(),
-                    ThreadDrv::new(ctx, path.to_dynamic_path())?.realise_recursive_info(ctx)?,
+                    thread_drv.realise_recursive_info(ctx)?,
+                    Some(ctx),
+                    Some(thread_drv),
                 )
             })
             .collect()
@@ -246,13 +250,15 @@ fn render_single_post_without_cache(
 ) -> eyre::Result<CacheableRenderResult> {
     let post = FilteredPost::load(&path)?;
     let thread = Thread::try_from(post)?;
-    render_single_post(args, path, thread)
+    render_single_post(args, path, thread, None, None)
 }
 
 fn render_single_post(
     args: &Render,
     path: PostsPath,
     thread: Thread,
+    ctx: Option<&ContextGuard<'_, '_>>,
+    thread_drv: Option<ThreadDrv>,
 ) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
     let Some(rendered_path) = path.rendered_path()? else {
@@ -325,9 +331,16 @@ fn render_single_post(
         }
     }
 
-    let normal = ThreadsContentTemplate::render_normal(&thread)?;
-    let simple = ThreadsContentTemplate::render_simple(&thread)?;
-    let threads_content = CachedThreadsContent { normal, simple };
+    let threads_content = match (ctx, thread_drv) {
+        (Some(ctx), Some(drv)) => {
+            CachedThreadsContentDrv::new(ctx, drv)?.realise_recursive_info(ctx)?
+        }
+        _ => {
+            let normal = ThreadsContentTemplate::render_normal(&thread)?;
+            let simple = ThreadsContentTemplate::render_simple(&thread)?;
+            CachedThreadsContent { normal, simple }
+        }
+    };
     debug!("writing post page: {rendered_path:?}");
     let threads_page = ThreadsPageTemplate::render_single_thread(
         &thread,
@@ -366,7 +379,7 @@ pub struct CachedThread {
     pub threads_content: CachedThreadsContent,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Decode, Encode)]
 pub struct CachedThreadsContent {
     pub normal: String,
     pub simple: String,

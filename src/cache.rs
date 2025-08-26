@@ -26,7 +26,8 @@ use crate::{
         mem::{pack_names, MemoryCache},
         stats::STATS,
     },
-    command::cache::Test,
+    command::{cache::Test, render::CachedThreadsContent},
+    output::ThreadsContentTemplate,
     path::{DynamicPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
     render_markdown, FilteredPost, TagIndex, Thread, UnsafePost,
 };
@@ -46,6 +47,8 @@ pub struct Context {
     thread_output_cache: MemoryCache<Id, Thread>,
     tag_index_derivation_cache: MemoryCache<Id, TagIndexDrv>,
     tag_index_output_cache: MemoryCache<Id, TagIndex>,
+    cached_threads_content_derivation_cache: MemoryCache<Id, CachedThreadsContentDrv>,
+    cached_threads_content_output_cache: MemoryCache<Id, CachedThreadsContent>,
 }
 pub struct ContextGuard<'ctx, 'scope> {
     context: &'ctx Context,
@@ -64,6 +67,8 @@ struct CachePack {
     thread_output_cache: BTreeMap<Id, Thread>,
     tag_index_derivation_cache: BTreeMap<Id, TagIndexDrv>,
     tag_index_output_cache: BTreeMap<Id, TagIndex>,
+    cached_threads_content_derivation_cache: BTreeMap<Id, CachedThreadsContentDrv>,
+    cached_threads_content_output_cache: BTreeMap<Id, CachedThreadsContent>,
 }
 impl Context {
     pub fn new(use_packs: bool) -> Context {
@@ -97,6 +102,8 @@ impl Context {
             thread_output_cache: MemoryCache::new("ThreadOut"),
             tag_index_derivation_cache: MemoryCache::new("TagIndexDrv"),
             tag_index_output_cache: MemoryCache::new("TagIndexOut"),
+            cached_threads_content_derivation_cache: MemoryCache::new("CachedThreadsContentDrv"),
+            cached_threads_content_output_cache: MemoryCache::new("CachedThreadsContentOut"),
         };
         ctx
     }
@@ -135,6 +142,10 @@ impl Context {
                     .extend(pack.tag_index_derivation_cache);
                 self.tag_index_output_cache
                     .extend(pack.tag_index_output_cache);
+                self.cached_threads_content_derivation_cache
+                    .extend(pack.cached_threads_content_derivation_cache);
+                self.cached_threads_content_output_cache
+                    .extend(pack.cached_threads_content_output_cache);
             }
             info!("running workload");
         }
@@ -195,6 +206,21 @@ impl Context {
             for (name, cache) in self.tag_index_output_cache.encodable_sharded() {
                 packs.entry(name).or_default().tag_index_output_cache = cache;
             }
+            for (name, cache) in self
+                .cached_threads_content_derivation_cache
+                .encodable_sharded()
+            {
+                packs
+                    .entry(name)
+                    .or_default()
+                    .cached_threads_content_derivation_cache = cache;
+            }
+            for (name, cache) in self.cached_threads_content_output_cache.encodable_sharded() {
+                packs
+                    .entry(name)
+                    .or_default()
+                    .cached_threads_content_output_cache = cache;
+            }
             info!("writing cache packs");
             self.derivation_writer_pool
                 .scope(move |derivation_writer_scope| {
@@ -229,6 +255,8 @@ impl Context {
             || self.thread_output_cache.is_dirty()
             || self.tag_index_derivation_cache.is_dirty()
             || self.tag_index_output_cache.is_dirty()
+            || self.cached_threads_content_derivation_cache.is_dirty()
+            || self.cached_threads_content_output_cache.is_dirty()
     }
 }
 
@@ -494,6 +522,31 @@ impl Derivation for TagIndexDrv {
         self.realise_self_only(ctx)
     }
 }
+impl Derivation for CachedThreadsContentDrv {
+    type Output = CachedThreadsContent;
+    fn function_name() -> &'static str {
+        "CachedThreadsContent"
+    }
+    fn id(&self) -> Id {
+        self.output
+    }
+    fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self> {
+        &ctx.cached_threads_content_derivation_cache
+    }
+    fn output_cache(ctx: &Context) -> &MemoryCache<Id, Self::Output> {
+        &ctx.cached_threads_content_output_cache
+    }
+    fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        let thread = self.inner.thread.output(ctx)?;
+        let normal = ThreadsContentTemplate::render_normal(&thread)?;
+        let simple = ThreadsContentTemplate::render_simple(&thread)?;
+        Ok(CachedThreadsContent { normal, simple })
+    }
+    fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
+        self.inner.thread.realise_recursive_debug(ctx)?;
+        self.realise_self_only(ctx)
+    }
+}
 
 pub trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 'static {
     fn compute_id(&self) -> Id {
@@ -507,6 +560,7 @@ impl DerivationInner for DoRenderMarkdown {}
 impl DerivationInner for DoFilteredPost {}
 impl DerivationInner for DoThread {}
 impl DerivationInner for DoTagIndex {}
+impl DerivationInner for DoCachedThreadsContent {}
 
 impl Display for DoReadFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -552,12 +606,20 @@ impl Display for DoTagIndex {
             .finish()
     }
 }
+impl Display for DoCachedThreadsContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CachedThreadsContent")
+            .field("thread", &UseDisplay(&self.thread))
+            .finish()
+    }
+}
 
 pub type ReadFileDrv = Drv<DoReadFile>;
 pub type RenderMarkdownDrv = Drv<DoRenderMarkdown>;
 pub type FilteredPostDrv = Drv<DoFilteredPost>;
 pub type ThreadDrv = Drv<DoThread>;
 pub type TagIndexDrv = Drv<DoTagIndex>;
+pub type CachedThreadsContentDrv = Drv<DoCachedThreadsContent>;
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DoReadFile {
@@ -581,6 +643,10 @@ pub struct DoThread {
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DoTagIndex {
     threads: BTreeSet<ThreadDrv>,
+}
+#[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DoCachedThreadsContent {
+    thread: ThreadDrv,
 }
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
@@ -713,6 +779,11 @@ impl ThreadDrv {
 impl TagIndexDrv {
     pub fn new(ctx: &ContextGuard, threads: BTreeSet<ThreadDrv>) -> eyre::Result<Self> {
         Self::instantiate(ctx, DoTagIndex { threads })
+    }
+}
+impl CachedThreadsContentDrv {
+    pub fn new(ctx: &ContextGuard, thread: ThreadDrv) -> eyre::Result<Self> {
+        Self::instantiate(ctx, DoCachedThreadsContent { thread })
     }
 }
 
