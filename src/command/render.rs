@@ -8,10 +8,11 @@ use chrono::{SecondsFormat, Utc};
 use jane_eyre::eyre::{self, bail, OptionExt};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use sqlx::SqliteConnection;
+use tokio::runtime::Runtime;
 use tracing::{debug, info};
 
 use crate::{
-    cache::{Context, Derivation as _, ThreadDrv},
+    cache::{Context, ContextGuard, Derivation as _, ThreadDrv},
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
@@ -28,19 +29,24 @@ pub struct Render {
 }
 
 pub async fn main(args: Render, _db: SqliteConnection) -> eyre::Result<()> {
-    if !args.specific_post_paths.is_empty() {
-        let post_paths = args
-            .specific_post_paths
-            .iter()
-            .map(|path| PostsPath::from_site_root_relative_path(path))
-            .collect::<eyre::Result<Vec<_>>>()?;
-        render(&args, post_paths).await
-    } else {
-        render_all(&args).await
-    }
+    Context::new(true).run(|ctx| {
+        Runtime::new()?.block_on(async {
+            if !args.specific_post_paths.is_empty() {
+                let post_paths = args
+                    .specific_post_paths
+                    .iter()
+                    .map(|path| PostsPath::from_site_root_relative_path(path))
+                    .collect::<eyre::Result<Vec<_>>>()?;
+                render(&args, Some(ctx), post_paths).await
+            } else {
+                render_all(&args, Some(ctx)).await
+            }
+        })?;
+        Ok(())
+    })?
 }
 
-pub async fn render_all(args: &Render) -> eyre::Result<()> {
+pub async fn render_all(args: &Render, ctx: Option<&ContextGuard<'_, '_>>) -> eyre::Result<()> {
     let mut post_paths = vec![];
 
     create_dir_all(&*POSTS_PATH_ROOT)?;
@@ -56,10 +62,14 @@ pub async fn render_all(args: &Render) -> eyre::Result<()> {
         post_paths.push(path);
     }
 
-    render(args, post_paths).await
+    render(args, ctx, post_paths).await
 }
 
-pub async fn render(args: &Render, post_paths: Vec<PostsPath>) -> eyre::Result<()> {
+pub async fn render(
+    args: &Render,
+    ctx: Option<&ContextGuard<'_, '_>>,
+    post_paths: Vec<PostsPath>,
+) -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     create_dir_all(&*SITE_PATH_ROOT)?;
     create_dir_all(&*SITE_PATH_TAGGED)?;
@@ -112,19 +122,17 @@ pub async fn render(args: &Render, post_paths: Vec<PostsPath>) -> eyre::Result<(
         std::fs::set_permissions(deploy_path, permissions)?;
     }
 
-    let results = if args.use_cache {
-        Context::new(true).run(|ctx| -> Vec<_> {
-            post_paths
-                .into_par_iter()
-                .map(|path| -> eyre::Result<_> {
-                    render_single_post(
-                        args,
-                        path.clone(),
-                        ThreadDrv::new(ctx, path.to_dynamic_path())?.realise_recursive_info(ctx)?,
-                    )
-                })
-                .collect()
-        })?
+    let results = if let Some(ctx) = ctx {
+        post_paths
+            .into_par_iter()
+            .map(|path| -> eyre::Result<_> {
+                render_single_post(
+                    args,
+                    path.clone(),
+                    ThreadDrv::new(ctx, path.to_dynamic_path())?.realise_recursive_info(ctx)?,
+                )
+            })
+            .collect()
     } else {
         post_paths
             .into_par_iter()

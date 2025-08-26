@@ -126,7 +126,7 @@ async fn publish_route(
     let mut file = File::create_new(&path).wrap_err("failed to create post")?;
     file.write_all(unsafe_source.as_bytes())
         .wrap_err("failed to write post file")?;
-    render_all(&Render::default()).await?;
+    render_all(&Render::default(), None).await?;
     tx.commit().await?;
 
     let post = FilteredPost::load(&path)?;
@@ -165,7 +165,7 @@ pub async fn main(db: SqliteConnection) -> jane_eyre::eyre::Result<()> {
         unreachable!("guaranteed by subcommand call in entry point")
     };
 
-    render_all(&Render::default()).await?;
+    render_all(&Render::default(), None).await?;
 
     let port = args.port.unwrap_or(SETTINGS.server_port());
     let _rocket = rocket::custom(
