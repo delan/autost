@@ -23,22 +23,19 @@ pub struct Render {
 }
 
 pub async fn main(args: Render, _db: SqliteConnection) -> eyre::Result<()> {
-    let threads_content_cache = BTreeMap::default();
     if !args.specific_post_paths.is_empty() {
         let specific_post_paths = args
             .specific_post_paths
             .into_iter()
             .map(|path| PostsPath::from_site_root_relative_path(&path))
             .collect::<eyre::Result<Vec<_>>>()?;
-        render(specific_post_paths, &threads_content_cache).await
+        render(specific_post_paths).await
     } else {
-        render_all(&threads_content_cache).await
+        render_all().await
     }
 }
 
-pub async fn render_all(
-    threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
-) -> eyre::Result<()> {
+pub async fn render_all() -> eyre::Result<()> {
     let mut post_paths = vec![];
 
     create_dir_all(&*POSTS_PATH_ROOT)?;
@@ -54,13 +51,10 @@ pub async fn render_all(
         post_paths.push(path);
     }
 
-    render(post_paths, threads_content_cache).await
+    render(post_paths).await
 }
 
-pub async fn render(
-    post_paths: Vec<PostsPath>,
-    threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
-) -> eyre::Result<()> {
+pub async fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     create_dir_all(&*SITE_PATH_ROOT)?;
     create_dir_all(&*SITE_PATH_TAGGED)?;
@@ -115,7 +109,7 @@ pub async fn render(
 
     let results = post_paths
         .into_par_iter()
-        .map(|path| render_single_post(path, threads_content_cache))
+        .map(render_single_post)
         .collect::<Vec<_>>();
 
     let RenderResult {
@@ -218,10 +212,7 @@ pub async fn render(
     Ok(())
 }
 
-fn render_single_post(
-    path: PostsPath,
-    _threads_content_cache: &BTreeMap<String, (String, CachedThreadsContent)>,
-) -> eyre::Result<CacheableRenderResult> {
+fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
     let post = FilteredPost::load(&path)?;
