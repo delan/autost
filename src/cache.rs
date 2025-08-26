@@ -31,7 +31,7 @@ use crate::{
     render_markdown, FilteredPost, TagIndex, Thread, UnsafePost,
 };
 
-struct Context {
+pub struct Context {
     use_packs: bool,
     compute_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
@@ -47,7 +47,7 @@ struct Context {
     tag_index_derivation_cache: MemoryCache<Id, TagIndexDrv>,
     tag_index_output_cache: MemoryCache<Id, TagIndex>,
 }
-struct ContextGuard<'ctx, 'scope> {
+pub struct ContextGuard<'ctx, 'scope> {
     context: &'ctx Context,
     derivation_writer_scope: &'ctx Scope<'scope>,
     output_writer_scope: &'ctx Scope<'scope>,
@@ -66,7 +66,7 @@ struct CachePack {
     tag_index_output_cache: BTreeMap<Id, TagIndex>,
 }
 impl Context {
-    fn new(use_packs: bool) -> Context {
+    pub fn new(use_packs: bool) -> Context {
         let cpu_count = std::thread::available_parallelism()
             .expect("failed to get cpu count")
             .get();
@@ -101,7 +101,7 @@ impl Context {
         ctx
     }
 
-    fn run<R: Send>(mut self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+    pub fn run<R: Send>(mut self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
         if self.use_packs {
             info!("reading cache packs");
             let packs = pack_names()
@@ -246,7 +246,7 @@ impl FromStr for Id {
     }
 }
 
-trait Derivation: Debug + Display + Sized + Sync {
+pub trait Derivation: Debug + Display + Sized + Sync {
     type Output: Clone + Decode<()> + Encode + Send + Sync;
     fn function_name() -> &'static str;
     fn id(&self) -> Id;
@@ -489,7 +489,7 @@ impl Derivation for TagIndexDrv {
     }
 }
 
-trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 'static {
+pub trait DerivationInner: Clone + Debug + Display + Send + Decode<()> + Encode + 'static {
     fn compute_id(&self) -> Id {
         let result =
             bincode::encode_to_vec(self, standard()).expect("guaranteed by derive Serialize");
@@ -547,38 +547,38 @@ impl Display for DoTagIndex {
     }
 }
 
-type ReadFileDrv = Drv<DoReadFile>;
-type RenderMarkdownDrv = Drv<DoRenderMarkdown>;
-type FilteredPostDrv = Drv<DoFilteredPost>;
-type ThreadDrv = Drv<DoThread>;
-type TagIndexDrv = Drv<DoTagIndex>;
+pub type ReadFileDrv = Drv<DoReadFile>;
+pub type RenderMarkdownDrv = Drv<DoRenderMarkdown>;
+pub type FilteredPostDrv = Drv<DoFilteredPost>;
+pub type ThreadDrv = Drv<DoThread>;
+pub type TagIndexDrv = Drv<DoTagIndex>;
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
-struct DoReadFile {
+pub struct DoReadFile {
     path: DynamicPath,
     hash: self::hash::Hash,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
-struct DoRenderMarkdown {
+pub struct DoRenderMarkdown {
     file: ReadFileDrv,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
-enum DoFilteredPost {
+pub enum DoFilteredPost {
     Html(ReadFileDrv),
     Markdown(RenderMarkdownDrv),
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
-struct DoThread {
+pub struct DoThread {
     post: FilteredPostDrv,
     references: Vec<FilteredPostDrv>,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
-struct DoTagIndex {
+pub struct DoTagIndex {
     threads: BTreeSet<ThreadDrv>,
 }
 
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
-struct Drv<Inner> {
+pub struct Drv<Inner> {
     output: Id,
     inner: Inner,
 }
@@ -655,13 +655,13 @@ mod private {
 }
 
 impl ReadFileDrv {
-    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+    pub fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let hash = self::hash::Hash(blake3::hash(&read(&path)?));
         Self::instantiate(ctx, DoReadFile { path, hash })
     }
 }
 impl RenderMarkdownDrv {
-    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+    pub fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         Self::instantiate(
             ctx,
             DoRenderMarkdown {
@@ -671,7 +671,7 @@ impl RenderMarkdownDrv {
     }
 }
 impl FilteredPostDrv {
-    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+    pub fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let DynamicPath::Posts(posts_path) = &path else {
             bail!("path is not a posts path")
         };
@@ -684,7 +684,7 @@ impl FilteredPostDrv {
     }
 }
 impl ThreadDrv {
-    fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
+    pub fn new(ctx: &ContextGuard, path: DynamicPath) -> eyre::Result<Self> {
         let post_derivation = FilteredPostDrv::new(ctx, path)?;
         // effectively an IFD
         let post = post_derivation.realise_recursive(ctx)?;
@@ -705,7 +705,7 @@ impl ThreadDrv {
     }
 }
 impl TagIndexDrv {
-    fn new(ctx: &ContextGuard, threads: BTreeSet<ThreadDrv>) -> eyre::Result<Self> {
+    pub fn new(ctx: &ContextGuard, threads: BTreeSet<ThreadDrv>) -> eyre::Result<Self> {
         Self::instantiate(ctx, DoTagIndex { threads })
     }
 }

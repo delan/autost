@@ -11,6 +11,7 @@ use sqlx::SqliteConnection;
 use tracing::{debug, info};
 
 use crate::{
+    cache::{Context, Derivation as _, ThreadDrv},
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
@@ -21,6 +22,8 @@ use crate::{
 pub struct Render {
     #[arg(long)]
     skip_attachments: bool,
+    #[arg(long)]
+    use_cache: bool,
     specific_post_paths: Vec<String>,
 }
 
@@ -109,10 +112,25 @@ pub async fn render(args: &Render, post_paths: Vec<PostsPath>) -> eyre::Result<(
         std::fs::set_permissions(deploy_path, permissions)?;
     }
 
-    let results = post_paths
-        .into_par_iter()
-        .map(|path| render_single_post(args, path))
-        .collect::<Vec<_>>();
+    let results = if args.use_cache {
+        Context::new(true).run(|ctx| -> Vec<_> {
+            post_paths
+                .into_par_iter()
+                .map(|path| -> eyre::Result<_> {
+                    render_single_post(
+                        args,
+                        path.clone(),
+                        ThreadDrv::new(ctx, path.to_dynamic_path())?.realise_recursive_info(ctx)?,
+                    )
+                })
+                .collect()
+        })?
+    } else {
+        post_paths
+            .into_par_iter()
+            .map(|path| render_single_post_without_cache(args, path))
+            .collect::<Vec<_>>()
+    };
 
     let RenderResult {
         mut tags,
@@ -214,14 +232,24 @@ pub async fn render(args: &Render, post_paths: Vec<PostsPath>) -> eyre::Result<(
     Ok(())
 }
 
-fn render_single_post(args: &Render, path: PostsPath) -> eyre::Result<CacheableRenderResult> {
-    let mut result = RenderResult::default()?;
-
+fn render_single_post_without_cache(
+    args: &Render,
+    path: PostsPath,
+) -> eyre::Result<CacheableRenderResult> {
     let post = FilteredPost::load(&path)?;
+    let thread = Thread::try_from(post)?;
+    render_single_post(args, path, thread)
+}
+
+fn render_single_post(
+    args: &Render,
+    path: PostsPath,
+    thread: Thread,
+) -> eyre::Result<CacheableRenderResult> {
+    let mut result = RenderResult::default()?;
     let Some(rendered_path) = path.rendered_path()? else {
         bail!("post has no rendered path");
     };
-    let thread = Thread::try_from(post)?;
     if !args.skip_attachments {
         hard_link_attachments_into_site(thread.needs_attachments())?;
     }
