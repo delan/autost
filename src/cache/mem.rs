@@ -1,6 +1,6 @@
 use dashmap::DashMap;
 use jane_eyre::eyre;
-use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
+use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
 use tracing::debug;
 
 use std::collections::BTreeMap;
@@ -36,7 +36,7 @@ impl<K: Eq + Hash, V> Debug for MemoryCache<K, V> {
     }
 }
 
-impl<K: Eq + Hash + Debug + Ord + Send, V: Clone + Send> MemoryCache<K, V> {
+impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCache<K, V> {
     pub fn new(label: &'static str) -> Self {
         Self {
             inner: DashMap::new(),
@@ -49,6 +49,9 @@ impl<K: Eq + Hash + Debug + Ord + Send, V: Clone + Send> MemoryCache<K, V> {
     }
     pub fn encodable(self) -> BTreeMap<K, V> {
         self.inner.into_par_iter().collect()
+    }
+    pub fn extend(&mut self, entries: impl IntoParallelIterator<Item = (K, V)>) {
+        self.inner.par_extend(entries)
     }
     pub fn get_or_insert_as_read(
         &self,
@@ -89,10 +92,10 @@ impl<K: Eq + Hash + Debug + Ord + Send, V: Clone + Send> MemoryCache<K, V> {
         Ok(value)
     }
 }
-impl<V: Clone + Debug + Send> MemoryCache<Id, V> {
+impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn encodable_sharded(self) -> BTreeMap<String, BTreeMap<Id, V>> {
         let mut encodable = self.encodable();
-        let splits = (0..4096).rev().map(|i| format!("{i:03x}")).map(|prefix| {
+        let splits = pack_names().map(|prefix| {
             (
                 prefix.clone(),
                 Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
@@ -103,4 +106,8 @@ impl<V: Clone + Debug + Send> MemoryCache<Id, V> {
             .map(|(name, key)| (name.to_owned(), encodable.split_off(&key)))
             .collect()
     }
+}
+
+pub fn pack_names() -> impl Iterator<Item = String> {
+    (0..4096).rev().map(|i| format!("{i:03x}"))
 }

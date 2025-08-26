@@ -13,13 +13,19 @@ use std::{
 use bincode::{config::standard, Decode, Encode};
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
-    iter::{once, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _},
+    iter::{
+        once, IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator as _,
+    },
     Scope, ThreadPool, ThreadPoolBuilder,
 };
 use tracing::{debug, info, span::Span, warn};
 
 use crate::{
-    cache::{fs::atomic_write, mem::MemoryCache, stats::STATS},
+    cache::{
+        fs::atomic_write,
+        mem::{pack_names, MemoryCache},
+        stats::STATS,
+    },
     command::cache::Test,
     path::{DynamicPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
     render_markdown, FilteredPost, TagIndex, Thread, UnsafePost,
@@ -95,7 +101,43 @@ impl Context {
         ctx
     }
 
-    fn run<R: Send>(self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+    fn run<R: Send>(mut self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+        if self.use_packs {
+            info!("reading cache packs");
+            let packs = pack_names()
+                .par_bridge()
+                .map(|name| -> eyre::Result<_> {
+                    Ok(read(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?)
+                })
+                .filter_map(|pack| pack.ok())
+                .collect::<Vec<_>>();
+            let packs = packs
+                .into_par_iter()
+                .map(|pack| Ok(bincode::decode_from_slice(&pack, standard())?.0))
+                .collect::<eyre::Result<Vec<CachePack>>>()?;
+            for pack in packs {
+                self.read_file_derivation_cache
+                    .extend(pack.read_file_derivation_cache);
+                self.read_file_output_cache
+                    .extend(pack.read_file_output_cache);
+                self.render_markdown_derivation_cache
+                    .extend(pack.render_markdown_derivation_cache);
+                self.render_markdown_output_cache
+                    .extend(pack.render_markdown_output_cache);
+                self.filtered_post_derivation_cache
+                    .extend(pack.filtered_post_derivation_cache);
+                self.filtered_post_output_cache
+                    .extend(pack.filtered_post_output_cache);
+                self.thread_derivation_cache
+                    .extend(pack.thread_derivation_cache);
+                self.thread_output_cache.extend(pack.thread_output_cache);
+                self.tag_index_derivation_cache
+                    .extend(pack.tag_index_derivation_cache);
+                self.tag_index_output_cache
+                    .extend(pack.tag_index_output_cache);
+            }
+            info!("running workload");
+        }
         let result = {
             let ctx = &self;
             ctx.output_writer_pool.scope(move |output_writer_scope| {
@@ -191,8 +233,8 @@ impl FromStr for Id {
     }
 }
 
-trait Derivation: Debug + Display + Sized {
-    type Output: Clone + Decode<()> + Encode + Send;
+trait Derivation: Debug + Display + Sized + Sync {
+    type Output: Clone + Decode<()> + Encode + Send + Sync;
     fn function_name() -> &'static str;
     fn id(&self) -> Id;
     fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self>;
