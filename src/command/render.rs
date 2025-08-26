@@ -17,25 +17,27 @@ use crate::{
     FilteredPost, Thread, SETTINGS,
 };
 
-#[derive(clap::Args, Debug)]
+#[derive(clap::Args, Debug, Default)]
 pub struct Render {
+    #[arg(long)]
+    skip_attachments: bool,
     specific_post_paths: Vec<String>,
 }
 
 pub async fn main(args: Render, _db: SqliteConnection) -> eyre::Result<()> {
     if !args.specific_post_paths.is_empty() {
-        let specific_post_paths = args
+        let post_paths = args
             .specific_post_paths
-            .into_iter()
-            .map(|path| PostsPath::from_site_root_relative_path(&path))
+            .iter()
+            .map(|path| PostsPath::from_site_root_relative_path(path))
             .collect::<eyre::Result<Vec<_>>>()?;
-        render(specific_post_paths).await
+        render(&args, post_paths).await
     } else {
-        render_all().await
+        render_all(&args).await
     }
 }
 
-pub async fn render_all() -> eyre::Result<()> {
+pub async fn render_all(args: &Render) -> eyre::Result<()> {
     let mut post_paths = vec![];
 
     create_dir_all(&*POSTS_PATH_ROOT)?;
@@ -51,10 +53,10 @@ pub async fn render_all() -> eyre::Result<()> {
         post_paths.push(path);
     }
 
-    render(post_paths).await
+    render(args, post_paths).await
 }
 
-pub async fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
+pub async fn render(args: &Render, post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     create_dir_all(&*SITE_PATH_ROOT)?;
     create_dir_all(&*SITE_PATH_TAGGED)?;
@@ -109,7 +111,7 @@ pub async fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
 
     let results = post_paths
         .into_par_iter()
-        .map(render_single_post)
+        .map(|path| render_single_post(args, path))
         .collect::<Vec<_>>();
 
     let RenderResult {
@@ -212,7 +214,7 @@ pub async fn render(post_paths: Vec<PostsPath>) -> eyre::Result<()> {
     Ok(())
 }
 
-fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
+fn render_single_post(args: &Render, path: PostsPath) -> eyre::Result<CacheableRenderResult> {
     let mut result = RenderResult::default()?;
 
     let post = FilteredPost::load(&path)?;
@@ -220,7 +222,9 @@ fn render_single_post(path: PostsPath) -> eyre::Result<CacheableRenderResult> {
         bail!("post has no rendered path");
     };
     let thread = Thread::try_from(post)?;
-    hard_link_attachments_into_site(thread.needs_attachments())?;
+    if !args.skip_attachments {
+        hard_link_attachments_into_site(thread.needs_attachments())?;
+    }
     for tag in thread.meta.front_matter.tags.iter() {
         *result.tags.entry(tag.clone()).or_insert(0usize) += 1;
     }
