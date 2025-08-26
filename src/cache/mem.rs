@@ -7,14 +7,15 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::str::FromStr;
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 
 use crate::cache::Id;
 
 pub struct MemoryCache<K, V> {
     inner: DashMap<K, V>,
     label: &'static str,
+    dirty: AtomicBool,
     hits: AtomicUsize,
     read_misses: AtomicUsize,
     read_write_misses: AtomicUsize,
@@ -41,11 +42,15 @@ impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCac
         Self {
             inner: DashMap::new(),
             label,
+            dirty: AtomicBool::new(false),
             hits: AtomicUsize::new(0),
             read_misses: AtomicUsize::new(0),
             read_write_misses: AtomicUsize::new(0),
             write_write_misses: AtomicUsize::new(0),
         }
+    }
+    pub fn is_dirty(&self) -> bool {
+        self.dirty.load(SeqCst)
     }
     pub fn encodable(self) -> BTreeMap<K, V> {
         self.inner.into_par_iter().collect()
@@ -63,6 +68,7 @@ impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCac
             self.hits.fetch_add(1, SeqCst);
             Ok(value.clone())
         } else {
+            self.dirty.store(true, SeqCst);
             self.read_misses.fetch_add(1, SeqCst);
             let value = default(&key)?;
             self.inner.insert(key, value.clone());
@@ -80,6 +86,7 @@ impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCac
             self.hits.fetch_add(1, SeqCst);
             return Ok(value.clone());
         }
+        self.dirty.store(true, SeqCst);
         let value = if let Ok(value) = read(&key) {
             self.read_write_misses.fetch_add(1, SeqCst);
             value

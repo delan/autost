@@ -156,7 +156,7 @@ impl Context {
                     })
             })
         };
-        if self.use_packs {
+        if self.use_packs && self.has_dirty_caches() {
             info!("building cache packs");
             let mut packs: BTreeMap<String, CachePack> = BTreeMap::default();
             for (name, cache) in self.read_file_derivation_cache.encodable_sharded() {
@@ -216,6 +216,19 @@ impl Context {
         }
 
         Ok(result)
+    }
+
+    fn has_dirty_caches(&self) -> bool {
+        self.read_file_derivation_cache.is_dirty()
+            || self.read_file_output_cache.is_dirty()
+            || self.render_markdown_derivation_cache.is_dirty()
+            || self.render_markdown_output_cache.is_dirty()
+            || self.filtered_post_derivation_cache.is_dirty()
+            || self.filtered_post_output_cache.is_dirty()
+            || self.thread_derivation_cache.is_dirty()
+            || self.thread_output_cache.is_dirty()
+            || self.tag_index_derivation_cache.is_dirty()
+            || self.tag_index_output_cache.is_dirty()
     }
 }
 
