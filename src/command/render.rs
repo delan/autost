@@ -13,7 +13,7 @@ use tokio::runtime::Runtime;
 use tracing::{debug, info};
 
 use crate::{
-    cache::{CachedThreadsContentDrv, Context, ContextGuard, Derivation as _, ThreadDrv},
+    cache::{Context, ContextGuard, Derivation as _, RenderedThreadDrv, ThreadDrv},
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
@@ -331,31 +331,34 @@ fn render_single_post(
         }
     }
 
-    let threads_content = match (ctx, thread_drv) {
-        (Some(ctx), Some(drv)) => {
-            CachedThreadsContentDrv::new(ctx, drv)?.realise_recursive_info(ctx)?
-        }
+    let rendered = match (ctx, thread_drv) {
+        (Some(ctx), Some(drv)) => RenderedThreadDrv::new(ctx, drv)?.realise_recursive_info(ctx)?,
         _ => {
-            let normal = ThreadsContentTemplate::render_normal(&thread)?;
-            let simple = ThreadsContentTemplate::render_simple(&thread)?;
-            CachedThreadsContent { normal, simple }
+            let threads_content_normal = ThreadsContentTemplate::render_normal(&thread)?;
+            let threads_content_simple = ThreadsContentTemplate::render_simple(&thread)?;
+            let single_threads_page = ThreadsPageTemplate::render_single_thread(
+                &thread,
+                &threads_content_normal,
+                &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
+                &None,
+            )?;
+            RenderedThread {
+                threads_content_normal,
+                threads_content_simple,
+                single_threads_page,
+            }
         }
     };
     debug!("writing post page: {rendered_path:?}");
-    let threads_page = ThreadsPageTemplate::render_single_thread(
-        &thread,
-        &threads_content.normal,
-        &SETTINGS.page_title(thread.meta.front_matter.title.as_deref()),
-        &None,
+    writeln!(
+        File::create(rendered_path)?,
+        "{}",
+        rendered.single_threads_page
     )?;
-    writeln!(File::create(rendered_path)?, "{threads_page}")?;
 
     let result = CacheableRenderResult {
         render_result: result,
-        cached_thread: CachedThread {
-            thread,
-            threads_content,
-        },
+        cached_thread: CachedThread { thread, rendered },
     };
 
     Ok(result)
@@ -376,13 +379,14 @@ struct RenderResult {
 #[derive(Debug)]
 pub struct CachedThread {
     pub thread: Thread,
-    pub threads_content: CachedThreadsContent,
+    pub rendered: RenderedThread,
 }
 
 #[derive(Clone, Debug, Decode, Encode)]
-pub struct CachedThreadsContent {
-    pub normal: String,
-    pub simple: String,
+pub struct RenderedThread {
+    pub threads_content_normal: String,
+    pub threads_content_simple: String,
+    pub single_threads_page: String,
 }
 
 struct Collections {
@@ -590,7 +594,7 @@ fn render_cached_threads_content(
 ) -> String {
     let threads_contents = threads
         .iter()
-        .map(|thread| &*cache[&thread.path].threads_content.normal)
+        .map(|thread| &*cache[&thread.path].rendered.threads_content_normal)
         .collect::<Vec<_>>();
 
     threads_contents.join("")
