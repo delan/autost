@@ -80,7 +80,7 @@ struct Body<'r> {
 #[post("/preview", data = "<body>")]
 fn preview_route(body: Form<Body<'_>>) -> rocket_eyre::Result<content::RawHtml<String>> {
     let unsafe_source = body.source;
-    let post = UnsafePost::with_markdown(unsafe_source);
+    let post = UnsafePost::with_markdown(unsafe_source, None);
     let post = FilteredPost::filter(post)?;
     let thread = Thread::try_from(post)?;
     Ok(content::RawHtml(
@@ -104,7 +104,7 @@ async fn publish_route(
     let unsafe_source = body.source;
 
     // try rendering the post before writing it, to catch any errors.
-    let post = UnsafePost::with_markdown(unsafe_source);
+    let post = UnsafePost::with_markdown(unsafe_source, None);
     let post = FilteredPost::filter(post)?;
     let _thread = Thread::try_from(post)?;
 

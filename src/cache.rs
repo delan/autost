@@ -384,15 +384,21 @@ impl Derivation for FilteredPostDrv {
         &ctx.filtered_post_output_cache
     }
     fn compute_output(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        let unsafe_html = match &self.inner {
-            DoFilteredPost::Html(file) => {
-                str::from_utf8(&ReadFileDrv::load(ctx, file.id())?.output(ctx)?)?.to_owned()
-            }
-            DoFilteredPost::Markdown(file) => {
-                RenderMarkdownDrv::load(ctx, file.id())?.output(ctx)?
-            }
+        let (path, unsafe_html) = match &self.inner {
+            DoFilteredPost::Html(file) => (
+                &file.inner.path,
+                str::from_utf8(&ReadFileDrv::load(ctx, file.id())?.output(ctx)?)?.to_owned(),
+            ),
+            DoFilteredPost::Markdown(file) => (
+                &file.inner.file.inner.path,
+                RenderMarkdownDrv::load(ctx, file.id())?.output(ctx)?,
+            ),
         };
-        let post = UnsafePost::with_html(&unsafe_html);
+        let post = if let DynamicPath::Posts(path) = path {
+            UnsafePost::with_html(&unsafe_html, path.clone())
+        } else {
+            UnsafePost::with_html(&unsafe_html, None)
+        };
         let post = FilteredPost::filter(post)?;
         Ok(post)
     }

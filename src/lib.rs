@@ -508,21 +508,24 @@ impl UnsafePost {
         })
     }
 
-    pub fn with_markdown(unsafe_source: &str) -> Self {
+    pub fn with_markdown(
+        unsafe_source: &str,
+        indicated_path: impl Into<Option<PostsPath>>,
+    ) -> Self {
         let unsafe_html = render_markdown(unsafe_source);
 
         Self {
-            path: None,
+            path: indicated_path.into(),
             unsafe_html,
         }
     }
 
-    pub fn with_html(unsafe_html: &str) -> Self {
+    pub fn with_html(unsafe_html: &str, indicated_path: impl Into<Option<PostsPath>>) -> Self {
         // the source is already html; there is no markdown.
         let unsafe_source = unsafe_html;
 
         Self {
-            path: None,
+            path: indicated_path.into(),
             unsafe_html: unsafe_source.to_owned(),
         }
     }
