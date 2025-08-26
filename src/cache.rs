@@ -34,6 +34,7 @@ use crate::{
 
 pub struct Context {
     use_packs: bool,
+    did_load_packs: bool,
     compute_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
     output_writer_pool: ThreadPool,
@@ -77,6 +78,7 @@ impl Context {
             .get();
         let ctx = Self {
             use_packs,
+            did_load_packs: false,
             compute_pool: ThreadPoolBuilder::new()
                 .thread_name(|i| format!("compute{i}"))
                 .num_threads(cpu_count)
@@ -123,6 +125,7 @@ impl Context {
                 .map(|pack| Ok(bincode::decode_from_slice(&pack, standard())?.0))
                 .collect::<eyre::Result<Vec<CachePack>>>()?;
             for pack in packs {
+                self.did_load_packs = true;
                 self.read_file_derivation_cache
                     .extend(pack.read_file_derivation_cache);
                 self.read_file_output_cache
@@ -167,7 +170,7 @@ impl Context {
                     })
             })
         };
-        if self.use_packs && self.has_dirty_caches() {
+        if self.use_packs && !self.did_load_packs {
             info!("building cache packs");
             let mut packs: BTreeMap<String, CachePack> = BTreeMap::default();
             for (name, cache) in self.read_file_derivation_cache.encodable_sharded() {
@@ -236,21 +239,6 @@ impl Context {
         }
 
         Ok(result)
-    }
-
-    fn has_dirty_caches(&self) -> bool {
-        self.read_file_derivation_cache.is_dirty()
-            || self.read_file_output_cache.is_dirty()
-            || self.render_markdown_derivation_cache.is_dirty()
-            || self.render_markdown_output_cache.is_dirty()
-            || self.filtered_post_derivation_cache.is_dirty()
-            || self.filtered_post_output_cache.is_dirty()
-            || self.thread_derivation_cache.is_dirty()
-            || self.thread_output_cache.is_dirty()
-            || self.tag_index_derivation_cache.is_dirty()
-            || self.tag_index_output_cache.is_dirty()
-            || self.rendered_thread_derivation_cache.is_dirty()
-            || self.rendered_thread_output_cache.is_dirty()
     }
 }
 
@@ -321,7 +309,7 @@ pub trait Derivation: Debug + Display + Sized + Sync {
                 debug!(%self);
                 let result = (|| -> eyre::Result<_> {
                     let content = self.compute_output(ctx)?;
-                    if !ctx.context.use_packs {
+                    if !ctx.context.use_packs || ctx.context.did_load_packs {
                         let output_path = self.output_path();
                         let content_for_write = bincode::encode_to_vec(&content, standard())?;
                         STATS.record_enqueue_output_write();
@@ -703,7 +691,7 @@ mod private {
                 self.id(),
                 |id| Self::load(ctx, *id),
                 |id| {
-                    if !ctx.context.use_packs {
+                    if !ctx.context.use_packs || ctx.context.did_load_packs {
                         let path = Self::derivation_path(id);
                         let self_for_write = self.clone();
                         STATS.record_enqueue_derivation_write();
