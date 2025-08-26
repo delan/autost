@@ -1,10 +1,16 @@
 use dashmap::DashMap;
 use jane_eyre::eyre;
+use rayon::iter::{IntoParallelIterator as _, ParallelIterator as _};
 use tracing::debug;
 
+use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::hash::Hash;
+use std::str::FromStr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
+
+use crate::cache::Id;
 
 pub struct MemoryCache<K, V> {
     inner: DashMap<K, V>,
@@ -15,7 +21,7 @@ pub struct MemoryCache<K, V> {
     write_write_misses: AtomicUsize,
 }
 
-impl<K: Eq + std::hash::Hash, V> Debug for MemoryCache<K, V> {
+impl<K: Eq + Hash, V> Debug for MemoryCache<K, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -30,7 +36,7 @@ impl<K: Eq + std::hash::Hash, V> Debug for MemoryCache<K, V> {
     }
 }
 
-impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
+impl<K: Eq + Hash + Debug + Ord + Send, V: Clone + Send> MemoryCache<K, V> {
     pub fn new(label: &'static str) -> Self {
         Self {
             inner: DashMap::new(),
@@ -40,6 +46,9 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
             read_write_misses: AtomicUsize::new(0),
             write_write_misses: AtomicUsize::new(0),
         }
+    }
+    pub fn encodable(self) -> BTreeMap<K, V> {
+        self.inner.into_par_iter().collect()
     }
     pub fn get_or_insert_as_read(
         &self,
@@ -78,5 +87,20 @@ impl<K: Eq + std::hash::Hash + Debug, V: Clone> MemoryCache<K, V> {
         };
         self.inner.insert(key, value.clone());
         Ok(value)
+    }
+}
+impl<V: Clone + Debug + Send> MemoryCache<Id, V> {
+    pub fn encodable_sharded(self) -> BTreeMap<String, BTreeMap<Id, V>> {
+        let mut encodable = self.encodable();
+        let splits = (0..256).rev().map(|i| format!("{i:02x}")).map(|prefix| {
+            (
+                prefix.clone(),
+                Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
+            )
+        });
+        splits
+            .into_iter()
+            .map(|(name, key)| (name.to_owned(), encodable.split_off(&key)))
+            .collect()
     }
 }

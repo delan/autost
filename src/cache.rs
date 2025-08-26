@@ -4,26 +4,33 @@ mod mem;
 mod stats;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
     fs::{read, File},
+    str::FromStr,
 };
 
 use bincode::{config::standard, Decode, Encode};
 use jane_eyre::eyre::{self, bail, Context as _};
 use rayon::{
-    iter::{once, IntoParallelRefIterator, ParallelIterator as _},
+    iter::{once, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator as _},
     Scope, ThreadPool, ThreadPoolBuilder,
 };
 use tracing::{debug, info, span::Span, warn};
 
 use crate::{
-    cache::{fs::atomic_write, mem::MemoryCache, stats::STATS},
-    path::{DynamicPath, POSTS_PATH_ROOT},
+    cache::{
+        fs::{atomic_write, atomic_writer},
+        mem::MemoryCache,
+        stats::STATS,
+    },
+    command::cache::Test,
+    path::{DynamicPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
     render_markdown, FilteredPost, TagIndex, Thread, UnsafePost,
 };
 
 struct Context {
+    use_packs: bool,
     compute_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
     output_writer_pool: ThreadPool,
@@ -43,12 +50,26 @@ struct ContextGuard<'ctx, 'scope> {
     derivation_writer_scope: &'ctx Scope<'scope>,
     output_writer_scope: &'ctx Scope<'scope>,
 }
+#[derive(Debug, Default, Decode, Encode)]
+struct CachePack {
+    read_file_derivation_cache: BTreeMap<Id, ReadFileDrv>,
+    read_file_output_cache: BTreeMap<Id, Vec<u8>>,
+    render_markdown_derivation_cache: BTreeMap<Id, RenderMarkdownDrv>,
+    render_markdown_output_cache: BTreeMap<Id, String>,
+    filtered_post_derivation_cache: BTreeMap<Id, FilteredPostDrv>,
+    filtered_post_output_cache: BTreeMap<Id, FilteredPost>,
+    thread_derivation_cache: BTreeMap<Id, ThreadDrv>,
+    thread_output_cache: BTreeMap<Id, Thread>,
+    tag_index_derivation_cache: BTreeMap<Id, TagIndexDrv>,
+    tag_index_output_cache: BTreeMap<Id, TagIndex>,
+}
 impl Context {
-    fn new() -> Self {
+    fn new(use_packs: bool) -> Context {
         let cpu_count = std::thread::available_parallelism()
             .expect("failed to get cpu count")
             .get();
-        Self {
+        let ctx = Self {
+            use_packs,
             compute_pool: ThreadPoolBuilder::new()
                 .thread_name(|i| format!("compute{i}"))
                 .num_threads(cpu_count)
@@ -74,27 +95,84 @@ impl Context {
             thread_output_cache: MemoryCache::new("ThreadOut"),
             tag_index_derivation_cache: MemoryCache::new("TagIndexDrv"),
             tag_index_output_cache: MemoryCache::new("TagIndexOut"),
-        }
+        };
+        ctx
     }
-    fn run<R: Send>(fun: impl FnOnce(&ContextGuard) -> R + Send) -> R {
-        Self::new().scope(fun)
-    }
-    fn scope<R: Send>(&self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> R {
-        self.output_writer_pool.scope(move |output_writer_scope| {
-            self.derivation_writer_pool
-                .scope(move |derivation_writer_scope| {
-                    // the compute pool scope is the innermost scope, so `in_place_scope()` will spawn tasks into it.
-                    // but we ignore the `Scope` argument for the compute pool, because explicitly spawning tasks into
-                    // it would fail with borrow checker errors.
-                    self.compute_pool.scope(move |_compute_scope| {
-                        fun(&ContextGuard {
-                            context: self,
-                            derivation_writer_scope,
-                            output_writer_scope,
+
+    fn run<R: Send>(self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+        let result = {
+            let ctx = &self;
+            ctx.output_writer_pool.scope(move |output_writer_scope| {
+                ctx.derivation_writer_pool
+                    .scope(move |derivation_writer_scope| {
+                        // the compute pool scope is the innermost scope, so `in_place_scope()` will spawn tasks into it.
+                        // but we ignore the `Scope` argument for the compute pool, because explicitly spawning tasks into
+                        // it would fail with borrow checker errors.
+                        ctx.compute_pool.scope(move |_compute_scope| {
+                            fun(&ContextGuard {
+                                context: ctx,
+                                derivation_writer_scope,
+                                output_writer_scope,
+                            })
                         })
                     })
-                })
-        })
+            })
+        };
+        if self.use_packs {
+            info!("building cache packs");
+            let mut packs: BTreeMap<String, CachePack> = BTreeMap::default();
+            for (name, cache) in self.read_file_derivation_cache.encodable_sharded() {
+                packs.entry(name).or_default().read_file_derivation_cache = cache;
+            }
+            for (name, cache) in self.read_file_output_cache.encodable_sharded() {
+                packs.entry(name).or_default().read_file_output_cache = cache;
+            }
+            for (name, cache) in self.render_markdown_derivation_cache.encodable_sharded() {
+                packs
+                    .entry(name)
+                    .or_default()
+                    .render_markdown_derivation_cache = cache;
+            }
+            for (name, cache) in self.render_markdown_output_cache.encodable_sharded() {
+                packs.entry(name).or_default().render_markdown_output_cache = cache;
+            }
+            for (name, cache) in self.filtered_post_derivation_cache.encodable_sharded() {
+                packs
+                    .entry(name)
+                    .or_default()
+                    .filtered_post_derivation_cache = cache;
+            }
+            for (name, cache) in self.filtered_post_output_cache.encodable_sharded() {
+                packs.entry(name).or_default().filtered_post_output_cache = cache;
+            }
+            for (name, cache) in self.thread_derivation_cache.encodable_sharded() {
+                packs.entry(name).or_default().thread_derivation_cache = cache;
+            }
+            for (name, cache) in self.thread_output_cache.encodable_sharded() {
+                packs.entry(name).or_default().thread_output_cache = cache;
+            }
+            for (name, cache) in self.tag_index_derivation_cache.encodable_sharded() {
+                packs.entry(name).or_default().tag_index_derivation_cache = cache;
+            }
+            for (name, cache) in self.tag_index_output_cache.encodable_sharded() {
+                packs.entry(name).or_default().tag_index_output_cache = cache;
+            }
+            info!("writing cache packs");
+            self.derivation_writer_pool.scope(move |_| {
+                packs
+                    .into_par_iter()
+                    .map(|(name, pack)| {
+                        let mut file =
+                            atomic_writer(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?;
+                        bincode::encode_into_std_write(pack, &mut file, standard())?;
+                        file.commit()?;
+                        Ok(())
+                    })
+                    .collect::<eyre::Result<Vec<_>>>()
+            })?;
+        }
+
+        Ok(result)
     }
 }
 
@@ -105,9 +183,15 @@ impl Display for Id {
         write!(f, "{}", self.0)
     }
 }
+impl FromStr for Id {
+    type Err = eyre::Report;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(self::hash::Hash(blake3::Hash::from_hex(s)?)))
+    }
+}
 
 trait Derivation: Debug + Display + Sized {
-    type Output: Clone + Decode<()> + Encode;
+    type Output: Clone + Decode<()> + Encode + Send;
     fn function_name() -> &'static str;
     fn id(&self) -> Id;
     fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self>;
@@ -159,15 +243,17 @@ trait Derivation: Debug + Display + Sized {
                 debug!(%self);
                 let result = (|| -> eyre::Result<_> {
                     let content = self.compute_output(ctx)?;
-                    let output_path = self.output_path();
-                    let content_for_write = bincode::encode_to_vec(&content, standard())?;
-                    STATS.record_enqueue_output_write();
-                    ctx.output_writer_scope.spawn(move |_| {
-                        STATS.record_dequeue_output_write();
-                        if let Err(error) = atomic_write(output_path, content_for_write) {
-                            warn!(?error, "failed to write derivation output");
-                        }
-                    });
+                    if !ctx.context.use_packs {
+                        let output_path = self.output_path();
+                        let content_for_write = bincode::encode_to_vec(&content, standard())?;
+                        STATS.record_enqueue_output_write();
+                        ctx.output_writer_scope.spawn(move |_| {
+                            STATS.record_dequeue_output_write();
+                            if let Err(error) = atomic_write(output_path, content_for_write) {
+                                warn!(?error, "failed to write derivation output");
+                            }
+                        });
+                    }
                     Ok(content)
                 })();
                 let result = result.wrap_err_with(|| format!("failed to realise derivation: {self:?}"))?;
@@ -484,21 +570,27 @@ mod private {
                 self.id(),
                 |id| Self::load(ctx, *id),
                 |id| {
-                    let path = Self::derivation_path(id);
-                    let self_for_write = self.clone();
-                    STATS.record_enqueue_derivation_write();
-                    ctx.derivation_writer_scope.spawn(move |_| {
-                        STATS.record_dequeue_derivation_write();
-                        let result = || -> eyre::Result<()> {
-                            let mut file = atomic_writer(path)?;
-                            bincode::encode_into_std_write(self_for_write, &mut file, standard())?;
-                            file.commit()?;
-                            Ok(())
-                        }();
-                        if let Err(error) = result {
-                            warn!(?error, "failed to write derivation");
-                        }
-                    });
+                    if !ctx.context.use_packs {
+                        let path = Self::derivation_path(id);
+                        let self_for_write = self.clone();
+                        STATS.record_enqueue_derivation_write();
+                        ctx.derivation_writer_scope.spawn(move |_| {
+                            STATS.record_dequeue_derivation_write();
+                            let result = || -> eyre::Result<()> {
+                                let mut file = atomic_writer(path)?;
+                                bincode::encode_into_std_write(
+                                    self_for_write,
+                                    &mut file,
+                                    standard(),
+                                )?;
+                                file.commit()?;
+                                Ok(())
+                            }();
+                            if let Err(error) = result {
+                                warn!(?error, "failed to write derivation");
+                            }
+                        });
+                    }
                     Ok(self)
                 },
             )
@@ -576,8 +668,8 @@ where
     }
 }
 
-pub async fn test() -> eyre::Result<()> {
-    Context::run(|ctx| -> eyre::Result<()> {
+pub async fn test(test: Test) -> eyre::Result<()> {
+    Context::new(test.use_packs).run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
         eprintln!("\x1B[Kbuilding threads");
         let threads = top_level_post_paths
@@ -590,7 +682,7 @@ pub async fn test() -> eyre::Result<()> {
         eprintln!("\x1B[Kwaiting for disk writes");
         STATS.enable_pending_write_logging();
         Ok(())
-    })?;
+    })??;
 
     Ok(())
 }
