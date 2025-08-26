@@ -30,21 +30,32 @@ pub struct Render {
 }
 
 pub async fn main(args: Render, _db: SqliteConnection) -> eyre::Result<()> {
-    Context::new(true).run(|ctx| {
-        Runtime::new()?.block_on(async {
-            if !args.specific_post_paths.is_empty() {
-                let post_paths = args
-                    .specific_post_paths
-                    .iter()
-                    .map(|path| PostsPath::from_site_root_relative_path(path))
-                    .collect::<eyre::Result<Vec<_>>>()?;
-                render(&args, Some(ctx), post_paths).await
-            } else {
-                render_all(&args, Some(ctx)).await
-            }
-        })?;
-        Ok(())
-    })?
+    if args.use_cache {
+        Context::new(true).run(|ctx| {
+            Runtime::new()?.block_on(async {
+                if !args.specific_post_paths.is_empty() {
+                    let post_paths = args
+                        .specific_post_paths
+                        .iter()
+                        .map(|path| PostsPath::from_site_root_relative_path(path))
+                        .collect::<eyre::Result<Vec<_>>>()?;
+                    render(&args, Some(ctx), post_paths).await
+                } else {
+                    render_all(&args, Some(ctx)).await
+                }
+            })?;
+            Ok(())
+        })?
+    } else if !args.specific_post_paths.is_empty() {
+        let post_paths = args
+            .specific_post_paths
+            .iter()
+            .map(|path| PostsPath::from_site_root_relative_path(path))
+            .collect::<eyre::Result<Vec<_>>>()?;
+        render(&args, None, post_paths).await
+    } else {
+        render_all(&args, None).await
+    }
 }
 
 pub async fn render_all(args: &Render, ctx: Option<&ContextGuard<'_, '_>>) -> eyre::Result<()> {
@@ -123,8 +134,8 @@ pub async fn render(
         std::fs::set_permissions(deploy_path, permissions)?;
     }
 
-    let results = if let Some(ctx) = ctx {
-        post_paths
+    let results = match (args.use_cache, ctx) {
+        (true, Some(ctx)) => post_paths
             .into_par_iter()
             .map(|path| -> eyre::Result<_> {
                 let thread_drv = ThreadDrv::new(ctx, path.to_dynamic_path())?;
@@ -136,12 +147,11 @@ pub async fn render(
                     Some(thread_drv),
                 )
             })
-            .collect()
-    } else {
-        post_paths
+            .collect(),
+        _ => post_paths
             .into_par_iter()
             .map(|path| render_single_post_without_cache(args, path))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>(),
     };
 
     let RenderResult {
@@ -331,8 +341,10 @@ fn render_single_post(
         }
     }
 
-    let rendered = match (ctx, thread_drv) {
-        (Some(ctx), Some(drv)) => RenderedThreadDrv::new(ctx, drv)?.realise_recursive_info(ctx)?,
+    let rendered = match (args.use_cache, ctx, thread_drv) {
+        (true, Some(ctx), Some(drv)) => {
+            RenderedThreadDrv::new(ctx, drv)?.realise_recursive_info(ctx)?
+        }
         _ => {
             let threads_content_normal = ThreadsContentTemplate::render_normal(&thread)?;
             let threads_content_simple = ThreadsContentTemplate::render_simple(&thread)?;
