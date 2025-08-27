@@ -163,7 +163,7 @@ pub struct Thread {
 
 #[derive(Clone, Debug, Decode, Encode)]
 pub struct TagIndex {
-    tags: BTreeMap<String, BTreeSet<Id>>,
+    pub tags: BTreeMap<String, BTreeSet<Id>>,
 }
 impl TagIndex {
     pub fn new(threads: BTreeMap<Id, Thread>) -> Self {
@@ -184,6 +184,22 @@ impl Display for TagIndex {
             write!(f, "\n- {tag:?} ({} threads)", threads.len())?;
         }
         write!(f, "\n}}")
+    }
+}
+
+#[derive(Clone, Debug, Decode, Encode)]
+pub struct CachelessTagIndex {
+    pub tags: BTreeMap<String, BTreeSet<PostsPath>>,
+}
+impl CachelessTagIndex {
+    pub fn new(threads: BTreeMap<PostsPath, Thread>) -> Self {
+        let mut tags: BTreeMap<String, BTreeSet<PostsPath>> = BTreeMap::default();
+        for (path, thread) in threads.into_iter() {
+            for tag in thread.meta.front_matter.tags.iter() {
+                tags.entry(tag.clone()).or_default().insert(path.clone());
+            }
+        }
+        Self { tags }
     }
 }
 

@@ -30,8 +30,8 @@ use crate::{
         stats::STATS,
     },
     command::{cache::Test, render::RenderedThread},
-    path::{CACHE_PATH_ROOT, POSTS_PATH_ROOT},
-    FilteredPost, TagIndex, Thread,
+    path::{PostsPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
+    CachelessTagIndex, FilteredPost, TagIndex, Thread,
 };
 
 pub struct Context {
@@ -432,18 +432,64 @@ where
     }
 }
 
-pub async fn test(test: Test) -> eyre::Result<()> {
-    Context::new(test.use_packs).run(|ctx| -> eyre::Result<()> {
+pub async fn test(args: Test) -> eyre::Result<()> {
+    Context::new(args.use_packs).run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-        eprintln!("\x1B[Kbuilding threads");
-        let threads = top_level_post_paths
-            .par_iter()
-            .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
-            .collect::<eyre::Result<BTreeSet<_>>>()?;
-        eprintln!("\x1B[Kbuilding tag index");
-        let tags = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
-        debug!(%tags);
-        eprintln!("\x1B[Kwaiting for disk writes");
+        eprintln!("building tag index");
+        let (threads_by_path, tag_index) = if args.use_cache {
+            let threads = top_level_post_paths
+                .par_iter()
+                .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
+                .collect::<eyre::Result<BTreeSet<_>>>()?;
+            let tag_index = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
+            let mut threads_by_path = BTreeMap::default();
+            let mut new_tags: BTreeMap<String, BTreeSet<PostsPath>> = BTreeMap::default();
+            for (tag, threads) in tag_index.tags {
+                let threads = threads
+                    .into_par_iter()
+                    .map(|id| {
+                        let thread = ThreadDrv::load(ctx, id)?.output(ctx)?;
+                        Ok(thread.path.clone().map(|path| (path, thread)))
+                    })
+                    .filter_map(|result| result.transpose())
+                    .collect::<eyre::Result<BTreeMap<_, _>>>()?;
+                new_tags.insert(tag, threads.keys().cloned().collect());
+                threads_by_path.extend(threads);
+            }
+            (threads_by_path, CachelessTagIndex { tags: new_tags })
+        } else {
+            let threads = top_level_post_paths
+                .par_iter()
+                .map(|path| {
+                    let post = FilteredPost::load(path)?;
+                    let thread = Thread::try_from(post)?;
+                    Ok(thread.path.clone().map(|path| (path, thread)))
+                })
+                .filter_map(|result| result.transpose())
+                .collect::<eyre::Result<BTreeMap<_, _>>>()?;
+            (threads.clone(), CachelessTagIndex::new(threads))
+        };
+        if let Some(tag) = args.list_threads_in_tag {
+            let thread_paths = tag_index.tags.get(&tag);
+            let mut threads = thread_paths
+                .par_iter()
+                .flat_map(|paths| paths.par_iter())
+                .map(|path| {
+                    let thread = &threads_by_path[path];
+                    Ok((thread.meta.front_matter.published.clone(), thread.clone()))
+                })
+                .collect::<eyre::Result<Vec<_>>>()?;
+            threads.sort();
+            println!("{} threads in tag {tag:?}:", threads.len());
+            for (published, thread) in threads {
+                if let Some(((published, path), description)) =
+                    published.zip(thread.path).zip(thread.meta.og_description)
+                {
+                    let excerpt = description.chars().take(50).collect::<String>();
+                    println!("- {published:?}, {}, {excerpt:?}", path.to_dynamic_path());
+                }
+            }
+        }
         STATS.enable_pending_write_logging();
         Ok(())
     })??;
