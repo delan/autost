@@ -456,11 +456,11 @@ pub async fn test(args: Test) -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
         if let Some(tag) = args.list_threads_in_tag {
             if args.use_cache {
-                let threads = top_level_post_paths
+                let files = top_level_post_paths
                     .par_iter()
-                    .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
+                    .map(|path| ReadFileDrv::new(ctx, path.to_dynamic_path()))
                     .collect::<eyre::Result<BTreeSet<_>>>()?;
-                let tag_index = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
+                let tag_index = TagIndexDrv::new(ctx, files)?.realise_recursive_info(ctx)?;
                 dbg!(tag_index.db.len());
                 let mut threads = Runtime::new()?
                     .block_on(tag_index.query(&tag))?

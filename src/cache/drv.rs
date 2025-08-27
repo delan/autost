@@ -45,7 +45,7 @@ pub struct DoThread {
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DoTagIndex {
-    threads: BTreeSet<ThreadDrv>,
+    files: BTreeSet<ReadFileDrv>,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DoRenderedThread {
@@ -99,7 +99,7 @@ impl Display for DoThread {
 impl Display for DoTagIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TagIndex")
-            .field("threads", &CollectionDisplay(self.threads.iter()))
+            .field("files", &CollectionDisplay(self.files.iter()))
             .finish()
     }
 }
@@ -162,8 +162,8 @@ impl ThreadDrv {
     }
 }
 impl TagIndexDrv {
-    pub fn new(ctx: &ContextGuard, threads: BTreeSet<ThreadDrv>) -> eyre::Result<Self> {
-        Self::instantiate(ctx, DoTagIndex { threads })
+    pub fn new(ctx: &ContextGuard, files: BTreeSet<ReadFileDrv>) -> eyre::Result<Self> {
+        Self::instantiate(ctx, DoTagIndex { files })
     }
 }
 impl RenderedThreadDrv {
@@ -324,26 +324,20 @@ impl Derivation for TagIndexDrv {
         let span = Span::current();
         let threads = self
             .inner
-            .threads
+            .files
             .iter()
-            .map(|thread| {
+            .map(|file| {
                 let _entered = span.clone().entered();
-                Ok((thread.id(), ThreadDrv::load(ctx, thread.id())?.output(ctx)?))
+                let drv = ThreadDrv::new(ctx, file.inner.path.clone())?;
+                let thread = drv.realise_recursive_debug(ctx)?;
+                Ok((drv.id(), thread))
             })
             .collect::<eyre::Result<_>>()?;
         let thread = Runtime::new()?.block_on(TagIndex::new(threads))?;
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        let span = Span::current();
-        self.inner
-            .threads
-            .par_iter()
-            .map(|thread| {
-                let _entered = span.clone().entered();
-                thread.realise_recursive_debug(ctx)
-            })
-            .collect::<eyre::Result<Vec<_>>>()?;
+        // XXX: should we continue to realise the ReadFileDrv deps here at least?
         self.realise_self_only(ctx)
     }
 }
