@@ -17,6 +17,7 @@ use rayon::{
     iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator as _},
     Scope, ThreadPool, ThreadPoolBuilder,
 };
+use tokio::runtime::Runtime;
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -30,7 +31,7 @@ use crate::{
         stats::STATS,
     },
     command::{cache::Test, render::RenderedThread},
-    path::{PostsPath, CACHE_PATH_ROOT, POSTS_PATH_ROOT},
+    path::{CACHE_PATH_ROOT, POSTS_PATH_ROOT},
     CachelessTagIndex, FilteredPost, TagIndex, Thread,
 };
 
@@ -258,6 +259,18 @@ impl FromStr for Id {
         Ok(Self(self::hash::Hash(blake3::Hash::from_hex(s)?)))
     }
 }
+impl Id {
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0 .0.as_bytes()
+    }
+}
+impl TryFrom<&[u8]> for Id {
+    type Error = eyre::Report;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        Ok(Self(self::hash::Hash(blake3::Hash::from_slice(value)?)))
+    }
+}
 
 pub trait Derivation: Debug + Display + Sized + Sync {
     type Output: Clone + Decode<()> + Encode + Send + Sync;
@@ -441,58 +454,58 @@ where
 pub async fn test(args: Test) -> eyre::Result<()> {
     Context::new(args.use_packs).run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
-        eprintln!("building tag index");
-        let (threads_by_path, tag_index) = if args.use_cache {
-            let threads = top_level_post_paths
-                .par_iter()
-                .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
-                .collect::<eyre::Result<BTreeSet<_>>>()?;
-            let tag_index = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
-            let mut threads_by_path = BTreeMap::default();
-            let mut new_tags: BTreeMap<String, BTreeSet<PostsPath>> = BTreeMap::default();
-            for (tag, threads) in tag_index.tags {
-                let threads = threads
-                    .into_par_iter()
-                    .map(|id| {
-                        let thread = ThreadDrv::load(ctx, id)?.output(ctx)?;
+        if let Some(tag) = args.list_threads_in_tag {
+            if args.use_cache {
+                let threads = top_level_post_paths
+                    .par_iter()
+                    .map(|path| ThreadDrv::new(ctx, path.to_dynamic_path()))
+                    .collect::<eyre::Result<BTreeSet<_>>>()?;
+                let tag_index = TagIndexDrv::new(ctx, threads)?.realise_recursive_info(ctx)?;
+                dbg!(tag_index.db.len());
+                let mut threads = Runtime::new()?
+                    .block_on(tag_index.query(&tag))?
+                    .into_iter()
+                    .map(|(id, published, path, description)| (published, (id, path, description)))
+                    .collect::<Vec<_>>();
+                threads.sort();
+                println!("{} threads in tag {tag:?}:", threads.len());
+                for (published, (_id, path, description)) in threads {
+                    if let Some(((published, path), description)) =
+                        published.zip(path).zip(description)
+                    {
+                        let excerpt = description.chars().take(50).collect::<String>();
+                        println!("- {published:?}, {path:?}, {excerpt:?}");
+                    }
+                }
+            } else {
+                let threads_by_path = top_level_post_paths
+                    .par_iter()
+                    .map(|path| {
+                        let post = FilteredPost::load(path)?;
+                        let thread = Thread::try_from(post)?;
                         Ok(thread.path.clone().map(|path| (path, thread)))
                     })
                     .filter_map(|result| result.transpose())
                     .collect::<eyre::Result<BTreeMap<_, _>>>()?;
-                new_tags.insert(tag, threads.keys().cloned().collect());
-                threads_by_path.extend(threads);
-            }
-            (threads_by_path, CachelessTagIndex { tags: new_tags })
-        } else {
-            let threads = top_level_post_paths
-                .par_iter()
-                .map(|path| {
-                    let post = FilteredPost::load(path)?;
-                    let thread = Thread::try_from(post)?;
-                    Ok(thread.path.clone().map(|path| (path, thread)))
-                })
-                .filter_map(|result| result.transpose())
-                .collect::<eyre::Result<BTreeMap<_, _>>>()?;
-            (threads.clone(), CachelessTagIndex::new(threads))
-        };
-        if let Some(tag) = args.list_threads_in_tag {
-            let thread_paths = tag_index.tags.get(&tag);
-            let mut threads = thread_paths
-                .par_iter()
-                .flat_map(|paths| paths.par_iter())
-                .map(|path| {
-                    let thread = &threads_by_path[path];
-                    Ok((thread.meta.front_matter.published.clone(), thread.clone()))
-                })
-                .collect::<eyre::Result<Vec<_>>>()?;
-            threads.sort();
-            println!("{} threads in tag {tag:?}:", threads.len());
-            for (published, thread) in threads {
-                if let Some(((published, path), description)) =
-                    published.zip(thread.path).zip(thread.meta.og_description)
-                {
-                    let excerpt = description.chars().take(50).collect::<String>();
-                    println!("- {published:?}, {}, {excerpt:?}", path.to_dynamic_path());
+                let tag_index = CachelessTagIndex::new(threads_by_path.clone());
+                let thread_paths = tag_index.tags.get(&tag);
+                let mut threads = thread_paths
+                    .par_iter()
+                    .flat_map(|paths| paths.par_iter())
+                    .map(|path| {
+                        let thread = &threads_by_path[path];
+                        Ok((thread.meta.front_matter.published.clone(), thread.clone()))
+                    })
+                    .collect::<eyre::Result<Vec<_>>>()?;
+                threads.sort();
+                println!("{} threads in tag {tag:?}:", threads.len());
+                for (published, thread) in threads {
+                    if let Some(((published, path), description)) =
+                        published.zip(thread.path).zip(thread.meta.og_description)
+                    {
+                        let excerpt = description.chars().take(50).collect::<String>();
+                        println!("- {published:?}, {}, {excerpt:?}", path.to_dynamic_path());
+                    }
                 }
             }
         }

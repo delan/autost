@@ -2,7 +2,6 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},
     env,
-    fmt::Display,
     fs::File,
     io::{ErrorKind, Read, Write},
     path::Path,
@@ -29,7 +28,9 @@ use indexmap::{indexmap, IndexMap};
 use jane_eyre::eyre::{self, bail, Context, OptionExt};
 use markup5ever_rcdom::{NodeData, RcDom};
 use renamore::rename_exclusive_fallback;
+use rocket::futures::TryStreamExt as _;
 use serde::{Deserialize, Serialize};
+use sqlx::{Connection, Row, SqliteConnection};
 use toml::{toml, Value};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -163,27 +164,62 @@ pub struct Thread {
 
 #[derive(Clone, Debug, Decode, Encode)]
 pub struct TagIndex {
-    pub tags: BTreeMap<String, BTreeSet<Id>>,
+    pub db: Vec<u8>,
 }
 impl TagIndex {
-    pub fn new(threads: BTreeMap<Id, Thread>) -> Self {
-        let mut tags: BTreeMap<String, BTreeSet<Id>> = BTreeMap::default();
+    pub async fn new(threads: BTreeMap<Id, Thread>) -> eyre::Result<Self> {
+        let mut conn = SqliteConnection::connect(":memory:").await?;
+        sqlx::query(r#"
+            CREATE TABLE "thread" ("id" BLOB PRIMARY KEY, "published" TEXT NULL, "path" TEXT NULL, "description" TEXT NULL);
+            CREATE TABLE "tagged" ("tag" TEXT NOT NULL, "id" BLOB NOT NULL);
+        "#)
+            .execute(&mut conn)
+            .await?;
         for (id, thread) in threads.into_iter() {
-            for tag in thread.meta.front_matter.tags.iter() {
-                tags.entry(tag.clone()).or_default().insert(id);
+            sqlx::query(r#"INSERT INTO "thread" VALUES ($1, $2, $3, $4)"#)
+                .bind(id.as_bytes())
+                .bind(thread.meta.front_matter.published)
+                .bind(
+                    thread
+                        .path
+                        .map(|path| path.to_dynamic_path().db_dep_table_path()),
+                )
+                .bind(thread.meta.og_description)
+                .execute(&mut conn)
+                .await?;
+            for tag in thread.meta.front_matter.tags.into_iter() {
+                sqlx::query(r#"INSERT INTO "tagged" VALUES ($1, $2)"#)
+                    .bind(tag)
+                    .bind(id.as_bytes())
+                    .execute(&mut conn)
+                    .await?;
             }
         }
-        Self { tags }
+
+        Ok(Self {
+            db: conn.serialize(None).await?.to_owned(),
+        })
     }
-}
-impl Display for TagIndex {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TagIndex {{")?;
-        for (tag, threads) in self.tags.iter() {
-            // ds.field(tag, &threads.len());
-            write!(f, "\n- {tag:?} ({} threads)", threads.len())?;
+
+    pub async fn query(
+        &self,
+        tag: &str,
+    ) -> eyre::Result<Vec<(Id, Option<String>, Option<String>, Option<String>)>> {
+        let mut result = vec![];
+        let mut conn = SqliteConnection::connect(":memory:").await?;
+        conn.deserialize(None, self.db.as_slice().try_into()?, true)
+            .await?;
+        let mut rows = sqlx::query(r#"SELECT "thread".* FROM "thread" INNER JOIN "tagged" ON "thread"."id" = "tagged"."id" WHERE "tag" = $1"#)
+            .bind(tag)
+            .fetch(&mut conn);
+        while let Some(row) = rows.try_next().await? {
+            let id = Id::try_from(row.get::<&[u8], _>(0))?;
+            let published = row.get(1);
+            let path = row.get(2);
+            let description = row.get(3);
+            result.push((id, published, path, description));
         }
-        write!(f, "\n}}")
+        Ok(result)
     }
 }
 

@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, fmt::Display, fs::read};
 use bincode::{Decode, Encode};
 use jane_eyre::eyre::{self, bail};
 use rayon::iter::{once, IntoParallelRefIterator as _, ParallelIterator as _};
+use tokio::runtime::Runtime;
 use tracing::Span;
 
 use crate::{
@@ -330,7 +331,7 @@ impl Derivation for TagIndexDrv {
                 Ok((thread.id(), ThreadDrv::load(ctx, thread.id())?.output(ctx)?))
             })
             .collect::<eyre::Result<_>>()?;
-        let thread = TagIndex::new(threads);
+        let thread = Runtime::new()?.block_on(TagIndex::new(threads))?;
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
