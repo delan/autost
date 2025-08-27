@@ -55,8 +55,8 @@ impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCac
     pub fn encodable(self) -> BTreeMap<K, V> {
         self.inner.into_par_iter().collect()
     }
-    pub fn extend(&mut self, entries: impl IntoParallelIterator<Item = (K, V)>) {
-        self.inner.par_extend(entries)
+    pub fn par_extend(&self, entries: impl IntoParallelIterator<Item = (K, V)>) {
+        (&self.inner).par_extend(entries)
     }
     pub fn get_or_insert_as_read(
         &self,

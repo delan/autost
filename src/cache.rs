@@ -124,35 +124,39 @@ impl Context {
                 })
                 .filter_map(|pack| pack.ok())
                 .collect::<Vec<_>>();
-            let packs = packs
+            let results = packs
                 .into_par_iter()
-                .map(|pack| Ok(bincode::decode_from_slice(&pack, standard())?.0))
-                .collect::<eyre::Result<Vec<CachePack>>>()?;
-            for pack in packs {
+                .map(|pack| -> eyre::Result<_> {
+                    let pack: CachePack = bincode::decode_from_slice(&pack, standard())?.0;
+                    self.read_file_derivation_cache
+                        .par_extend(pack.read_file_derivation_cache);
+                    self.read_file_output_cache
+                        .par_extend(pack.read_file_output_cache);
+                    self.render_markdown_derivation_cache
+                        .par_extend(pack.render_markdown_derivation_cache);
+                    self.render_markdown_output_cache
+                        .par_extend(pack.render_markdown_output_cache);
+                    self.filtered_post_derivation_cache
+                        .par_extend(pack.filtered_post_derivation_cache);
+                    self.filtered_post_output_cache
+                        .par_extend(pack.filtered_post_output_cache);
+                    self.thread_derivation_cache
+                        .par_extend(pack.thread_derivation_cache);
+                    self.thread_output_cache
+                        .par_extend(pack.thread_output_cache);
+                    self.tag_index_derivation_cache
+                        .par_extend(pack.tag_index_derivation_cache);
+                    self.tag_index_output_cache
+                        .par_extend(pack.tag_index_output_cache);
+                    self.rendered_thread_derivation_cache
+                        .par_extend(pack.rendered_thread_derivation_cache);
+                    self.rendered_thread_output_cache
+                        .par_extend(pack.rendered_thread_output_cache);
+                    Ok(())
+                })
+                .collect::<Vec<_>>();
+            if results.iter().any(|result| result.is_ok()) {
                 self.did_load_packs = true;
-                self.read_file_derivation_cache
-                    .extend(pack.read_file_derivation_cache);
-                self.read_file_output_cache
-                    .extend(pack.read_file_output_cache);
-                self.render_markdown_derivation_cache
-                    .extend(pack.render_markdown_derivation_cache);
-                self.render_markdown_output_cache
-                    .extend(pack.render_markdown_output_cache);
-                self.filtered_post_derivation_cache
-                    .extend(pack.filtered_post_derivation_cache);
-                self.filtered_post_output_cache
-                    .extend(pack.filtered_post_output_cache);
-                self.thread_derivation_cache
-                    .extend(pack.thread_derivation_cache);
-                self.thread_output_cache.extend(pack.thread_output_cache);
-                self.tag_index_derivation_cache
-                    .extend(pack.tag_index_derivation_cache);
-                self.tag_index_output_cache
-                    .extend(pack.tag_index_output_cache);
-                self.rendered_thread_derivation_cache
-                    .extend(pack.rendered_thread_derivation_cache);
-                self.rendered_thread_output_cache
-                    .extend(pack.rendered_thread_output_cache);
             }
             info!("running workload");
         }
