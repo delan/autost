@@ -18,7 +18,6 @@ use command::{
     cohost2autost::Cohost2autost,
     cohost2json::Cohost2json,
     cohost_archive::CohostArchive,
-    db::Db,
     import::{Import, Reimport},
     new::New,
     render::Render,
@@ -47,7 +46,6 @@ pub mod command {
     pub mod cohost2autost;
     pub mod cohost2json;
     pub mod cohost_archive;
-    pub mod db;
     pub mod import;
     pub mod new;
     pub mod render;
@@ -81,8 +79,6 @@ pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| {
 #[derive(clap::Parser, Debug)]
 pub enum Command {
     Attach(Attach),
-    #[command(subcommand)]
-    Db(Db),
     #[command(subcommand)]
     Cache(Cache),
     Cohost2autost(Cohost2autost),
