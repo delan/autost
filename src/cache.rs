@@ -6,7 +6,7 @@ mod stats;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
-    fs::{read, File},
+    fs::{create_dir_all, read, File},
     str::FromStr,
 };
 
@@ -111,6 +111,7 @@ impl Context {
     }
 
     pub fn run<R: Send>(mut self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+        create_dir_all(&*CACHE_PATH_ROOT)?;
         if self.use_packs {
             info!("reading cache packs");
             let packs = pack_names()
