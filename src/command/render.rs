@@ -14,7 +14,10 @@ use tokio::runtime::Runtime;
 use tracing::{debug, info};
 
 use crate::{
-    cache::{Context, ContextGuard, Derivation as _, RenderedThreadDrv, ThreadDrv},
+    cache::{
+        drv::{RenderedThreadDrv, ThreadDrv},
+        Context, ContextGuard, Derivation as _,
+    },
     meta::hard_link_attachments_into_site,
     output::{AtomFeedTemplate, ThreadsContentTemplate, ThreadsPageTemplate},
     path::{PostsPath, SitePath, POSTS_PATH_ROOT, SITE_PATH_ROOT, SITE_PATH_TAGGED},
