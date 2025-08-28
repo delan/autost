@@ -1,12 +1,11 @@
 use dashmap::DashMap;
 use jane_eyre::eyre;
-use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelExtend};
 use tracing::debug;
 
-use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::mem::take;
+use std::mem::{replace, take};
 use std::ops::Range;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
@@ -60,8 +59,11 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn dirty(&self) -> &[AtomicBool; 4096] {
         &self.dirty
     }
-    pub fn take_encodable(&mut self, pack_index: usize) -> BTreeMap<Id, V> {
-        take(&mut self.inner[pack_index]).into_par_iter().collect()
+    pub fn take(&mut self, pack_index: usize) -> DashMap<Id, V> {
+        take(&mut self.inner[pack_index])
+    }
+    pub fn restore(&mut self, pack_index: usize, pack: DashMap<Id, V>) {
+        let _ = replace(&mut self.inner[pack_index], pack);
     }
     pub fn par_extend(
         &self,

@@ -1,3 +1,4 @@
+mod codec;
 pub mod drv;
 mod fs;
 mod hash;
@@ -13,6 +14,7 @@ use std::{
 };
 
 use bincode::{config::standard, Decode, Encode};
+use dashmap::DashMap;
 use jane_eyre::eyre::{self, Context as _};
 use rayon::{
     iter::{
@@ -62,21 +64,22 @@ pub struct ContextGuard<'ctx, 'scope> {
     derivation_writer_scope: &'ctx Scope<'scope>,
     output_writer_scope: &'ctx Scope<'scope>,
 }
-#[derive(Debug, Default, Decode, Encode)]
+#[derive(Debug, Default)]
 struct CachePack {
-    read_file_derivation_cache: BTreeMap<Id, ReadFileDrv>,
-    read_file_output_cache: BTreeMap<Id, Vec<u8>>,
-    render_markdown_derivation_cache: BTreeMap<Id, RenderMarkdownDrv>,
-    render_markdown_output_cache: BTreeMap<Id, String>,
-    filtered_post_derivation_cache: BTreeMap<Id, FilteredPostDrv>,
-    filtered_post_output_cache: BTreeMap<Id, FilteredPost>,
-    thread_derivation_cache: BTreeMap<Id, ThreadDrv>,
-    thread_output_cache: BTreeMap<Id, Thread>,
-    tag_index_derivation_cache: BTreeMap<Id, TagIndexDrv>,
-    tag_index_output_cache: BTreeMap<Id, TagIndex>,
-    rendered_thread_derivation_cache: BTreeMap<Id, RenderedThreadDrv>,
-    rendered_thread_output_cache: BTreeMap<Id, RenderedThread>,
+    read_file_derivation_cache: DashMap<Id, ReadFileDrv>,
+    read_file_output_cache: DashMap<Id, Vec<u8>>,
+    render_markdown_derivation_cache: DashMap<Id, RenderMarkdownDrv>,
+    render_markdown_output_cache: DashMap<Id, String>,
+    filtered_post_derivation_cache: DashMap<Id, FilteredPostDrv>,
+    filtered_post_output_cache: DashMap<Id, FilteredPost>,
+    thread_derivation_cache: DashMap<Id, ThreadDrv>,
+    thread_output_cache: DashMap<Id, Thread>,
+    tag_index_derivation_cache: DashMap<Id, TagIndexDrv>,
+    tag_index_output_cache: DashMap<Id, TagIndex>,
+    rendered_thread_derivation_cache: DashMap<Id, RenderedThreadDrv>,
+    rendered_thread_output_cache: DashMap<Id, RenderedThread>,
 }
+
 impl Context {
     pub fn new(use_packs: bool) -> Context {
         let cpu_count = std::thread::available_parallelism()
@@ -123,41 +126,39 @@ impl Context {
                 .zip(pack_names())
                 .par_bridge()
                 .map(|(i, name)| -> eyre::Result<_> {
-                    Ok((i, read(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?))
+                    // TODO: decode from std read?
+                    let pack = read(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?;
+                    let pack = bincode::decode_from_slice(&pack, standard())?.0;
+                    Ok((i, pack))
                 })
                 .filter_map(|pack| pack.ok())
-                .collect::<BTreeMap<_, _>>();
-            packs
-                .into_par_iter()
-                .map(|(i, pack)| -> eyre::Result<_> {
-                    let pack: CachePack = bincode::decode_from_slice(&pack, standard())?.0;
-                    self.read_file_derivation_cache
-                        .par_extend(i, pack.read_file_derivation_cache);
-                    self.read_file_output_cache
-                        .par_extend(i, pack.read_file_output_cache);
-                    self.render_markdown_derivation_cache
-                        .par_extend(i, pack.render_markdown_derivation_cache);
-                    self.render_markdown_output_cache
-                        .par_extend(i, pack.render_markdown_output_cache);
-                    self.filtered_post_derivation_cache
-                        .par_extend(i, pack.filtered_post_derivation_cache);
-                    self.filtered_post_output_cache
-                        .par_extend(i, pack.filtered_post_output_cache);
-                    self.thread_derivation_cache
-                        .par_extend(i, pack.thread_derivation_cache);
-                    self.thread_output_cache
-                        .par_extend(i, pack.thread_output_cache);
-                    self.tag_index_derivation_cache
-                        .par_extend(i, pack.tag_index_derivation_cache);
-                    self.tag_index_output_cache
-                        .par_extend(i, pack.tag_index_output_cache);
-                    self.rendered_thread_derivation_cache
-                        .par_extend(i, pack.rendered_thread_derivation_cache);
-                    self.rendered_thread_output_cache
-                        .par_extend(i, pack.rendered_thread_output_cache);
-                    Ok(())
-                })
-                .collect::<Vec<_>>();
+                .collect::<Vec<(usize, CachePack)>>();
+            for (i, pack) in packs {
+                self.read_file_derivation_cache
+                    .restore(i, pack.read_file_derivation_cache);
+                self.read_file_output_cache
+                    .restore(i, pack.read_file_output_cache);
+                self.render_markdown_derivation_cache
+                    .restore(i, pack.render_markdown_derivation_cache);
+                self.render_markdown_output_cache
+                    .restore(i, pack.render_markdown_output_cache);
+                self.filtered_post_derivation_cache
+                    .restore(i, pack.filtered_post_derivation_cache);
+                self.filtered_post_output_cache
+                    .restore(i, pack.filtered_post_output_cache);
+                self.thread_derivation_cache
+                    .restore(i, pack.thread_derivation_cache);
+                self.thread_output_cache
+                    .restore(i, pack.thread_output_cache);
+                self.tag_index_derivation_cache
+                    .restore(i, pack.tag_index_derivation_cache);
+                self.tag_index_output_cache
+                    .restore(i, pack.tag_index_output_cache);
+                self.rendered_thread_derivation_cache
+                    .restore(i, pack.rendered_thread_derivation_cache);
+                self.rendered_thread_output_cache
+                    .restore(i, pack.rendered_thread_output_cache);
+            }
             info!("running workload");
         }
         let result = {
@@ -208,26 +209,21 @@ impl Context {
             for (i, bit) in merged_dirty.iter().enumerate() {
                 if bit.load(SeqCst) {
                     let pack = packs.entry(i).or_default();
-                    pack.read_file_derivation_cache =
-                        self.read_file_derivation_cache.take_encodable(i);
-                    pack.read_file_output_cache = self.read_file_output_cache.take_encodable(i);
+                    pack.read_file_derivation_cache = self.read_file_derivation_cache.take(i);
+                    pack.read_file_output_cache = self.read_file_output_cache.take(i);
                     pack.render_markdown_derivation_cache =
-                        self.render_markdown_derivation_cache.take_encodable(i);
-                    pack.render_markdown_output_cache =
-                        self.render_markdown_output_cache.take_encodable(i);
+                        self.render_markdown_derivation_cache.take(i);
+                    pack.render_markdown_output_cache = self.render_markdown_output_cache.take(i);
                     pack.filtered_post_derivation_cache =
-                        self.filtered_post_derivation_cache.take_encodable(i);
-                    pack.filtered_post_output_cache =
-                        self.filtered_post_output_cache.take_encodable(i);
-                    pack.thread_derivation_cache = self.thread_derivation_cache.take_encodable(i);
-                    pack.thread_output_cache = self.thread_output_cache.take_encodable(i);
-                    pack.tag_index_derivation_cache =
-                        self.tag_index_derivation_cache.take_encodable(i);
-                    pack.tag_index_output_cache = self.tag_index_output_cache.take_encodable(i);
+                        self.filtered_post_derivation_cache.take(i);
+                    pack.filtered_post_output_cache = self.filtered_post_output_cache.take(i);
+                    pack.thread_derivation_cache = self.thread_derivation_cache.take(i);
+                    pack.thread_output_cache = self.thread_output_cache.take(i);
+                    pack.tag_index_derivation_cache = self.tag_index_derivation_cache.take(i);
+                    pack.tag_index_output_cache = self.tag_index_output_cache.take(i);
                     pack.rendered_thread_derivation_cache =
-                        self.rendered_thread_derivation_cache.take_encodable(i);
-                    pack.rendered_thread_output_cache =
-                        self.rendered_thread_output_cache.take_encodable(i);
+                        self.rendered_thread_derivation_cache.take(i);
+                    pack.rendered_thread_output_cache = self.rendered_thread_output_cache.take(i);
                 }
             }
             info!("writing cache packs");
