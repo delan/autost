@@ -6,7 +6,7 @@ mod mem;
 mod stats;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     fmt::{Debug, Display},
     fs::{create_dir_all, read, File},
     str::FromStr,
@@ -32,7 +32,7 @@ use crate::{
             ThreadDrv,
         },
         fs::atomic_write,
-        mem::{dirty_bits, pack_indices, pack_names, MemoryCache},
+        mem::{dirty_bits, pack_indices, pack_names, CacheShard, MemoryCache},
         stats::STATS,
     },
     command::{cache::Test, render::RenderedThread},
@@ -65,18 +65,18 @@ pub struct ContextGuard<'ctx, 'scope> {
 }
 #[derive(Debug, Default)]
 struct CachePack {
-    read_file_derivation_cache: HashMap<Id, ReadFileDrv>,
-    read_file_output_cache: HashMap<Id, Vec<u8>>,
-    render_markdown_derivation_cache: HashMap<Id, RenderMarkdownDrv>,
-    render_markdown_output_cache: HashMap<Id, String>,
-    filtered_post_derivation_cache: HashMap<Id, FilteredPostDrv>,
-    filtered_post_output_cache: HashMap<Id, FilteredPost>,
-    thread_derivation_cache: HashMap<Id, ThreadDrv>,
-    thread_output_cache: HashMap<Id, Thread>,
-    tag_index_derivation_cache: HashMap<Id, TagIndexDrv>,
-    tag_index_output_cache: HashMap<Id, TagIndex>,
-    rendered_thread_derivation_cache: HashMap<Id, RenderedThreadDrv>,
-    rendered_thread_output_cache: HashMap<Id, RenderedThread>,
+    read_file_derivation_cache: CacheShard<Id, ReadFileDrv>,
+    read_file_output_cache: CacheShard<Id, Vec<u8>>,
+    render_markdown_derivation_cache: CacheShard<Id, RenderMarkdownDrv>,
+    render_markdown_output_cache: CacheShard<Id, String>,
+    filtered_post_derivation_cache: CacheShard<Id, FilteredPostDrv>,
+    filtered_post_output_cache: CacheShard<Id, FilteredPost>,
+    thread_derivation_cache: CacheShard<Id, ThreadDrv>,
+    thread_output_cache: CacheShard<Id, Thread>,
+    tag_index_derivation_cache: CacheShard<Id, TagIndexDrv>,
+    tag_index_output_cache: CacheShard<Id, TagIndex>,
+    rendered_thread_derivation_cache: CacheShard<Id, RenderedThreadDrv>,
+    rendered_thread_output_cache: CacheShard<Id, RenderedThread>,
 }
 
 impl Context {
@@ -125,7 +125,6 @@ impl Context {
                 .zip(pack_names())
                 .par_bridge()
                 .map(|(i, name)| -> eyre::Result<_> {
-                    // TODO: decode from std read?
                     let pack = read(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?;
                     let pack = bincode::decode_from_slice(&pack, standard())?.0;
                     Ok((i, pack))

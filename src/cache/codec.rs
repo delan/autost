@@ -7,7 +7,7 @@ use bincode::{
     BorrowDecode, Decode, Encode,
 };
 
-use crate::cache::CachePack;
+use crate::cache::{mem::Lazy, CachePack};
 
 impl Decode<()> for CachePack {
     fn decode<D: Decoder<Context = ()>>(decoder: &mut D) -> Result<Self, DecodeError> {
@@ -91,5 +91,29 @@ impl Encode for CachePack {
         self.rendered_thread_output_cache.encode(encoder)?;
 
         Ok(())
+    }
+}
+
+impl<T: Decode<()> + Encode> Decode<()> for Lazy<T> {
+    fn decode<D: Decoder<Context = ()>>(decoder: &mut D) -> Result<Self, DecodeError> {
+        let content = Decode::decode(decoder)?;
+
+        Ok(Self::raw(content))
+    }
+}
+
+impl<'__de, T: Decode<()> + Encode> BorrowDecode<'__de, ()> for Lazy<T> {
+    fn borrow_decode<D: BorrowDecoder<'__de, Context = ()>>(
+        decoder: &mut D,
+    ) -> Result<Self, DecodeError> {
+        let content = BorrowDecode::borrow_decode(decoder)?;
+
+        Ok(Self::raw(content))
+    }
+}
+
+impl<T: Decode<()> + Encode> Encode for Lazy<T> {
+    fn encode<E: Encoder>(&self, encoder: &mut E) -> Result<(), bincode::error::EncodeError> {
+        self.content.encode(encoder)
     }
 }
