@@ -46,7 +46,7 @@ pub struct Test {
     #[arg(long)]
     pub use_cache: bool,
     #[arg(long)]
-    pub use_packs: bool,
+    pub no_cache_packs: bool,
     #[arg(long)]
     pub list_threads_in_tag: Option<String>,
 }

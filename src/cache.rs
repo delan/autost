@@ -467,7 +467,7 @@ where
 }
 
 pub async fn test(args: Test) -> eyre::Result<()> {
-    Context::new(args.use_packs).run(|ctx| -> eyre::Result<()> {
+    Context::new(!args.no_cache_packs).run(|ctx| -> eyre::Result<()> {
         let top_level_post_paths = POSTS_PATH_ROOT.read_dir_flat()?;
         if let Some(tag) = args.list_threads_in_tag {
             if args.use_cache {
