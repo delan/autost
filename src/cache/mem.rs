@@ -6,11 +6,23 @@ use tracing::debug;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Range;
 use std::str::FromStr;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::LazyLock;
 
 use crate::cache::Id;
+
+pub const PACK_INDICES: Range<usize> = 0..4096;
+pub static PACK_NAMES: LazyLock<Vec<String>> =
+    LazyLock::new(|| PACK_INDICES.map(|i| format!("{i:03x}")).collect());
+pub static PACK_PREFIXES: LazyLock<Vec<Id>> = LazyLock::new(|| {
+    PACK_NAMES
+        .iter()
+        .map(|prefix| Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap())
+        .collect()
+});
 
 pub struct MemoryCache<K, V> {
     inner: DashMap<K, V>,
@@ -100,12 +112,15 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     }
     pub fn encodable_sharded(self) -> BTreeMap<usize, BTreeMap<Id, V>> {
         let mut encodable = self.encodable();
-        let splits = pack_keys().rev().map(|(i, prefix)| {
-            (
-                i,
-                Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
-            )
-        });
+        let splits = pack_indices()
+            .zip(pack_prefixes())
+            .rev()
+            .map(|(i, prefix)| {
+                (
+                    i,
+                    Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
+                )
+            });
         splits
             .into_iter()
             .map(|(i, key)| (i, encodable.split_off(&key)))
@@ -113,16 +128,16 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     }
 }
 
-pub fn pack_indices() -> impl DoubleEndedIterator<Item = usize> {
-    0..4096
+pub fn pack_indices() -> impl DoubleEndedIterator<Item = usize> + ExactSizeIterator {
+    PACK_INDICES
 }
 
-pub fn pack_keys() -> impl DoubleEndedIterator<Item = (usize, String)> {
-    pack_indices().map(|i| (i, format!("{i:03x}")))
+pub fn pack_names() -> impl DoubleEndedIterator<Item = &'static String> + ExactSizeIterator {
+    PACK_NAMES.iter()
 }
 
-pub fn pack_names() -> impl DoubleEndedIterator<Item = String> {
-    pack_keys().map(|(_i, name)| name)
+pub fn pack_prefixes() -> impl DoubleEndedIterator<Item = &'static Id> + ExactSizeIterator {
+    PACK_PREFIXES.iter()
 }
 
 pub fn dirty_bits() -> Box<[AtomicBool; 4096]> {
