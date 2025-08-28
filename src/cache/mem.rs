@@ -1,15 +1,14 @@
-use dashmap::DashMap;
 use jane_eyre::eyre;
-use rayon::iter::{IntoParallelIterator, ParallelExtend};
 use tracing::debug;
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem::{replace, take};
 use std::ops::Range;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::cache::Id;
 
@@ -18,7 +17,7 @@ pub static PACK_NAMES: LazyLock<Vec<String>> =
     LazyLock::new(|| PACK_INDICES.map(|i| format!("{i:03x}")).collect());
 
 pub struct MemoryCache<K, V> {
-    inner: Box<[DashMap<K, V>; 4096]>,
+    inner: Box<[RwLock<HashMap<K, V>>; 4096]>,
     label: &'static str,
     dirty: Box<[AtomicBool; 4096]>,
     hits: AtomicUsize,
@@ -44,10 +43,11 @@ impl<K: Eq + Hash, V> Debug for MemoryCache<K, V> {
 
 impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn new(label: &'static str) -> Self {
+        let mut inner = vec![];
+        inner.resize_with(4096, RwLock::default);
+
         Self {
-            inner: vec![DashMap::new(); 4096]
-                .try_into()
-                .expect("guaranteed by receiver"),
+            inner: inner.try_into().expect("guaranteed by receiver"),
             label,
             dirty: dirty_bits(),
             hits: AtomicUsize::new(0),
@@ -59,18 +59,17 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn dirty(&self) -> &[AtomicBool; 4096] {
         &self.dirty
     }
-    pub fn take(&mut self, pack_index: usize) -> DashMap<Id, V> {
-        take(&mut self.inner[pack_index])
+    pub fn take(&mut self, pack_index: usize) -> HashMap<Id, V> {
+        take(&mut self.write(pack_index))
     }
-    pub fn restore(&mut self, pack_index: usize, pack: DashMap<Id, V>) {
-        let _ = replace(&mut self.inner[pack_index], pack);
+    pub fn restore(&mut self, pack_index: usize, pack: HashMap<Id, V>) {
+        let _ = replace(&mut *self.write(pack_index), pack);
     }
-    pub fn par_extend(
-        &self,
-        pack_index: usize,
-        entries: impl IntoParallelIterator<Item = (Id, V)>,
-    ) {
-        (&self.inner[pack_index]).par_extend(entries)
+    pub fn read(&self, pack_index: usize) -> RwLockReadGuard<'_, HashMap<Id, V>> {
+        self.inner[pack_index].read().expect("poisoned")
+    }
+    pub fn write(&self, pack_index: usize) -> RwLockWriteGuard<'_, HashMap<Id, V>> {
+        self.inner[pack_index].write().expect("poisoned")
     }
     pub fn get_or_insert_as_read(
         &self,
@@ -79,14 +78,14 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     ) -> eyre::Result<V> {
         debug!(?self, "query");
         let pack_index = key.pack_index();
-        if let Some(value) = self.inner[pack_index].get(&key) {
+        if let Some(value) = self.read(pack_index).get(&key) {
             self.hits.fetch_add(1, SeqCst);
             Ok(value.clone())
         } else {
             self.dirty[pack_index].store(true, SeqCst);
             self.read_misses.fetch_add(1, SeqCst);
             let value = default(&key)?;
-            self.inner[pack_index].insert(key, value.clone());
+            self.write(pack_index).insert(key, value.clone());
             Ok(value)
         }
     }
@@ -98,7 +97,7 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     ) -> eyre::Result<V> {
         debug!(?self, "query");
         let pack_index = key.pack_index();
-        if let Some(value) = self.inner[pack_index].get(&key) {
+        if let Some(value) = self.read(pack_index).get(&key) {
             self.hits.fetch_add(1, SeqCst);
             return Ok(value.clone());
         }
@@ -111,7 +110,7 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
             self.write_write_misses.fetch_add(1, SeqCst);
             write(&key)?
         };
-        self.inner[pack_index].insert(key, value.clone());
+        self.write(pack_index).insert(key, value.clone());
         Ok(value)
     }
 }

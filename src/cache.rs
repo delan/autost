@@ -6,7 +6,7 @@ mod mem;
 mod stats;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::{Debug, Display},
     fs::{create_dir_all, read, File},
     str::FromStr,
@@ -14,7 +14,6 @@ use std::{
 };
 
 use bincode::{config::standard, Decode, Encode};
-use dashmap::DashMap;
 use jane_eyre::eyre::{self, Context as _};
 use rayon::{
     iter::{
@@ -66,18 +65,18 @@ pub struct ContextGuard<'ctx, 'scope> {
 }
 #[derive(Debug, Default)]
 struct CachePack {
-    read_file_derivation_cache: DashMap<Id, ReadFileDrv>,
-    read_file_output_cache: DashMap<Id, Vec<u8>>,
-    render_markdown_derivation_cache: DashMap<Id, RenderMarkdownDrv>,
-    render_markdown_output_cache: DashMap<Id, String>,
-    filtered_post_derivation_cache: DashMap<Id, FilteredPostDrv>,
-    filtered_post_output_cache: DashMap<Id, FilteredPost>,
-    thread_derivation_cache: DashMap<Id, ThreadDrv>,
-    thread_output_cache: DashMap<Id, Thread>,
-    tag_index_derivation_cache: DashMap<Id, TagIndexDrv>,
-    tag_index_output_cache: DashMap<Id, TagIndex>,
-    rendered_thread_derivation_cache: DashMap<Id, RenderedThreadDrv>,
-    rendered_thread_output_cache: DashMap<Id, RenderedThread>,
+    read_file_derivation_cache: HashMap<Id, ReadFileDrv>,
+    read_file_output_cache: HashMap<Id, Vec<u8>>,
+    render_markdown_derivation_cache: HashMap<Id, RenderMarkdownDrv>,
+    render_markdown_output_cache: HashMap<Id, String>,
+    filtered_post_derivation_cache: HashMap<Id, FilteredPostDrv>,
+    filtered_post_output_cache: HashMap<Id, FilteredPost>,
+    thread_derivation_cache: HashMap<Id, ThreadDrv>,
+    thread_output_cache: HashMap<Id, Thread>,
+    tag_index_derivation_cache: HashMap<Id, TagIndexDrv>,
+    tag_index_output_cache: HashMap<Id, TagIndex>,
+    rendered_thread_derivation_cache: HashMap<Id, RenderedThreadDrv>,
+    rendered_thread_output_cache: HashMap<Id, RenderedThread>,
 }
 
 impl Context {
