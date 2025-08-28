@@ -9,12 +9,16 @@ use std::{
     fmt::{Debug, Display},
     fs::{create_dir_all, read, File},
     str::FromStr,
+    sync::atomic::Ordering::SeqCst,
 };
 
 use bincode::{config::standard, Decode, Encode};
 use jane_eyre::eyre::{self, Context as _};
 use rayon::{
-    iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelBridge, ParallelIterator as _},
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelBridge,
+        ParallelIterator as _,
+    },
     Scope, ThreadPool, ThreadPoolBuilder,
 };
 use tokio::runtime::Runtime;
@@ -27,7 +31,7 @@ use crate::{
             ThreadDrv,
         },
         fs::atomic_write,
-        mem::{pack_names, MemoryCache},
+        mem::{dirty_bits, pack_names, MemoryCache},
         stats::STATS,
     },
     command::{cache::Test, render::RenderedThread},
@@ -37,7 +41,6 @@ use crate::{
 
 pub struct Context {
     use_packs: bool,
-    did_load_packs: bool,
     compute_pool: ThreadPool,
     derivation_writer_pool: ThreadPool,
     output_writer_pool: ThreadPool,
@@ -81,7 +84,6 @@ impl Context {
             .get();
         let ctx = Self {
             use_packs,
-            did_load_packs: false,
             compute_pool: ThreadPoolBuilder::new()
                 .thread_name(|i| format!("compute{i}"))
                 .num_threads(cpu_count)
@@ -113,7 +115,7 @@ impl Context {
         ctx
     }
 
-    pub fn run<R: Send>(mut self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+    pub fn run<R: Send>(self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
         create_dir_all(&*CACHE_PATH_ROOT)?;
         if self.use_packs {
             info!("reading cache packs");
@@ -124,7 +126,7 @@ impl Context {
                 })
                 .filter_map(|pack| pack.ok())
                 .collect::<Vec<_>>();
-            let results = packs
+            packs
                 .into_par_iter()
                 .map(|pack| -> eyre::Result<_> {
                     let pack: CachePack = bincode::decode_from_slice(&pack, standard())?.0;
@@ -155,9 +157,6 @@ impl Context {
                     Ok(())
                 })
                 .collect::<Vec<_>>();
-            if results.iter().any(|result| result.is_ok()) {
-                self.did_load_packs = true;
-            }
             info!("running workload");
         }
         let result = {
@@ -178,53 +177,93 @@ impl Context {
                     })
             })
         };
-        if self.use_packs && !self.did_load_packs {
+        if self.use_packs {
             info!("building cache packs");
-            let mut packs: BTreeMap<String, CachePack> = BTreeMap::default();
-            for (name, cache) in self.read_file_derivation_cache.encodable_sharded() {
-                packs.entry(name).or_default().read_file_derivation_cache = cache;
-            }
-            for (name, cache) in self.read_file_output_cache.encodable_sharded() {
-                packs.entry(name).or_default().read_file_output_cache = cache;
-            }
-            for (name, cache) in self.render_markdown_derivation_cache.encodable_sharded() {
-                packs
-                    .entry(name)
-                    .or_default()
-                    .render_markdown_derivation_cache = cache;
-            }
-            for (name, cache) in self.render_markdown_output_cache.encodable_sharded() {
-                packs.entry(name).or_default().render_markdown_output_cache = cache;
-            }
-            for (name, cache) in self.filtered_post_derivation_cache.encodable_sharded() {
-                packs
-                    .entry(name)
-                    .or_default()
-                    .filtered_post_derivation_cache = cache;
-            }
-            for (name, cache) in self.filtered_post_output_cache.encodable_sharded() {
-                packs.entry(name).or_default().filtered_post_output_cache = cache;
-            }
-            for (name, cache) in self.thread_derivation_cache.encodable_sharded() {
-                packs.entry(name).or_default().thread_derivation_cache = cache;
-            }
-            for (name, cache) in self.thread_output_cache.encodable_sharded() {
-                packs.entry(name).or_default().thread_output_cache = cache;
-            }
-            for (name, cache) in self.tag_index_derivation_cache.encodable_sharded() {
-                packs.entry(name).or_default().tag_index_derivation_cache = cache;
-            }
-            for (name, cache) in self.tag_index_output_cache.encodable_sharded() {
-                packs.entry(name).or_default().tag_index_output_cache = cache;
-            }
-            for (name, cache) in self.rendered_thread_derivation_cache.encodable_sharded() {
-                packs
-                    .entry(name)
-                    .or_default()
-                    .rendered_thread_derivation_cache = cache;
-            }
-            for (name, cache) in self.rendered_thread_output_cache.encodable_sharded() {
-                packs.entry(name).or_default().rendered_thread_output_cache = cache;
+            let merged_dirty = dirty_bits();
+            [
+                self.read_file_derivation_cache.dirty(),
+                self.read_file_output_cache.dirty(),
+                self.render_markdown_derivation_cache.dirty(),
+                self.render_markdown_output_cache.dirty(),
+                self.filtered_post_derivation_cache.dirty(),
+                self.filtered_post_output_cache.dirty(),
+                self.thread_derivation_cache.dirty(),
+                self.thread_output_cache.dirty(),
+                self.tag_index_derivation_cache.dirty(),
+                self.tag_index_output_cache.dirty(),
+                self.rendered_thread_derivation_cache.dirty(),
+                self.rendered_thread_output_cache.dirty(),
+            ]
+            .into_par_iter()
+            .map(|dirty| {
+                merged_dirty
+                    .par_iter()
+                    .enumerate()
+                    .map(|(i, bit)| bit.fetch_or(dirty[i].load(SeqCst), SeqCst))
+                    .collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
+            let mut read_file_derivation_packs =
+                self.read_file_derivation_cache.encodable_sharded();
+            let mut read_file_output_packs = self.read_file_output_cache.encodable_sharded();
+            let mut render_markdown_derivation_packs =
+                self.render_markdown_derivation_cache.encodable_sharded();
+            let mut render_markdown_output_packs =
+                self.render_markdown_output_cache.encodable_sharded();
+            let mut filtered_post_derivation_packs =
+                self.filtered_post_derivation_cache.encodable_sharded();
+            let mut filtered_post_output_packs =
+                self.filtered_post_output_cache.encodable_sharded();
+            let mut thread_derivation_packs = self.thread_derivation_cache.encodable_sharded();
+            let mut thread_output_packs = self.thread_output_cache.encodable_sharded();
+            let mut tag_index_derivation_packs =
+                self.tag_index_derivation_cache.encodable_sharded();
+            let mut tag_index_output_packs = self.tag_index_output_cache.encodable_sharded();
+            let mut rendered_thread_derivation_packs =
+                self.rendered_thread_derivation_cache.encodable_sharded();
+            let mut rendered_thread_output_packs =
+                self.rendered_thread_output_cache.encodable_sharded();
+            let mut packs: BTreeMap<usize, CachePack> = BTreeMap::default();
+            for (i, bit) in merged_dirty.iter().enumerate() {
+                if bit.load(SeqCst) {
+                    let pack = packs.entry(i).or_default();
+                    pack.read_file_derivation_cache = read_file_derivation_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.read_file_output_cache = read_file_output_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.render_markdown_derivation_cache = render_markdown_derivation_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.render_markdown_output_cache = render_markdown_output_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.filtered_post_derivation_cache = filtered_post_derivation_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.filtered_post_output_cache = filtered_post_output_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.thread_derivation_cache = thread_derivation_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.thread_output_cache = thread_output_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.tag_index_derivation_cache = tag_index_derivation_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.tag_index_output_cache = tag_index_output_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.rendered_thread_derivation_cache = rendered_thread_derivation_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                    pack.rendered_thread_output_cache = rendered_thread_output_packs
+                        .remove(&i)
+                        .expect("guaranteed by encodable_sharded()");
+                }
             }
             info!("writing cache packs");
             self.derivation_writer_pool
@@ -232,11 +271,12 @@ impl Context {
                     self.compute_pool.scope(move |_| {
                         packs
                             .into_par_iter()
-                            .map(|(name, pack)| {
+                            .map(|(i, pack)| {
+                                info!("writing cache pack {i:03x}");
                                 let content = bincode::encode_to_vec(pack, standard())?;
                                 derivation_writer_scope.spawn(move |_| {
                                     let path =
-                                        CACHE_PATH_ROOT.join(&format!("{name}.pack")).unwrap();
+                                        CACHE_PATH_ROOT.join(&format!("{i:03x}.pack")).unwrap();
                                     atomic_write(path, content).unwrap();
                                 });
                                 Ok(())
@@ -267,6 +307,11 @@ impl Id {
     pub fn as_bytes(&self) -> &[u8] {
         self.0 .0.as_bytes()
     }
+    pub fn pack_prefix(&self) -> usize {
+        let hi = self.0 .0.as_bytes()[0];
+        let lo = self.0 .0.as_bytes()[1];
+        usize::from(hi) << 4 | usize::from(lo) >> 4
+    }
 }
 impl TryFrom<&[u8]> for Id {
     type Error = eyre::Report;
@@ -275,9 +320,16 @@ impl TryFrom<&[u8]> for Id {
         Ok(Self(self::hash::Hash(blake3::Hash::from_slice(value)?)))
     }
 }
+#[test]
+fn test_id_pack_prefix() -> eyre::Result<()> {
+    let id = Id::from_str("12345555aaaa5555aaaa5555aaaa5555aaaa5555aaaa5555aaaa5555aaaa5555")?;
+    assert_eq!(id.pack_prefix(), 0x123);
+
+    Ok(())
+}
 
 pub trait Derivation: Debug + Display + Sized + Sync {
-    type Output: Clone + Decode<()> + Encode + Send + Sync;
+    type Output: Debug + Clone + Decode<()> + Encode + Send + Sync;
     fn function_name() -> &'static str;
     fn id(&self) -> Id;
     fn derivation_cache(ctx: &Context) -> &MemoryCache<Id, Self>;
@@ -335,7 +387,7 @@ pub trait Derivation: Debug + Display + Sized + Sync {
                 debug!(%self);
                 let result = (|| -> eyre::Result<_> {
                     let content = self.compute_output(ctx)?;
-                    if !ctx.context.use_packs || ctx.context.did_load_packs {
+                    if !ctx.context.use_packs {
                         let output_path = self.output_path();
                         let content_for_write = bincode::encode_to_vec(&content, standard())?;
                         STATS.record_enqueue_output_write();
@@ -413,7 +465,7 @@ mod private {
                 self.id(),
                 |id| Self::load(ctx, *id),
                 |id| {
-                    if !ctx.context.use_packs || ctx.context.did_load_packs {
+                    if !ctx.context.use_packs {
                         let path = Self::derivation_path(id);
                         let self_for_write = self.clone();
                         STATS.record_enqueue_derivation_write();

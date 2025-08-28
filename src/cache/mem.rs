@@ -15,7 +15,7 @@ use crate::cache::Id;
 pub struct MemoryCache<K, V> {
     inner: DashMap<K, V>,
     label: &'static str,
-    dirty: AtomicBool,
+    dirty: Box<[AtomicBool; 4096]>,
     hits: AtomicUsize,
     read_misses: AtomicUsize,
     read_write_misses: AtomicUsize,
@@ -37,38 +37,38 @@ impl<K: Eq + Hash, V> Debug for MemoryCache<K, V> {
     }
 }
 
-impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCache<K, V> {
+impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn new(label: &'static str) -> Self {
         Self {
             inner: DashMap::new(),
             label,
-            dirty: AtomicBool::new(false),
+            dirty: dirty_bits(),
             hits: AtomicUsize::new(0),
             read_misses: AtomicUsize::new(0),
             read_write_misses: AtomicUsize::new(0),
             write_write_misses: AtomicUsize::new(0),
         }
     }
-    pub fn is_dirty(&self) -> bool {
-        self.dirty.load(SeqCst)
+    pub fn dirty(&self) -> &[AtomicBool; 4096] {
+        &self.dirty
     }
-    pub fn encodable(self) -> BTreeMap<K, V> {
+    pub fn encodable(self) -> BTreeMap<Id, V> {
         self.inner.into_par_iter().collect()
     }
-    pub fn par_extend(&self, entries: impl IntoParallelIterator<Item = (K, V)>) {
+    pub fn par_extend(&self, entries: impl IntoParallelIterator<Item = (Id, V)>) {
         (&self.inner).par_extend(entries)
     }
     pub fn get_or_insert_as_read(
         &self,
-        key: K,
-        default: impl FnOnce(&K) -> eyre::Result<V>,
+        key: Id,
+        default: impl FnOnce(&Id) -> eyre::Result<V>,
     ) -> eyre::Result<V> {
-        debug!(target: "autost::cache::memory", ?self, "query");
+        debug!(?self, "query");
         if let Some(value) = self.inner.get(&key) {
             self.hits.fetch_add(1, SeqCst);
             Ok(value.clone())
         } else {
-            self.dirty.store(true, SeqCst);
+            self.dirty[key.pack_prefix()].store(true, SeqCst);
             self.read_misses.fetch_add(1, SeqCst);
             let value = default(&key)?;
             self.inner.insert(key, value.clone());
@@ -77,44 +77,56 @@ impl<K: Eq + Hash + Debug + Ord + Send + Sync, V: Clone + Send + Sync> MemoryCac
     }
     pub fn get_or_insert_as_write(
         &self,
-        key: K,
-        read: impl FnOnce(&K) -> eyre::Result<V>,
-        write: impl FnOnce(&K) -> eyre::Result<V>,
+        key: Id,
+        read: impl FnOnce(&Id) -> eyre::Result<V>,
+        write: impl FnOnce(&Id) -> eyre::Result<V>,
     ) -> eyre::Result<V> {
-        debug!(target: "autost::cache::memory", ?self, "query");
+        debug!(?self, "query");
         if let Some(value) = self.inner.get(&key) {
             self.hits.fetch_add(1, SeqCst);
             return Ok(value.clone());
         }
-        self.dirty.store(true, SeqCst);
+        self.dirty[key.pack_prefix()].store(true, SeqCst);
         let value = if let Ok(value) = read(&key) {
             self.read_write_misses.fetch_add(1, SeqCst);
             value
         } else {
-            debug!(target: "autost::cache::memory", ?self, ?key, "write");
+            debug!(?self, ?key, "write");
             self.write_write_misses.fetch_add(1, SeqCst);
             write(&key)?
         };
         self.inner.insert(key, value.clone());
         Ok(value)
     }
-}
-impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
-    pub fn encodable_sharded(self) -> BTreeMap<String, BTreeMap<Id, V>> {
+    pub fn encodable_sharded(self) -> BTreeMap<usize, BTreeMap<Id, V>> {
         let mut encodable = self.encodable();
-        let splits = pack_names().map(|prefix| {
+        let splits = pack_keys().rev().map(|(i, prefix)| {
             (
-                prefix.clone(),
+                i,
                 Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
             )
         });
         splits
             .into_iter()
-            .map(|(name, key)| (name.to_owned(), encodable.split_off(&key)))
+            .map(|(i, key)| (i, encodable.split_off(&key)))
             .collect()
     }
 }
 
-pub fn pack_names() -> impl Iterator<Item = String> {
-    (0..4096).rev().map(|i| format!("{i:03x}"))
+pub fn pack_indices() -> impl DoubleEndedIterator<Item = usize> {
+    0..4096
+}
+
+pub fn pack_keys() -> impl DoubleEndedIterator<Item = (usize, String)> {
+    pack_indices().map(|i| (i, format!("{i:03x}")))
+}
+
+pub fn pack_names() -> impl DoubleEndedIterator<Item = String> {
+    pack_keys().map(|(_i, name)| name)
+}
+
+pub fn dirty_bits() -> Box<[AtomicBool; 4096]> {
+    let mut dirty = vec![];
+    dirty.resize_with(4096, AtomicBool::default);
+    dirty.try_into().expect("guaranteed by definition")
 }
