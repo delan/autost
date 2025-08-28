@@ -298,15 +298,11 @@ impl Derivation for ThreadDrv {
         Ok(thread)
     }
     fn realise_recursive(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
-        let span = Span::current();
         self.inner
             .references
             .par_iter()
             .chain(once(&self.inner.post))
-            .map(|post| {
-                let _entered = span.clone().entered();
-                post.realise_recursive_debug(ctx)
-            })
+            .map(|post| post.realise_recursive_debug(ctx))
             .collect::<eyre::Result<Vec<_>>>()?;
         self.realise_self_only(ctx)
     }

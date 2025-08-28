@@ -304,7 +304,7 @@ pub trait Derivation: Debug + Display + Sized + Sync {
         })
     }
     /// same as [`Derivation::realise_recursive()`], but traced at info level.
-    #[tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
+    #[cfg_attr(feature = "more-tracing", tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id())))]
     fn realise_recursive_info(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
         debug!("realising");
         if let Ok(result) = self.output(ctx) {
@@ -313,7 +313,7 @@ pub trait Derivation: Debug + Display + Sized + Sync {
         self.realise_recursive(ctx)
     }
     /// same as [`Derivation::realise_recursive()`], but traced at debug level.
-    #[tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id()))]
+    #[cfg_attr(feature = "more-tracing", tracing::instrument(level = "info", name = "build", skip_all, fields(function = %Self::function_name(), id = %self.id())))]
     fn realise_recursive_debug(&self, ctx: &ContextGuard) -> eyre::Result<Self::Output> {
         debug!("realising");
         if let Ok(result) = self.output(ctx) {
