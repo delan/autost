@@ -326,7 +326,7 @@ impl Derivation for TagIndexDrv {
         let threads = self
             .inner
             .files
-            .iter()
+            .par_iter()
             .map(|file| {
                 let _entered = span.clone().entered();
                 let drv = ThreadDrv::new(ctx, file.inner.path.clone())?;
