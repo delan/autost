@@ -12,14 +12,15 @@ use std::sync::{LazyLock, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::cache::Id;
 
-pub const PACK_INDICES: Range<usize> = 0..4096;
+pub const PACK_COUNT: usize = 4096;
+pub const PACK_INDICES: Range<usize> = 0..PACK_COUNT;
 pub static PACK_NAMES: LazyLock<Vec<String>> =
     LazyLock::new(|| PACK_INDICES.map(|i| format!("{i:03x}")).collect());
 
 pub struct MemoryCache<K, V> {
-    inner: Box<[RwLock<HashMap<K, V>>; 4096]>,
+    inner: Box<[RwLock<HashMap<K, V>>; PACK_COUNT]>,
     label: &'static str,
-    dirty: Box<[AtomicBool; 4096]>,
+    dirty: Box<[AtomicBool; PACK_COUNT]>,
     hits: AtomicUsize,
     read_misses: AtomicUsize,
     read_write_misses: AtomicUsize,
@@ -44,7 +45,7 @@ impl<K: Eq + Hash, V> Debug for MemoryCache<K, V> {
 impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn new(label: &'static str) -> Self {
         let mut inner = vec![];
-        inner.resize_with(4096, RwLock::default);
+        inner.resize_with(PACK_COUNT, RwLock::default);
 
         Self {
             inner: inner.try_into().expect("guaranteed by receiver"),
@@ -56,7 +57,7 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
             write_write_misses: AtomicUsize::new(0),
         }
     }
-    pub fn dirty(&self) -> &[AtomicBool; 4096] {
+    pub fn dirty(&self) -> &[AtomicBool; PACK_COUNT] {
         &self.dirty
     }
     pub fn take(&mut self, pack_index: usize) -> HashMap<Id, V> {
@@ -123,8 +124,8 @@ pub fn pack_names() -> impl DoubleEndedIterator<Item = &'static String> + ExactS
     PACK_NAMES.iter()
 }
 
-pub fn dirty_bits() -> Box<[AtomicBool; 4096]> {
+pub fn dirty_bits() -> Box<[AtomicBool; PACK_COUNT]> {
     let mut dirty = vec![];
-    dirty.resize_with(4096, AtomicBool::default);
+    dirty.resize_with(PACK_COUNT, AtomicBool::default);
     dirty.try_into().expect("guaranteed by definition")
 }
