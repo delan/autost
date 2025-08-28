@@ -45,7 +45,7 @@ pub struct DoThread {
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DoTagIndex {
-    files: BTreeSet<ReadFileDrv>,
+    files: Vec<ReadFileDrv>,
 }
 #[derive(Clone, Debug, Decode, Encode, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DoRenderedThread {
@@ -163,7 +163,12 @@ impl ThreadDrv {
 }
 impl TagIndexDrv {
     pub fn new(ctx: &ContextGuard, files: BTreeSet<ReadFileDrv>) -> eyre::Result<Self> {
-        Self::instantiate(ctx, DoTagIndex { files })
+        Self::instantiate(
+            ctx,
+            DoTagIndex {
+                files: files.into_iter().collect(),
+            },
+        )
     }
 }
 impl RenderedThreadDrv {

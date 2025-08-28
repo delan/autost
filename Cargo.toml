@@ -14,6 +14,10 @@ path-guid = "AF2D9F97-09C2-4296-9950-B486F61F39A3"
 license = false
 eula = false
 
+[features]
+default = ["more-tracing"]
+more-tracing = []
+
 [build-dependencies]
 vergen-gix = "1.0.3"
 

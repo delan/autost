@@ -438,7 +438,7 @@ impl CachePath {}
 
 #[allow(private_bounds)]
 impl<Kind: PathKind> RelativePath<Kind> {
-    #[tracing::instrument]
+    #[cfg_attr(feature = "more-tracing", tracing::instrument)]
     fn new(inner: PathBuf) -> eyre::Result<Self> {
         if inner.is_absolute() {
             bail!("path must not be absolute: {inner:?}");
@@ -623,7 +623,7 @@ impl<Kind: PathKind> Encode for RelativePath<Kind> {
 }
 
 impl DynamicPath {
-    #[tracing::instrument]
+    #[cfg_attr(feature = "more-tracing", tracing::instrument)]
     pub fn from_site_root_relative_path(inner: &str) -> eyre::Result<Self> {
         if let Ok(result) = PostsPath::from_site_root_relative_path(inner) {
             return Ok(Self::Posts(result));
