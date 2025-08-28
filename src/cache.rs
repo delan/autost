@@ -31,7 +31,7 @@ use crate::{
             ThreadDrv,
         },
         fs::atomic_write,
-        mem::{dirty_bits, pack_names, MemoryCache},
+        mem::{dirty_bits, pack_indices, pack_names, MemoryCache},
         stats::STATS,
     },
     command::{cache::Test, render::RenderedThread},
@@ -115,45 +115,46 @@ impl Context {
         ctx
     }
 
-    pub fn run<R: Send>(self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
+    pub fn run<R: Send>(mut self, fun: impl FnOnce(&ContextGuard) -> R + Send) -> eyre::Result<R> {
         create_dir_all(&*CACHE_PATH_ROOT)?;
         if self.use_packs {
             info!("reading cache packs");
-            let packs = pack_names()
+            let packs = pack_indices()
+                .zip(pack_names())
                 .par_bridge()
-                .map(|name| -> eyre::Result<_> {
-                    Ok(read(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?)
+                .map(|(i, name)| -> eyre::Result<_> {
+                    Ok((i, read(CACHE_PATH_ROOT.join(&format!("{name}.pack"))?)?))
                 })
                 .filter_map(|pack| pack.ok())
-                .collect::<Vec<_>>();
+                .collect::<BTreeMap<_, _>>();
             packs
                 .into_par_iter()
-                .map(|pack| -> eyre::Result<_> {
+                .map(|(i, pack)| -> eyre::Result<_> {
                     let pack: CachePack = bincode::decode_from_slice(&pack, standard())?.0;
                     self.read_file_derivation_cache
-                        .par_extend(pack.read_file_derivation_cache);
+                        .par_extend(i, pack.read_file_derivation_cache);
                     self.read_file_output_cache
-                        .par_extend(pack.read_file_output_cache);
+                        .par_extend(i, pack.read_file_output_cache);
                     self.render_markdown_derivation_cache
-                        .par_extend(pack.render_markdown_derivation_cache);
+                        .par_extend(i, pack.render_markdown_derivation_cache);
                     self.render_markdown_output_cache
-                        .par_extend(pack.render_markdown_output_cache);
+                        .par_extend(i, pack.render_markdown_output_cache);
                     self.filtered_post_derivation_cache
-                        .par_extend(pack.filtered_post_derivation_cache);
+                        .par_extend(i, pack.filtered_post_derivation_cache);
                     self.filtered_post_output_cache
-                        .par_extend(pack.filtered_post_output_cache);
+                        .par_extend(i, pack.filtered_post_output_cache);
                     self.thread_derivation_cache
-                        .par_extend(pack.thread_derivation_cache);
+                        .par_extend(i, pack.thread_derivation_cache);
                     self.thread_output_cache
-                        .par_extend(pack.thread_output_cache);
+                        .par_extend(i, pack.thread_output_cache);
                     self.tag_index_derivation_cache
-                        .par_extend(pack.tag_index_derivation_cache);
+                        .par_extend(i, pack.tag_index_derivation_cache);
                     self.tag_index_output_cache
-                        .par_extend(pack.tag_index_output_cache);
+                        .par_extend(i, pack.tag_index_output_cache);
                     self.rendered_thread_derivation_cache
-                        .par_extend(pack.rendered_thread_derivation_cache);
+                        .par_extend(i, pack.rendered_thread_derivation_cache);
                     self.rendered_thread_output_cache
-                        .par_extend(pack.rendered_thread_output_cache);
+                        .par_extend(i, pack.rendered_thread_output_cache);
                     Ok(())
                 })
                 .collect::<Vec<_>>();
@@ -203,66 +204,30 @@ impl Context {
                     .collect::<Vec<_>>();
             })
             .collect::<Vec<_>>();
-            let mut read_file_derivation_packs =
-                self.read_file_derivation_cache.encodable_sharded();
-            let mut read_file_output_packs = self.read_file_output_cache.encodable_sharded();
-            let mut render_markdown_derivation_packs =
-                self.render_markdown_derivation_cache.encodable_sharded();
-            let mut render_markdown_output_packs =
-                self.render_markdown_output_cache.encodable_sharded();
-            let mut filtered_post_derivation_packs =
-                self.filtered_post_derivation_cache.encodable_sharded();
-            let mut filtered_post_output_packs =
-                self.filtered_post_output_cache.encodable_sharded();
-            let mut thread_derivation_packs = self.thread_derivation_cache.encodable_sharded();
-            let mut thread_output_packs = self.thread_output_cache.encodable_sharded();
-            let mut tag_index_derivation_packs =
-                self.tag_index_derivation_cache.encodable_sharded();
-            let mut tag_index_output_packs = self.tag_index_output_cache.encodable_sharded();
-            let mut rendered_thread_derivation_packs =
-                self.rendered_thread_derivation_cache.encodable_sharded();
-            let mut rendered_thread_output_packs =
-                self.rendered_thread_output_cache.encodable_sharded();
             let mut packs: BTreeMap<usize, CachePack> = BTreeMap::default();
             for (i, bit) in merged_dirty.iter().enumerate() {
                 if bit.load(SeqCst) {
                     let pack = packs.entry(i).or_default();
-                    pack.read_file_derivation_cache = read_file_derivation_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.read_file_output_cache = read_file_output_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.render_markdown_derivation_cache = render_markdown_derivation_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.render_markdown_output_cache = render_markdown_output_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.filtered_post_derivation_cache = filtered_post_derivation_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.filtered_post_output_cache = filtered_post_output_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.thread_derivation_cache = thread_derivation_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.thread_output_cache = thread_output_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.tag_index_derivation_cache = tag_index_derivation_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.tag_index_output_cache = tag_index_output_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.rendered_thread_derivation_cache = rendered_thread_derivation_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
-                    pack.rendered_thread_output_cache = rendered_thread_output_packs
-                        .remove(&i)
-                        .expect("guaranteed by encodable_sharded()");
+                    pack.read_file_derivation_cache =
+                        self.read_file_derivation_cache.take_encodable(i);
+                    pack.read_file_output_cache = self.read_file_output_cache.take_encodable(i);
+                    pack.render_markdown_derivation_cache =
+                        self.render_markdown_derivation_cache.take_encodable(i);
+                    pack.render_markdown_output_cache =
+                        self.render_markdown_output_cache.take_encodable(i);
+                    pack.filtered_post_derivation_cache =
+                        self.filtered_post_derivation_cache.take_encodable(i);
+                    pack.filtered_post_output_cache =
+                        self.filtered_post_output_cache.take_encodable(i);
+                    pack.thread_derivation_cache = self.thread_derivation_cache.take_encodable(i);
+                    pack.thread_output_cache = self.thread_output_cache.take_encodable(i);
+                    pack.tag_index_derivation_cache =
+                        self.tag_index_derivation_cache.take_encodable(i);
+                    pack.tag_index_output_cache = self.tag_index_output_cache.take_encodable(i);
+                    pack.rendered_thread_derivation_cache =
+                        self.rendered_thread_derivation_cache.take_encodable(i);
+                    pack.rendered_thread_output_cache =
+                        self.rendered_thread_output_cache.take_encodable(i);
                 }
             }
             info!("writing cache packs");
@@ -307,7 +272,7 @@ impl Id {
     pub fn as_bytes(&self) -> &[u8] {
         self.0 .0.as_bytes()
     }
-    pub fn pack_prefix(&self) -> usize {
+    pub fn pack_index(&self) -> usize {
         let hi = self.0 .0.as_bytes()[0];
         let lo = self.0 .0.as_bytes()[1];
         usize::from(hi) << 4 | usize::from(lo) >> 4
@@ -323,7 +288,7 @@ impl TryFrom<&[u8]> for Id {
 #[test]
 fn test_id_pack_prefix() -> eyre::Result<()> {
     let id = Id::from_str("12345555aaaa5555aaaa5555aaaa5555aaaa5555aaaa5555aaaa5555aaaa5555")?;
-    assert_eq!(id.pack_prefix(), 0x123);
+    assert_eq!(id.pack_index(), 0x123);
 
     Ok(())
 }

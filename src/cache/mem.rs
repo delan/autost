@@ -6,8 +6,8 @@ use tracing::debug;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::mem::take;
 use std::ops::Range;
-use std::str::FromStr;
 use std::sync::atomic::Ordering::SeqCst;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::LazyLock;
@@ -17,15 +17,9 @@ use crate::cache::Id;
 pub const PACK_INDICES: Range<usize> = 0..4096;
 pub static PACK_NAMES: LazyLock<Vec<String>> =
     LazyLock::new(|| PACK_INDICES.map(|i| format!("{i:03x}")).collect());
-pub static PACK_PREFIXES: LazyLock<Vec<Id>> = LazyLock::new(|| {
-    PACK_NAMES
-        .iter()
-        .map(|prefix| Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap())
-        .collect()
-});
 
 pub struct MemoryCache<K, V> {
-    inner: DashMap<K, V>,
+    inner: Box<[DashMap<K, V>; 4096]>,
     label: &'static str,
     dirty: Box<[AtomicBool; 4096]>,
     hits: AtomicUsize,
@@ -52,7 +46,9 @@ impl<K: Eq + Hash, V> Debug for MemoryCache<K, V> {
 impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn new(label: &'static str) -> Self {
         Self {
-            inner: DashMap::new(),
+            inner: vec![DashMap::new(); 4096]
+                .try_into()
+                .expect("guaranteed by receiver"),
             label,
             dirty: dirty_bits(),
             hits: AtomicUsize::new(0),
@@ -64,11 +60,15 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
     pub fn dirty(&self) -> &[AtomicBool; 4096] {
         &self.dirty
     }
-    pub fn encodable(self) -> BTreeMap<Id, V> {
-        self.inner.into_par_iter().collect()
+    pub fn take_encodable(&mut self, pack_index: usize) -> BTreeMap<Id, V> {
+        take(&mut self.inner[pack_index]).into_par_iter().collect()
     }
-    pub fn par_extend(&self, entries: impl IntoParallelIterator<Item = (Id, V)>) {
-        (&self.inner).par_extend(entries)
+    pub fn par_extend(
+        &self,
+        pack_index: usize,
+        entries: impl IntoParallelIterator<Item = (Id, V)>,
+    ) {
+        (&self.inner[pack_index]).par_extend(entries)
     }
     pub fn get_or_insert_as_read(
         &self,
@@ -76,14 +76,15 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
         default: impl FnOnce(&Id) -> eyre::Result<V>,
     ) -> eyre::Result<V> {
         debug!(?self, "query");
-        if let Some(value) = self.inner.get(&key) {
+        let pack_index = key.pack_index();
+        if let Some(value) = self.inner[pack_index].get(&key) {
             self.hits.fetch_add(1, SeqCst);
             Ok(value.clone())
         } else {
-            self.dirty[key.pack_prefix()].store(true, SeqCst);
+            self.dirty[pack_index].store(true, SeqCst);
             self.read_misses.fetch_add(1, SeqCst);
             let value = default(&key)?;
-            self.inner.insert(key, value.clone());
+            self.inner[pack_index].insert(key, value.clone());
             Ok(value)
         }
     }
@@ -94,11 +95,12 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
         write: impl FnOnce(&Id) -> eyre::Result<V>,
     ) -> eyre::Result<V> {
         debug!(?self, "query");
-        if let Some(value) = self.inner.get(&key) {
+        let pack_index = key.pack_index();
+        if let Some(value) = self.inner[pack_index].get(&key) {
             self.hits.fetch_add(1, SeqCst);
             return Ok(value.clone());
         }
-        self.dirty[key.pack_prefix()].store(true, SeqCst);
+        self.dirty[pack_index].store(true, SeqCst);
         let value = if let Ok(value) = read(&key) {
             self.read_write_misses.fetch_add(1, SeqCst);
             value
@@ -107,24 +109,8 @@ impl<V: Clone + Debug + Send + Sync> MemoryCache<Id, V> {
             self.write_write_misses.fetch_add(1, SeqCst);
             write(&key)?
         };
-        self.inner.insert(key, value.clone());
+        self.inner[pack_index].insert(key, value.clone());
         Ok(value)
-    }
-    pub fn encodable_sharded(self) -> BTreeMap<usize, BTreeMap<Id, V>> {
-        let mut encodable = self.encodable();
-        let splits = pack_indices()
-            .zip(pack_prefixes())
-            .rev()
-            .map(|(i, prefix)| {
-                (
-                    i,
-                    Id::from_str(&format!("{prefix:<64}").replace(" ", "0")).unwrap(),
-                )
-            });
-        splits
-            .into_iter()
-            .map(|(i, key)| (i, encodable.split_off(&key)))
-            .collect()
     }
 }
 
@@ -134,10 +120,6 @@ pub fn pack_indices() -> impl DoubleEndedIterator<Item = usize> + ExactSizeItera
 
 pub fn pack_names() -> impl DoubleEndedIterator<Item = &'static String> + ExactSizeIterator {
     PACK_NAMES.iter()
-}
-
-pub fn pack_prefixes() -> impl DoubleEndedIterator<Item = &'static Id> + ExactSizeIterator {
-    PACK_PREFIXES.iter()
 }
 
 pub fn dirty_bits() -> Box<[AtomicBool; 4096]> {
