@@ -1,6 +1,6 @@
 use std::{
     fs::{create_dir_all, File},
-    io::{self, Write},
+    io::Write,
     rc::Rc,
 };
 
@@ -11,7 +11,9 @@ use html5ever::Attribute;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{Handle, NodeData};
 use reqwest::Client;
+use rocket::futures::StreamExt;
 use serde::Deserialize;
+use sqlx::{Connection, Row, SqliteConnection};
 use tracing::{debug, info, trace, warn};
 use url::Url;
 
@@ -23,7 +25,6 @@ use crate::{
         parse_html_document, parse_html_fragment, serialize_html_fragment, serialize_node_contents,
         text_content, AttrsRefExt, BreadthTraverse, QualName, QualNameExt, TendrilExt,
     },
-    migrations::run_migrations,
     path::{PostsPath, POSTS_PATH_IMPORTED},
     Author, Command, PostMeta, TemplatedPost,
 };
@@ -38,12 +39,10 @@ pub struct Reimport {
     posts_path: String,
 }
 
-#[tokio::main]
-pub async fn main() -> eyre::Result<()> {
+pub async fn main(mut db: SqliteConnection) -> eyre::Result<()> {
     let Command::Import(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
     };
-    run_migrations()?;
 
     let url = args.url;
     create_dir_all(&*POSTS_PATH_IMPORTED)?;
@@ -55,29 +54,46 @@ pub async fn main() -> eyre::Result<()> {
         meta,
     } = fetch_post(&url).await?;
 
-    let mut result = None;
-    for post_id in 1.. {
-        let path = PostsPath::imported_post_path(post_id);
-        match File::create_new(&path) {
-            Ok(file) => {
-                info!("creating new post: {path:?}");
-                result = Some((path, file));
-                break;
+    // FIXME: holds transaction for O(n) file i/o
+    let mut tx = db.begin().await?;
+    let mut import_ids = sqlx::query(r#"SELECT "import_id" FROM "import""#).fetch(&mut *tx);
+    let (path, file) = loop {
+        if let Some(import_id) = import_ids.next().await {
+            let import_id: u64 = import_id?.get(0);
+            let path = PostsPath::imported_post_path(import_id);
+            let post = TemplatedPost::load(&path)?;
+            if post.meta.archived == Some(u_url.to_string()) {
+                drop(import_ids);
+                tx.rollback().await?;
+                info!("updating existing import: {path:?}");
+                let file = File::create(&path)?;
+                break (path, file);
             }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                let post = TemplatedPost::load(&path)?;
-                if post.meta.archived == Some(u_url.to_string()) {
-                    info!("updating existing post: {path:?}");
-                    let file = File::create(&path)?;
-                    result = Some((path, file));
-                    break;
-                }
-            }
-            Err(other) => Err(other)?,
+        } else {
+            drop(import_ids);
+            // create the import, then update its path, in a database transaction.
+            // commit the transaction only after creating the imported post file succeeds.
+            let import_id = sqlx::query(r#"INSERT INTO "import" ("path") VALUES ("")"#)
+                .execute(&mut *tx)
+                .await?
+                .last_insert_rowid();
+            let path = PostsPath::imported_post_path(import_id.cast_unsigned());
+            sqlx::query(r#"UPDATE "import" SET "path" = $1 WHERE "import_id" = $2"#)
+                .bind(path.db_post_table_path())
+                .bind(import_id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(r#"INSERT INTO "posts_path" ("path") VALUES ($1)"#)
+                .bind(path.db_post_table_path())
+                .execute(&mut *tx)
+                .await?;
+            info!("creating new import: {path:?}");
+            let file = File::create(&path)?;
+            tx.commit().await?;
+            break (path, file);
         }
-    }
+    };
 
-    let (path, file) = result.ok_or_eyre("too many posts :(")?;
     write_post(file, meta, e_content, base_href, path)?;
 
     Ok(())
@@ -85,12 +101,10 @@ pub async fn main() -> eyre::Result<()> {
 
 pub mod reimport {
     use super::*;
-    #[tokio::main]
     pub async fn main() -> eyre::Result<()> {
         let Command::Reimport(args) = Command::parse() else {
             unreachable!("guaranteed by subcommand call in entry point")
         };
-        run_migrations()?;
 
         let path = args.posts_path;
         let path = PostsPath::from_site_root_relative_path(&path)?;
@@ -318,8 +332,8 @@ fn write_post(
     info!("writing {path:?}");
     file.write_all(meta.render()?.as_bytes())?;
     file.write_all(b"\n\n")?;
-    let basename = path.basename().ok_or_eyre("path has no basename")?;
-    let unsafe_html = process_content(&e_content, basename, &base_href, &RealAttachmentsContext)?;
+    let import_id = path.import_id().ok_or_eyre("path has no import id")?;
+    let unsafe_html = process_content(&e_content, import_id, &base_href, &RealAttachmentsContext)?;
     let post = TemplatedPost::filter(&unsafe_html, Some(path.clone()))?;
     file.write_all(post.safe_html.as_bytes())?;
     info!("click here to reply: {}", path.compose_reply_url());
@@ -340,7 +354,7 @@ struct FetchPostResult {
 
 fn process_content(
     content: &str,
-    post_basename: &str,
+    import_id: usize,
     base_href: &Url,
     context: &dyn AttachmentsContext,
 ) -> eyre::Result<String> {
@@ -362,7 +376,7 @@ fn process_content(
                             attr.name.local
                         );
                         attr.value = context
-                            .cache_imported(fetch_url.as_ref(), post_basename)?
+                            .cache_imported(fetch_url.as_ref(), import_id)?
                             .site_path()?
                             .base_relative_url()
                             .into();

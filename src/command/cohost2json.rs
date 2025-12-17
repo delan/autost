@@ -33,7 +33,6 @@ pub struct Cohost2json {
     pub liked: bool,
 }
 
-#[tokio::main]
 pub async fn main() -> eyre::Result<()> {
     let Command::Cohost2json(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
