@@ -6,7 +6,7 @@ CREATE TABLE "post" (
     -- <https://sqlite.org/lang_createtable.html#rowids_and_the_integer_primary_key>
     -- <https://sqlite.org/autoinc.html>
     "post_id" INTEGER PRIMARY KEY AUTOINCREMENT
-    , "path" TEXT NOT NULL
+    , "path" TEXT NOT NULL UNIQUE
     -- unique ignoring NULL values <https://sqlite.org/lang_createtable.html#unique_constraints>
     , "rendered_path" TEXT NULL UNIQUE
 );
@@ -17,5 +17,5 @@ CREATE TABLE "import" (
     -- <https://sqlite.org/lang_createtable.html#rowids_and_the_integer_primary_key>
     -- <https://sqlite.org/autoinc.html>
     "import_id" INTEGER PRIMARY KEY AUTOINCREMENT
-    , "path" TEXT NOT NULL
+    , "path" TEXT NOT NULL UNIQUE
 );
