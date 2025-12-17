@@ -1,6 +1,6 @@
 use std::{
     fs::{create_dir_all, File},
-    io::{self, Write},
+    io::Write,
     rc::Rc,
 };
 
@@ -11,7 +11,9 @@ use html5ever::Attribute;
 use jane_eyre::eyre::{self, bail, OptionExt};
 use markup5ever_rcdom::{Handle, NodeData};
 use reqwest::Client;
+use rocket::futures::StreamExt;
 use serde::Deserialize;
+use sqlx::{Connection, Row, SqliteConnection};
 use tracing::{debug, info, trace, warn};
 use url::Url;
 
@@ -37,7 +39,7 @@ pub struct Reimport {
     posts_path: String,
 }
 
-pub async fn main() -> eyre::Result<()> {
+pub async fn main(mut db: SqliteConnection) -> eyre::Result<()> {
     let Command::Import(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
     };
@@ -52,29 +54,36 @@ pub async fn main() -> eyre::Result<()> {
         meta,
     } = fetch_post(&url).await?;
 
-    let mut result = None;
-    for post_id in 1.. {
-        let path = PostsPath::imported_post_path(post_id);
-        match File::create_new(&path) {
-            Ok(file) => {
-                info!("creating new post: {path:?}");
-                result = Some((path, file));
-                break;
+    // FIXME: holds transaction for O(n) file i/o
+    let mut tx = db.begin().await?;
+    let mut import_ids = sqlx::query(r#"SELECT "import_id" FROM "import""#).fetch(&mut *tx);
+    let (path, file) = loop {
+        if let Some(import_id) = import_ids.next().await {
+            let import_id: u64 = import_id?.get(0);
+            let path = PostsPath::imported_post_path(import_id);
+            let post = TemplatedPost::load(&path)?;
+            if post.meta.archived == Some(u_url.to_string()) {
+                drop(import_ids);
+                tx.rollback().await?;
+                info!("updating existing import: {path:?}");
+                let file = File::create(&path)?;
+                break (path, file);
             }
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
-                let post = TemplatedPost::load(&path)?;
-                if post.meta.archived == Some(u_url.to_string()) {
-                    info!("updating existing post: {path:?}");
-                    let file = File::create(&path)?;
-                    result = Some((path, file));
-                    break;
-                }
-            }
-            Err(other) => Err(other)?,
+        } else {
+            drop(import_ids);
+            let import_id = sqlx::query(r#"INSERT INTO "import" DEFAULT VALUES"#)
+                .execute(&mut *tx)
+                .await?
+                .last_insert_rowid()
+                .cast_unsigned();
+            let path = PostsPath::imported_post_path(import_id);
+            info!("creating new import: {path:?}");
+            let file = File::create(&path)?;
+            tx.commit().await?;
+            break (path, file);
         }
-    }
+    };
 
-    let (path, file) = result.ok_or_eyre("too many posts :(")?;
     write_post(file, meta, e_content, base_href, path)?;
 
     Ok(())

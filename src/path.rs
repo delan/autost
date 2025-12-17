@@ -188,9 +188,9 @@ impl PostsPath {
             .expect("guaranteed by argument")
     }
 
-    pub fn imported_post_path(post_id: usize) -> Self {
+    pub fn imported_post_path(import_id: u64) -> Self {
         POSTS_PATH_IMPORTED
-            .join(&format!("{post_id}.html"))
+            .join(&format!("{import_id}.html"))
             .expect("guaranteed by argument")
     }
 

@@ -36,7 +36,7 @@ async fn main() -> eyre::Result<()> {
         Command::Cohost2autost(args) => command::cohost2autost::main(args),
         Command::Cohost2json(_) => command::cohost2json::main().await,
         Command::CohostArchive(_) => command::cohost_archive::main().await,
-        Command::Import(_) => command::import::main().await,
+        Command::Import(_) => command::import::main(db.expect("guaranteed by definition")).await,
         Command::New(args) => command::new::main(args),
         Command::Reimport(_) => command::import::reimport::main().await,
         Command::Render(args) => command::render::main(args),
