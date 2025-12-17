@@ -83,6 +83,10 @@ pub async fn main(mut db: SqliteConnection) -> eyre::Result<()> {
                 .bind(import_id)
                 .execute(&mut *tx)
                 .await?;
+            sqlx::query(r#"INSERT INTO "posts_path" ("path") VALUES ($1)"#)
+                .bind(path.db_post_table_path())
+                .execute(&mut *tx)
+                .await?;
             info!("creating new import: {path:?}");
             let file = File::create(&path)?;
             tx.commit().await?;

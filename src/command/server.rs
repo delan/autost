@@ -124,6 +124,10 @@ async fn publish_route(
         .bind(post_id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query(r#"INSERT INTO "posts_path" ("path") VALUES ($1)"#)
+        .bind(path.db_post_table_path())
+        .execute(&mut *tx)
+        .await?;
 
     let mut file = File::create_new(&path).wrap_err("failed to create post")?;
     file.write_all(unsafe_source.as_bytes())

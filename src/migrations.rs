@@ -82,6 +82,9 @@ pub async fn run_migrations() -> eyre::Result<SqliteConnection> {
                 .map(|entry| POSTS_PATH_IMPORTED.join_dir_entry(&entry?)))
         })
         .await?;
+
+        info!("database post-migration step: backfilling `posts_path` table");
+        backfill_posts_path_table(&mut tx).await?;
     }
 
     // commit all database migrations as a single transaction
@@ -178,6 +181,20 @@ async fn backfill_import_table<Paths: Iterator<Item = eyre::Result<PostsPath>>>(
         }
     }
 
+    Ok(())
+}
+
+async fn backfill_posts_path_table(tx: &mut Transaction<'_, Sqlite>) -> eyre::Result<()> {
+    sqlx::query(
+        r#"INSERT INTO "posts_path" ("path") SELECT "path" FROM "post" ORDER BY "post_id""#,
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO "posts_path" ("path") SELECT "path" FROM "import" ORDER BY "import_id""#,
+    )
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }
 

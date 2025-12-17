@@ -1,3 +1,9 @@
+CREATE TABLE "posts_path" (
+    -- rowid alias (`INTEGER PRIMARY KEY`) with strictly increasing automatic values (`AUTOINCREMENT`).
+    "posts_path_id" INTEGER PRIMARY KEY AUTOINCREMENT
+    , "path" TEXT NOT NULL UNIQUE
+);
+
 CREATE TABLE "post" (
     -- rowid alias (`INTEGER PRIMARY KEY`) with strictly increasing automatic values (`AUTOINCREMENT`).
     -- this allows us to ensure that deleted post ids are never reused, which might get confusing, and
