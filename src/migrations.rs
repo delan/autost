@@ -170,8 +170,9 @@ async fn backfill_import_table<Paths: Iterator<Item = eyre::Result<PostsPath>>>(
         let path = path?;
         if let Some(import_id) = path.import_id() {
             trace!(?import_id, "INSERT INTO import");
-            sqlx::query(r#"INSERT INTO "import" ("import_id") VALUES ($1)"#)
+            sqlx::query(r#"INSERT INTO "import" ("import_id", "path") VALUES ($1, $2)"#)
                 .bind(i64::try_from(import_id)?)
+                .bind(path.db_post_table_path())
                 .execute(&mut **tx)
                 .await?;
         }

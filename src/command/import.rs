@@ -71,12 +71,18 @@ pub async fn main(mut db: SqliteConnection) -> eyre::Result<()> {
             }
         } else {
             drop(import_ids);
-            let import_id = sqlx::query(r#"INSERT INTO "import" DEFAULT VALUES"#)
+            // create the import, then update its path, in a database transaction.
+            // commit the transaction only after creating the imported post file succeeds.
+            let import_id = sqlx::query(r#"INSERT INTO "import" ("path") VALUES ("")"#)
                 .execute(&mut *tx)
                 .await?
-                .last_insert_rowid()
-                .cast_unsigned();
-            let path = PostsPath::imported_post_path(import_id);
+                .last_insert_rowid();
+            let path = PostsPath::imported_post_path(import_id.cast_unsigned());
+            sqlx::query(r#"UPDATE "import" SET "path" = $1 WHERE "import_id" = $2"#)
+                .bind(path.db_post_table_path())
+                .bind(import_id)
+                .execute(&mut *tx)
+                .await?;
             info!("creating new import: {path:?}");
             let file = File::create(&path)?;
             tx.commit().await?;
