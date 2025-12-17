@@ -118,8 +118,9 @@ async fn publish_route(
         .await?
         .last_insert_rowid();
     let path = PostsPath::markdown_post_path(usize::try_from(post_id)?);
-    sqlx::query(r#"UPDATE "post" SET "path" = $1 WHERE "post_id" = $2"#)
+    sqlx::query(r#"UPDATE "post" SET "path" = $1, "rendered_path" = $2 WHERE "post_id" = $3"#)
         .bind(path.db_post_table_path())
+        .bind(path.rendered_path()?.map(|path| path.db_post_table_path()))
         .bind(post_id)
         .execute(&mut *tx)
         .await?;
