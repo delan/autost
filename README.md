@@ -1,5 +1,5 @@
-autost
-======
+moved to <https://codeberg.org/shuppy/autost>
+=============================================
 
 **questions and contributions welcome :3**
 
