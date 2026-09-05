@@ -28,7 +28,6 @@ pub struct CohostArchive {
     liked: bool,
 }
 
-#[tokio::main]
 pub async fn main() -> eyre::Result<()> {
     let Command::CohostArchive(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")

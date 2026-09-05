@@ -6,7 +6,6 @@ use tracing::info;
 
 use crate::{
     attachments::{AttachmentsContext, RealAttachmentsContext},
-    migrations::run_migrations,
     path::ATTACHMENTS_PATH_ROOT,
     Command,
 };
@@ -16,12 +15,10 @@ pub struct Attach {
     paths: Vec<String>,
 }
 
-#[tokio::main]
 pub async fn main() -> eyre::Result<()> {
     let Command::Attach(args) = Command::parse() else {
         unreachable!("guaranteed by subcommand call in entry point")
     };
-    run_migrations()?;
     create_dir_all(&*ATTACHMENTS_PATH_ROOT)?;
 
     for path in args.paths {
